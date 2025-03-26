@@ -130,9 +130,7 @@ LRESULT D3DApp::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		// Save the new client area dimensions.
 		mClientWidth = LOWORD(lParam);
 		mClientHeight = HIWORD(lParam);
-
-		//mRenderingSystem->mClientWidth = LOWORD(lParam);
-		//mRenderingSystem->mClientHeight = HIWORD(lParam);
+		mRenderingSystem->setScreenParams(mClientWidth, mClientHeight);
 
 		if (mRenderingSystem->getd3dDevice())
 		{
@@ -199,7 +197,7 @@ LRESULT D3DApp::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		mAppPaused = false;
 		mResizing = false;
 		mTimer.Start();
-		//OnResize();
+		OnResize();
 		return 0;
 
 		// WM_DESTROY is sent when the window is being destroyed.

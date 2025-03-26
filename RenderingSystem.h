@@ -127,6 +127,8 @@ public:
     Microsoft::WRL::ComPtr<ID3D12Device> getd3dDevice() { return md3dDevice; };
     Microsoft::WRL::ComPtr<ID3D12Fence> getFence() { return mFence; };
 
+    void setScreenParams(int NewWidth, int NewHeight) { mClientWidth = NewWidth; mClientHeight = NewHeight; }
+
     Microsoft::WRL::ComPtr<ID3D12CommandQueue> getCommandQueue() { return mCommandQueue; };
     Microsoft::WRL::ComPtr<ID3D12CommandAllocator> getDirectCmdListAlloc() { return mDirectCmdListAlloc; };
     Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> getCommandList() { return mCommandList; };
