@@ -1,0 +1,47 @@
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Build results
+# x64/
+Debug/
+Release/
+*.obj
+*.exe
+*.pdb
+*.ilk
+*.idb
+*.ipch
+*.tlog
+*.lastbuildstate
+*.log
+*.vc.db
+*.VC.db
+*.recipe
+*.tlog/
+*.cache
+
+# JSON backups
+*.backup.json
+
+# Auto-generated files
+*.opensdf
+*.sdf
+
+# Other
+*.vscode/
+*.aps
+*.ncb
+*.pyc
+
+# Но НЕ игнорировать Debug и Release в libs/MyLibrary
+!MISC/assimp/lib/Debug/
+!MISC/assimp/lib/Release/
+!x64/Debug/
+
+# Но НЕ игнорировать .obj внутри папки Models/
+!Models/
+!Models/**/*.obj
