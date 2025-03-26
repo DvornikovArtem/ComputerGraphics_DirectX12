@@ -31,6 +31,37 @@ using namespace DirectX::PackedVector;
 
 const int gNumFrameResources = 3;
 
+struct TextureDesc
+{
+    TextureDesc() {}
+
+    TextureDesc(std::string Name, std::wstring Path)
+    {
+        this->Name = Name;
+        this->Path = Path;
+    }
+    std::string Name;
+    std::wstring Path;
+};
+
+struct MaterialDesc
+{
+    std::string Name;
+    std::string DiffuseTex;
+    XMFLOAT4 DiffuseAlbedo;
+    XMFLOAT3 FresnelR0;
+    float Roughness = 0.25f;
+};
+
+struct MeshDesc
+{
+    std::string Name;
+    std::wstring Path;
+
+    bool LoadTexture;
+    std::string TextureName;
+};
+
 // Lightweight structure stores parameters to draw a shape.  This will
 // vary from app-to-app.
 struct RenderItem
@@ -97,7 +128,7 @@ public:
     void BuildDescriptorHeaps();
     void BuildShadersAndInputLayout();
     void BuildRoomGeometry();
-    void LoadTextures();
+    void LoadTextures(std::vector<TextureDesc>& TexDescs);
 
     void BuildMeshGeometry(const std::string& filename);
     void BuildPSOs();

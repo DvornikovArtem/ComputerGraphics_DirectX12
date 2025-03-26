@@ -30,11 +30,13 @@ private:
     virtual void OnMouseDown(WPARAM btnState, int x, int y)override;
     virtual void OnMouseUp(WPARAM btnState, int x, int y)override;
     virtual void OnMouseMove(WPARAM btnState, int x, int y)override;
-
     void OnKeyboardInput(const GameTimer& gt);
 	void UpdateCamera(const GameTimer& gt);
 
     void BuildRenderItems();
+    
+    void LoadAssets();
+
 
 };
 
@@ -68,7 +70,8 @@ StencilApp::StencilApp(HINSTANCE hInstance)
 {
 }
 
-StencilApp::~StencilApp() {
+StencilApp::~StencilApp() 
+{
 	if (mRenderingSystem->getd3dDevice() != nullptr) {
 		mRenderingSystem->FlushCommandQueue();
 	}
@@ -78,6 +81,8 @@ bool StencilApp::Initialize()
 {
     if(!D3DApp::Initialize())
         return false;
+
+    LoadAssets();
 
     return true;
 }
@@ -170,5 +175,28 @@ void StencilApp::UpdateCamera(const GameTimer& gt)
 
 void StencilApp::BuildRenderItems()
 {
-    mRenderingSystem->BuildRenderItems();
+
 }
+
+void StencilApp::LoadAssets()
+{
+    //Loading Textures
+    std::vector<TextureDesc> TexDescs;
+
+    TexDescs.push_back(TextureDesc("bricksTex", L"../Textures/bricks3.dds"));
+    TexDescs.push_back(TextureDesc("checkboardTex", L"../Textures/checkboard.dds"));
+    TexDescs.push_back(TextureDesc("iceTex", L"../Textures/ice.dds"));
+    TexDescs.push_back(TextureDesc("white1x1Tex", L"../Textures/white1x1.dds"));
+    TexDescs.push_back(TextureDesc("meshTex", L"../Textures/african_head_diffuse.dds"));
+    TexDescs.push_back(TextureDesc("redTex", L"../Textures/rsq.dds"));
+    TexDescs.push_back(TextureDesc("grassTex", L"../Textures/WoodCrate01.dds"));
+
+    mRenderingSystem->LoadTextures(TexDescs);
+
+    //Making Materials
+    //mRenderingSystem->BuildMaterials();
+}
+
+
+
+

@@ -53,6 +53,7 @@ protected:
 
     virtual void OnKeyboardPressed(WPARAM pressedButton, const GameTimer& gt) {}
 
+
 protected:
 
 	bool InitMainWindow();

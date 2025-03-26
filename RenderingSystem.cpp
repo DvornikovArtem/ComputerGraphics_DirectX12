@@ -2,6 +2,7 @@
 
 RenderingSystem::RenderingSystem() {}
 
+
 void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer* gt) {
 #if defined(DEBUG) || defined(_DEBUG) 
 	// Enable the D3D12 debug layer.
@@ -77,9 +78,9 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 	// so we have to query this information.
 	mCbvSrvDescriptorSize = md3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
-	LoadTextures();
+	//LoadTextures();
 	BuildRootSignature();
-	BuildDescriptorHeaps();
+	//BuildDescriptorHeaps();
 	BuildShadersAndInputLayout();
 	BuildRoomGeometry();
 	BuildMeshGeometry("../Models/african_head.obj");
@@ -999,64 +1000,67 @@ void RenderingSystem::UpdateMaterialCBs(const GameTimer& gt)
 	}
 }
 
-void RenderingSystem::LoadTextures()
+void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 {
-	auto bricksTex = std::make_unique<Texture>();
-	bricksTex->Name = "bricksTex";
-	bricksTex->Filename = L"../Textures/bricks3.dds";
-	ThrowIfFailed(DirectX::CreateDDSTextureFromFile12(md3dDevice.Get(),
-		mCommandList.Get(), bricksTex->Filename.c_str(),
-		bricksTex->Resource, bricksTex->UploadHeap));
 
-	auto checkboardTex = std::make_unique<Texture>();
-	checkboardTex->Name = "checkboardTex";
-	checkboardTex->Filename = L"../Textures/checkboard.dds";
-	ThrowIfFailed(DirectX::CreateDDSTextureFromFile12(md3dDevice.Get(),
-		mCommandList.Get(), checkboardTex->Filename.c_str(),
-		checkboardTex->Resource, checkboardTex->UploadHeap));
+	ThrowIfFailed(mCommandList->Reset(mDirectCmdListAlloc.Get(), nullptr));
 
-	auto iceTex = std::make_unique<Texture>();
-	iceTex->Name = "iceTex";
-	iceTex->Filename = L"../Textures/ice.dds";
-	ThrowIfFailed(DirectX::CreateDDSTextureFromFile12(md3dDevice.Get(),
-		mCommandList.Get(), iceTex->Filename.c_str(),
-		iceTex->Resource, iceTex->UploadHeap));
+	for (TextureDesc& i : TexDescs)
+	{
+		auto t = std::make_unique<Texture>();
+		t->Name = i.Name;
+		t->Filename = i.Path;
+		ThrowIfFailed(DirectX::CreateDDSTextureFromFile12(md3dDevice.Get(),
+			mCommandList.Get(), t->Filename.c_str(),
+			t->Resource, t->UploadHeap));
 
-	auto white1x1Tex = std::make_unique<Texture>();
-	white1x1Tex->Name = "white1x1Tex";
-	white1x1Tex->Filename = L"../Textures/white1x1.dds";
-	ThrowIfFailed(DirectX::CreateDDSTextureFromFile12(md3dDevice.Get(),
-		mCommandList.Get(), white1x1Tex->Filename.c_str(),
-		white1x1Tex->Resource, white1x1Tex->UploadHeap));
+		mTextures[t->Name] = std::move(t);
+	}
+	
+	//
+	// Create the SRV heap.
+	//
+	D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
+	srvHeapDesc.NumDescriptors = TexDescs.size();
+	srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+	srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+	ThrowIfFailed(md3dDevice->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&mSrvDescriptorHeap)));
 
-	auto meshTex = std::make_unique<Texture>();
-	meshTex->Name = "meshTex";
-	meshTex->Filename = L"../Textures/african_head_diffuse.dds";
-	ThrowIfFailed(DirectX::CreateDDSTextureFromFile12(md3dDevice.Get(),
-		mCommandList.Get(), meshTex->Filename.c_str(),
-		meshTex->Resource, meshTex->UploadHeap));
+	//
+	// Fill out the heap with actual descriptors.
+	//
+	CD3DX12_CPU_DESCRIPTOR_HANDLE hDescriptor(mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
 
-	auto redTex = std::make_unique<Texture>();
-	redTex->Name = "redTex";
-	redTex->Filename = L"../Textures/rsq.dds";
-	ThrowIfFailed(DirectX::CreateDDSTextureFromFile12(md3dDevice.Get(),
-		mCommandList.Get(), redTex->Filename.c_str(),
-		redTex->Resource, redTex->UploadHeap));
+	for (TextureDesc& i : TexDescs) {
+		auto it = mTextures.find(i.Name);
+		if (it == mTextures.end()) {
+			// Обработка ошибки: текстура не найдена
+			OutputDebugStringA(("Texture not found: " + i.Name + "\n").c_str());
+			continue;
+		}
 
-	auto grassTex = std::make_unique<Texture>();
-	grassTex->Name = "grassTex";
-	grassTex->Filename = L"../Textures/WoodCrate01.dds";
-	ThrowIfFailed(DirectX::CreateDDSTextureFromFile12(md3dDevice.Get(),
-		mCommandList.Get(), grassTex->Filename.c_str(),
-		grassTex->Resource, grassTex->UploadHeap));
+		auto& tex = it->second->Resource;
+		if (!tex) {
+			// Обработка ошибки: ресурс текстуры не инициализирован
+			OutputDebugStringA(("Texture resource is null: " + i.Name + "\n").c_str());
+			continue;
+		}
 
-	mTextures[bricksTex->Name] = std::move(bricksTex);
-	mTextures[checkboardTex->Name] = std::move(checkboardTex);
-	mTextures[iceTex->Name] = std::move(iceTex);
-	mTextures[white1x1Tex->Name] = std::move(white1x1Tex);
-	mTextures[meshTex->Name] = std::move(meshTex);
-	mTextures[redTex->Name] = std::move(redTex);
-	mTextures[grassTex->Name] = std::move(grassTex);
+		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+
+		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+		srvDesc.Format = tex->GetDesc().Format;
+		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+		srvDesc.Texture2D.MostDetailedMip = 0;
+		srvDesc.Texture2D.MipLevels = -1;
+		md3dDevice->CreateShaderResourceView(tex.Get(), &srvDesc, hDescriptor);
+
+		hDescriptor.Offset(1, mCbvSrvDescriptorSize);
+	}
+
+	ThrowIfFailed(mCommandList->Close());
+	ID3D12CommandList* cmdsLists[] = { mCommandList.Get() };
+	mCommandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
 }
 
 void RenderingSystem::BuildDescriptorHeaps()
@@ -1105,48 +1109,8 @@ void RenderingSystem::BuildDescriptorHeaps()
 		srvDesc.Texture2D.MipLevels = -1;
 		md3dDevice->CreateShaderResourceView(tex.Get(), &srvDesc, hDescriptor);
 
-		// next descriptor
 		hDescriptor.Offset(1, mCbvSrvDescriptorSize);
 	}
-
-
-	//auto& bricksTex = mTextures["bricksTex"]->Resource;
-	//auto& checkboardTex = mTextures["checkboardTex"]->Resource;
-	//auto& iceTex = mTextures["iceTex"]->Resource;
-	//auto& white1x1Tex = mTextures["white1x1Tex"]->Resource;
-	//auto& meshTex = mTextures["meshTex"]->Resource;
-
-	//D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-	//srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-	//srvDesc.Format = bricksTex->GetDesc().Format;
-	//srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-	//srvDesc.Texture2D.MostDetailedMip = 0;
-	//srvDesc.Texture2D.MipLevels = -1;
-	//md3dDevice->CreateShaderResourceView(bricksTex.Get(), &srvDesc, hDescriptor);
-
-	//// next descriptor
-	//hDescriptor.Offset(1, mCbvSrvDescriptorSize);
-
-	//srvDesc.Format = checkboardTex->GetDesc().Format;
-	//md3dDevice->CreateShaderResourceView(checkboardTex.Get(), &srvDesc, hDescriptor);
-
-	//// next descriptor
-	//hDescriptor.Offset(1, mCbvSrvDescriptorSize);
-
-	//srvDesc.Format = iceTex->GetDesc().Format;
-	//md3dDevice->CreateShaderResourceView(iceTex.Get(), &srvDesc, hDescriptor);
-
-	//// next descriptor
-	//hDescriptor.Offset(1, mCbvSrvDescriptorSize);
-
-	//srvDesc.Format = white1x1Tex->GetDesc().Format;
-	//md3dDevice->CreateShaderResourceView(white1x1Tex.Get(), &srvDesc, hDescriptor);
-
-	//// next descriptor
-	//hDescriptor.Offset(1, mCbvSrvDescriptorSize);
-
-	//srvDesc.Format = meshTex->GetDesc().Format;
-	//md3dDevice->CreateShaderResourceView(meshTex.Get(), &srvDesc, hDescriptor);
 }
 
 void RenderingSystem::BuildShadersAndInputLayout()
