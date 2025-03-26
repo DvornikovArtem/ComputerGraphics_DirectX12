@@ -1,0 +1,226 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Исходные файлы">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Файлы заголовков">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
+    </Filter>
+    <Filter Include="Файлы ресурсов">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+    <Filter Include="Common">
+      <UniqueIdentifier>{ca4e10d6-8224-40f3-b2cf-a281ca19e048}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Textures">
+      <UniqueIdentifier>{7534a9e4-29ed-4ad7-9b28-1ed93afe48ed}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Shaders">
+      <UniqueIdentifier>{324a477b-edeb-4d2e-a627-1c62bb5bcd67}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="..\Textures\african_head_diffuse.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="..\Textures\bricks.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="..\Textures\bricks_nmap.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="..\Textures\bricks2.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="..\Textures\bricks2_nmap.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="..\Textures\bricks3.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="..\Textures\checkboard.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="..\Textures\default_nmap.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="..\Textures\desertcube1024.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="..\Textures\grass.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="..\Textures\grasscube1024.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="..\Textures\head_diff.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="..\Textures\head_norm.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="..\Textures\ice.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="..\Textures\jacket_diff.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="..\Textures\jacket_norm.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="..\Textures\noise.png">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="..\Textures\pants_diff.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="..\Textures\pants_norm.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="..\Textures\rsq.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="..\Textures\rsq.jfif">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="..\Textures\snowcube1024.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="..\Textures\stone.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="..\Textures\sunsetcube1024.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="..\Textures\tile.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="..\Textures\tile_nmap.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="..\Textures\tree0.bmp">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="..\Textures\tree01S.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="..\Textures\tree1.bmp">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="..\Textures\tree02S.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="..\Textures\tree2.bmp">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="..\Textures\tree35S.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="..\Textures\treearray.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="..\Textures\treeArray2.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="..\Textures\upBody_diff.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="..\Textures\upbody_norm.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="..\Textures\water1.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="..\Textures\white1x1.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="..\Textures\WireFence.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="..\Textures\WoodCrate01.dds">
+      <Filter>Textures</Filter>
+    </Image>
+    <Image Include="..\Textures\WoodCrate02.dds">
+      <Filter>Textures</Filter>
+    </Image>
+  </ItemGroup>
+  <ItemGroup>
+    <FxCompile Include="..\Shaders\Default.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\Shaders\LightingUtil.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\Camera.h">
+      <Filter>Файлы заголовков</Filter>
+    </ClInclude>
+    <ClInclude Include="..\d3dApp.h">
+      <Filter>Файлы заголовков</Filter>
+    </ClInclude>
+    <ClInclude Include="..\d3dUtil.h">
+      <Filter>Файлы заголовков</Filter>
+    </ClInclude>
+    <ClInclude Include="..\d3dx12.h">
+      <Filter>Файлы заголовков</Filter>
+    </ClInclude>
+    <ClInclude Include="..\DDSTextureLoader.h">
+      <Filter>Файлы заголовков</Filter>
+    </ClInclude>
+    <ClInclude Include="..\FrameResource.h">
+      <Filter>Файлы заголовков</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GameTimer.h">
+      <Filter>Файлы заголовков</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GeometryGenerator.h">
+      <Filter>Файлы заголовков</Filter>
+    </ClInclude>
+    <ClInclude Include="..\MathHelper.h">
+      <Filter>Файлы заголовков</Filter>
+    </ClInclude>
+    <ClInclude Include="..\UploadBuffer.h">
+      <Filter>Файлы заголовков</Filter>
+    </ClInclude>
+    <ClInclude Include="..\RenderingSystem.h">
+      <Filter>Файлы заголовков</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\Camera.cpp">
+      <Filter>Исходные файлы</Filter>
+    </ClCompile>
+    <ClCompile Include="..\d3dApp.cpp">
+      <Filter>Исходные файлы</Filter>
+    </ClCompile>
+    <ClCompile Include="..\d3dUtil.cpp">
+      <Filter>Исходные файлы</Filter>
+    </ClCompile>
+    <ClCompile Include="..\DDSTextureLoader.cpp">
+      <Filter>Исходные файлы</Filter>
+    </ClCompile>
+    <ClCompile Include="..\FrameResource.cpp">
+      <Filter>Исходные файлы</Filter>
+    </ClCompile>
+    <ClCompile Include="..\GameTimer.cpp">
+      <Filter>Исходные файлы</Filter>
+    </ClCompile>
+    <ClCompile Include="..\GeometryGenerator.cpp">
+      <Filter>Исходные файлы</Filter>
+    </ClCompile>
+    <ClCompile Include="..\MathHelper.cpp">
+      <Filter>Исходные файлы</Filter>
+    </ClCompile>
+    <ClCompile Include="..\StencilApp.cpp">
+      <Filter>Исходные файлы</Filter>
+    </ClCompile>
+    <ClCompile Include="..\RenderingSystem.cpp">
+      <Filter>Исходные файлы</Filter>
+    </ClCompile>
+  </ItemGroup>
+</Project>
