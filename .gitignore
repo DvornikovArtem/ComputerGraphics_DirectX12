@@ -40,4 +40,4 @@ Release/
 # Но НЕ игнорировать Debug и Release в libs/MyLibrary
 !MISC/assimp/lib/Debug/
 !MISC/assimp/lib/Release/
-!Debug/
+!x64/Debug/
