@@ -1,0 +1,18 @@
+﻿FXC : warning X4717: Effects deprecated for D3DCompiler_47
+  
+  compilation object save succeeded; see D:\ИТМО\4 семестр\кг\лабы\ComputerGraphics_DirectX12\x64\Debug\Default.cso
+FXC : warning X4717: Effects deprecated for D3DCompiler_47
+  
+  compilation object save succeeded; see D:\ИТМО\4 семестр\кг\лабы\ComputerGraphics_DirectX12\x64\Debug\LightingUtil.cso
+  Camera.cpp
+  d3dApp.cpp
+  d3dUtil.cpp
+  DDSTextureLoader.cpp
+  FrameResource.cpp
+  GameTimer.cpp
+  GeometryGenerator.cpp
+  MathHelper.cpp
+  RenderingSystem.cpp
+  StencilApp.cpp
+  Создание кода...
+  Dx12_NaPrikole.vcxproj -> D:\ИТМО\4 семестр\кг\лабы\ComputerGraphics_DirectX12\x64\Debug\Dx12_NaPrikole.exe
