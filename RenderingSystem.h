@@ -31,6 +31,26 @@ using namespace DirectX::PackedVector;
 
 const int gNumFrameResources = 3;
 
+struct ShaderDesc
+{
+    ShaderDesc() {}
+
+    ShaderDesc(std::string Name, std::wstring Path, std::string FunctionName, const D3D_SHADER_MACRO* ShaderDefines, std::string ShaderProfile)
+    {
+        this->Name = Name;
+        this->Path = Path;
+        this->FunctionName = FunctionName;
+        this->ShaderDefines = ShaderDefines;
+        this->ShaderProfile = ShaderProfile;
+    }
+
+    std::string Name;
+    std::wstring Path;
+    std::string FunctionName;
+    const D3D_SHADER_MACRO* ShaderDefines;
+    std::string ShaderProfile;
+};
+
 struct TextureDesc
 {
     TextureDesc() {}
@@ -126,8 +146,9 @@ public:
     void UpdateMainPassCB(const GameTimer& gt);
     void UpdateReflectedPassCB(const GameTimer& gt);
     void BuildDescriptorHeaps();
-    void BuildShadersAndInputLayout();
-    void BuildRoomGeometry();
+    void BuildInputLayout();
+    void BuildShaders(std::vector<ShaderDesc>& ShaderDescs);
+    void BuildBasicGeometry();
     void LoadTextures(std::vector<TextureDesc>& TexDescs);
 
     void BuildMeshGeometry(const std::string& filename);

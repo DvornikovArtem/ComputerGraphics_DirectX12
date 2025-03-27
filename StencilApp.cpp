@@ -33,9 +33,13 @@ private:
     void OnKeyboardInput(const GameTimer& gt);
 	void UpdateCamera(const GameTimer& gt);
 
+    void LoadShaders();
+    void MakePSOs();
+    void LoadTextures();
+    void MakeMaterials();
+    void LoadMeshes();
     void BuildRenderItems();
-    
-    void LoadAssets();
+
 
 
 };
@@ -82,7 +86,15 @@ bool StencilApp::Initialize()
     if(!D3DApp::Initialize())
         return false;
 
-    LoadAssets();
+    LoadShaders();
+    MakePSOs();
+    LoadTextures();
+    MakeMaterials();
+    LoadMeshes();
+    BuildRenderItems();
+
+    //Called after all assets and render items are initialized
+    mRenderingSystem->BuildFrameResources();
 
     return true;
 }
@@ -173,14 +185,37 @@ void StencilApp::UpdateCamera(const GameTimer& gt)
 	XMStoreFloat4x4(&mRenderingSystem->mView, view);
 }
 
-void StencilApp::BuildRenderItems()
+void StencilApp::LoadShaders()
 {
+    std::vector<ShaderDesc> ShaderDescs;
 
+    const D3D_SHADER_MACRO defines[] =
+    {
+        { "FOG", "1" },
+        { NULL, NULL }
+    };
+
+    const D3D_SHADER_MACRO alphaTestDefines[] =
+    {
+        { "FOG", "1" },
+        { "ALPHA_TEST", "1" },
+        { NULL, NULL }
+    };
+
+    ShaderDescs.push_back(ShaderDesc("standardVS", L"../Shaders/Default.hlsl", "VS", nullptr, "vs_5_0"));
+    ShaderDescs.push_back(ShaderDesc("opaquePS", L"../Shaders/Default.hlsl", "PS", defines, "ps_5_0"));
+    ShaderDescs.push_back(ShaderDesc("alphaTestedPS", L"../Shaders/Default.hlsl", "PS", alphaTestDefines, "ps_5_0"));
+
+    mRenderingSystem->BuildShaders(ShaderDescs);
 }
 
-void StencilApp::LoadAssets()
+void StencilApp::MakePSOs()
 {
-    //Loading Textures
+    mRenderingSystem->BuildPSOs();
+}
+
+void StencilApp::LoadTextures()
+{
     std::vector<TextureDesc> TexDescs;
 
     TexDescs.push_back(TextureDesc("bricksTex", L"../Textures/bricks3.dds"));
@@ -192,9 +227,21 @@ void StencilApp::LoadAssets()
     TexDescs.push_back(TextureDesc("grassTex", L"../Textures/WoodCrate01.dds"));
 
     mRenderingSystem->LoadTextures(TexDescs);
+}
 
-    //Making Materials
-    //mRenderingSystem->BuildMaterials();
+void StencilApp::MakeMaterials()
+{
+    mRenderingSystem->BuildMaterials();
+}
+
+void StencilApp::LoadMeshes()
+{
+    mRenderingSystem->BuildMeshGeometry("../Models/african_head.obj");
+}
+
+void StencilApp::BuildRenderItems()
+{
+    mRenderingSystem->BuildRenderItems();
 }
 
 
