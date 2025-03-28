@@ -66,11 +66,22 @@ struct TextureDesc
 
 struct MaterialDesc
 {
+    MaterialDesc() {}
+
+    MaterialDesc(std::string Name, std::string DiffuseTexName, XMFLOAT4 DiffuseAlbedo, XMFLOAT3 FresnelR0, float Roughness)
+    {
+        this->Name = Name;
+        this->DiffuseTexName = DiffuseTexName;
+        this->DiffuseAlbedo = DiffuseAlbedo;
+        this->FresnelR0 = FresnelR0;
+        this->Roughness = Roughness;
+    }
+
     std::string Name;
-    std::string DiffuseTex;
+    std::string DiffuseTexName;
     XMFLOAT4 DiffuseAlbedo;
     XMFLOAT3 FresnelR0;
-    float Roughness = 0.25f;
+    float Roughness;
 };
 
 struct MeshDesc
@@ -154,7 +165,7 @@ public:
     void BuildMeshGeometry(const std::string& filename);
     void BuildPSOs();
     void BuildFrameResources();
-    void BuildMaterials();
+    void BuildMaterials(std::vector<MaterialDesc>& MaterialDescs);
     void BuildRenderItems();
 
     void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems);

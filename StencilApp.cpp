@@ -187,8 +187,6 @@ void StencilApp::UpdateCamera(const GameTimer& gt)
 
 void StencilApp::LoadShaders()
 {
-    std::vector<ShaderDesc> ShaderDescs;
-
     const D3D_SHADER_MACRO defines[] =
     {
         { "FOG", "1" },
@@ -202,9 +200,12 @@ void StencilApp::LoadShaders()
         { NULL, NULL }
     };
 
-    ShaderDescs.push_back(ShaderDesc("standardVS", L"../Shaders/Default.hlsl", "VS", nullptr, "vs_5_0"));
-    ShaderDescs.push_back(ShaderDesc("opaquePS", L"../Shaders/Default.hlsl", "PS", defines, "ps_5_0"));
-    ShaderDescs.push_back(ShaderDesc("alphaTestedPS", L"../Shaders/Default.hlsl", "PS", alphaTestDefines, "ps_5_0"));
+    std::vector<ShaderDesc> ShaderDescs = 
+    {
+        ShaderDesc("standardVS", L"../Shaders/Default.hlsl", "VS", nullptr, "vs_5_0"),
+        ShaderDesc("opaquePS", L"../Shaders/Default.hlsl", "PS", defines, "ps_5_0"),
+        ShaderDesc("alphaTestedPS", L"../Shaders/Default.hlsl", "PS", alphaTestDefines, "ps_5_0")
+    };
 
     mRenderingSystem->BuildShaders(ShaderDescs);
 }
@@ -216,22 +217,34 @@ void StencilApp::MakePSOs()
 
 void StencilApp::LoadTextures()
 {
-    std::vector<TextureDesc> TexDescs;
-
-    TexDescs.push_back(TextureDesc("bricksTex", L"../Textures/bricks3.dds"));
-    TexDescs.push_back(TextureDesc("checkboardTex", L"../Textures/checkboard.dds"));
-    TexDescs.push_back(TextureDesc("iceTex", L"../Textures/ice.dds"));
-    TexDescs.push_back(TextureDesc("white1x1Tex", L"../Textures/white1x1.dds"));
-    TexDescs.push_back(TextureDesc("meshTex", L"../Textures/african_head_diffuse.dds"));
-    TexDescs.push_back(TextureDesc("redTex", L"../Textures/rsq.dds"));
-    TexDescs.push_back(TextureDesc("grassTex", L"../Textures/WoodCrate01.dds"));
+    std::vector<TextureDesc> TexDescs = 
+    {
+        TextureDesc("bricksTex", L"../Textures/bricks3.dds"),
+        TextureDesc("checkboardTex", L"../Textures/checkboard.dds"),
+        TextureDesc("iceTex", L"../Textures/ice.dds"),
+        TextureDesc("white1x1Tex", L"../Textures/white1x1.dds"),
+        TextureDesc("meshTex", L"../Textures/african_head_diffuse.dds"),
+        TextureDesc("redTex", L"../Textures/rsq.dds"),
+        TextureDesc("grassTex", L"../Textures/WoodCrate01.dds")
+    };
 
     mRenderingSystem->LoadTextures(TexDescs);
 }
 
 void StencilApp::MakeMaterials()
 {
-    mRenderingSystem->BuildMaterials();
+    std::vector<MaterialDesc> MaterialDescs =
+    {
+        MaterialDesc("bricks", "bricksTex", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.25f),
+        MaterialDesc("checkertile", "checkboardTex", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.07f, 0.07f, 0.07f), 0.3f),
+        MaterialDesc("icemirror", "iceTex", XMFLOAT4(1.0f, 1.0f, 1.0f, 0.3f), XMFLOAT3(0.1f, 0.1f, 0.1f), 0.5f),
+        MaterialDesc("skullMat", "white1x1Tex", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f),
+        MaterialDesc("shadowMat", "redTex", XMFLOAT4(0.0f, 0.0f, 0.0f, 0.5f), XMFLOAT3(0.001f, 0.001f, 0.001f), 0.0f),
+        MaterialDesc("mesh", "meshTex", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f),
+        MaterialDesc("grass", "grassTex", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f)
+    };
+
+    mRenderingSystem->BuildMaterials(MaterialDescs);
 }
 
 void StencilApp::LoadMeshes()

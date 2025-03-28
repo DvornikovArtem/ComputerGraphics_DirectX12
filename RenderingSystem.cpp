@@ -870,71 +870,20 @@ void RenderingSystem::BuildFrameResources()
 	}
 }
 
-void RenderingSystem::BuildMaterials()
+void RenderingSystem::BuildMaterials(std::vector<MaterialDesc>& MaterialDescs)
 {
-	auto bricks = std::make_unique<Material>();
-	bricks->Name = "bricks";
-	bricks->MatCBIndex = 0;
-	bricks->DiffuseSrvHeapIndex = 0;
-	bricks->DiffuseAlbedo = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
-	bricks->FresnelR0 = XMFLOAT3(0.05f, 0.05f, 0.05f);
-	bricks->Roughness = 0.25f;
+	for (MaterialDesc& i : MaterialDescs)
+	{
+		auto t = std::make_unique<Material>();
+		t->Name = i.Name;
+		t->MatCBIndex = mTextures[i.DiffuseTexName].get()->srvHeapIndex;
+		t->DiffuseSrvHeapIndex = mTextures[i.DiffuseTexName].get()->srvHeapIndex;
+		t->DiffuseAlbedo = i.DiffuseAlbedo;
+		t->FresnelR0 = i.FresnelR0;
+		t->Roughness = i.Roughness;
 
-	auto checkertile = std::make_unique<Material>();
-	checkertile->Name = "checkertile";
-	checkertile->MatCBIndex = 1;
-	checkertile->DiffuseSrvHeapIndex = 1;
-	checkertile->DiffuseAlbedo = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
-	checkertile->FresnelR0 = XMFLOAT3(0.07f, 0.07f, 0.07f);
-	checkertile->Roughness = 0.3f;
-
-	auto icemirror = std::make_unique<Material>();
-	icemirror->Name = "icemirror";
-	icemirror->MatCBIndex = 2;
-	icemirror->DiffuseSrvHeapIndex = 2;
-	icemirror->DiffuseAlbedo = XMFLOAT4(1.0f, 1.0f, 1.0f, 0.3f);
-	icemirror->FresnelR0 = XMFLOAT3(0.1f, 0.1f, 0.1f);
-	icemirror->Roughness = 0.5f;
-
-	auto skullMat = std::make_unique<Material>();
-	skullMat->Name = "skullMat";
-	skullMat->MatCBIndex = 3;
-	skullMat->DiffuseSrvHeapIndex = 3;
-	skullMat->DiffuseAlbedo = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
-	skullMat->FresnelR0 = XMFLOAT3(0.05f, 0.05f, 0.05f);
-	skullMat->Roughness = 0.3f;
-
-	auto shadowMat = std::make_unique<Material>();
-	shadowMat->Name = "shadowMat";
-	shadowMat->MatCBIndex = 5;
-	shadowMat->DiffuseSrvHeapIndex = 5;
-	shadowMat->DiffuseAlbedo = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.5f);
-	shadowMat->FresnelR0 = XMFLOAT3(0.001f, 0.001f, 0.001f);
-	shadowMat->Roughness = 0.0f;
-
-	auto meshMat = std::make_unique<Material>();
-	meshMat->Name = "mesh";
-	meshMat->MatCBIndex = 4;
-	meshMat->DiffuseSrvHeapIndex = 4;
-	meshMat->DiffuseAlbedo = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
-	meshMat->FresnelR0 = XMFLOAT3(0.05f, 0.05f, 0.05f);
-	meshMat->Roughness = 0.3f;
-
-	auto grassMat = std::make_unique<Material>();
-	grassMat->Name = "grass";
-	grassMat->MatCBIndex = 6;
-	grassMat->DiffuseSrvHeapIndex = 6;
-	grassMat->DiffuseAlbedo = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
-	grassMat->FresnelR0 = XMFLOAT3(0.05f, 0.05f, 0.05f);
-	grassMat->Roughness = 0.3f;
-
-	mMaterials["bricks"] = std::move(bricks);
-	mMaterials["checkertile"] = std::move(checkertile);
-	mMaterials["icemirror"] = std::move(icemirror);
-	mMaterials["skullMat"] = std::move(skullMat);
-	mMaterials["mesh"] = std::move(meshMat);
-	mMaterials["shadowMat"] = std::move(shadowMat);
-	mMaterials["grass"] = std::move(grassMat);
+		mMaterials[t->Name] = std::move(t);
+	}
 }
 
 void RenderingSystem::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems)
@@ -999,11 +948,13 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 
 	ThrowIfFailed(mCommandList->Reset(mDirectCmdListAlloc.Get(), nullptr));
 
-	for (TextureDesc& i : TexDescs)
+	//for (TextureDesc& i : TexDescs)
+	for (int i = 0; i < TexDescs.size() ; i++)
 	{
 		auto t = std::make_unique<Texture>();
-		t->Name = i.Name;
-		t->Filename = i.Path;
+		t->srvHeapIndex = i;
+		t->Name = TexDescs[i].Name;
+		t->Filename = TexDescs[i].Path;
 		ThrowIfFailed(DirectX::CreateDDSTextureFromFile12(md3dDevice.Get(),
 			mCommandList.Get(), t->Filename.c_str(),
 			t->Resource, t->UploadHeap));

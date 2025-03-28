@@ -270,6 +270,8 @@ struct Texture
 
 	Microsoft::WRL::ComPtr<ID3D12Resource> Resource = nullptr;
 	Microsoft::WRL::ComPtr<ID3D12Resource> UploadHeap = nullptr;
+
+    int srvHeapIndex;
 };
 
 #ifndef ThrowIfFailed
