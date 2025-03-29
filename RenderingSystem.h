@@ -1,4 +1,3 @@
-// RenderingSystem.h
 #pragma once
 
 #ifndef RENDERINGSYSTEM_H
@@ -7,20 +6,16 @@
 #include "UploadBuffer.h"
 #include "GeometryGenerator.h"
 #include "FrameResource.h"
-//#include "d3dUtil.h"
 #include "MathHelper.h"
 #include "Camera.h"
-
 #include "assimp/Importer.hpp"
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
-
 #include "GameTimer.h"
-
-#include <d3dcommon.h> // Äëÿ ID3DBlob
-#include <wrl/client.h> // Äëÿ ComPtr
-#include <unordered_map> // Äëÿ std::unordered_map
-#include <string> // Äëÿ std::string
+#include <d3dcommon.h> 
+#include <wrl/client.h> 
+#include <unordered_map>
+#include <string>
 
 #pragma comment(lib,"d3dcompiler.lib")
 #pragma comment(lib, "D3D12.lib")
@@ -216,7 +211,7 @@ public:
 
     void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems);
 
-    void Render(const GameTimer& gt);
+    void Render();
 
     void Update(std::unordered_map<std::string, std::unique_ptr<DrawableObject>>& mAllObjects);
 

@@ -1,7 +1,3 @@
-//***************************************************************************************
-// StencilApp.cpp by Frank Luna (C) 2015 All Rights Reserved.
-//***************************************************************************************
-
 #include "d3dApp.h"
 #include "MathHelper.h"
 
@@ -15,10 +11,10 @@ using namespace DirectX::PackedVector;
 class StencilApp : public D3DApp
 {
 public:
-    StencilApp(HINSTANCE hInstance);
+    StencilApp(HINSTANCE hInstance) : D3DApp(hInstance) {}
     StencilApp(const StencilApp& rhs) = delete;
     StencilApp& operator=(const StencilApp& rhs) = delete;
-    ~StencilApp();
+    ~StencilApp() {};
 
     virtual bool Initialize()override;
 
@@ -39,13 +35,10 @@ private:
     void LoadMeshes();
     void MakeDrawableObjects();
 
-
-
 };
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prevInstance,
 	PSTR cmdLine, int showCmd)
-//int main()
 {
     // Enable run-time memory check for debug builds.
 #if defined(DEBUG) | defined(_DEBUG)
@@ -55,7 +48,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prevInstance,
     try
     {
         StencilApp theApp(hInstance);
-		//StencilApp theApp(0);
         if(!theApp.Initialize())
             return 0;
 
@@ -66,18 +58,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prevInstance,
         MessageBox(nullptr, e.ToString().c_str(), L"HR Failed", MB_OK);
         return 0;
     }
-}
-
-StencilApp::StencilApp(HINSTANCE hInstance)
-    : D3DApp(hInstance)
-{
-}
-
-StencilApp::~StencilApp() 
-{
-	if (mRenderingSystem->getd3dDevice() != nullptr) {
-		mRenderingSystem->FlushCommandQueue();
-	}
 }
 
 bool StencilApp::Initialize()
@@ -118,7 +98,7 @@ void StencilApp::Update(const GameTimer& gt)
 
 void StencilApp::Draw(const GameTimer& gt)
 {
-	mRenderingSystem->Render(gt);
+	mRenderingSystem->Render();
 }
 
 void StencilApp::OnMouseDown(WPARAM btnState, int x, int y)

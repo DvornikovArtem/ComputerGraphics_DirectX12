@@ -189,7 +189,7 @@ void RenderingSystem::OnResize() {
 	mCamera.SetLens(0.25f * MathHelper::Pi, AspectRatio(), 1.0f, 100000.0f);
 }
 
-void RenderingSystem::Render(const GameTimer& gt)
+void RenderingSystem::Render()
 {
 	auto cmdListAlloc = mCurrFrameResource->CmdListAlloc;
 
