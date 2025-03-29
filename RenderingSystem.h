@@ -86,15 +86,25 @@ struct MaterialDesc
 
 struct MeshDesc
 {
-    std::string Name;
-    std::wstring Path;
+    MeshDesc() {}
 
-    bool LoadTexture;
-    std::string TextureName;
+    MeshDesc(std::string Name, std::string Path)
+    {
+        this->Name = Name;
+        this->Path = Path;
+    }
+    MeshDesc(std::string Name, std::string Path, std::string TextureName)
+    {
+        this->Name = Name;
+        this->Path = Path;
+        this->TextureName = TextureName;
+    }
+    std::string Name;
+    std::string Path;
+    std::string TextureName = "";
 };
 
-// Lightweight structure stores parameters to draw a shape.  This will
-// vary from app-to-app.
+// Lightweight structure stores parameters to draw a shape.
 struct RenderItem
 {
     RenderItem() = default;
@@ -162,7 +172,8 @@ public:
     void BuildBasicGeometry();
     void LoadTextures(std::vector<TextureDesc>& TexDescs);
 
-    void BuildMeshGeometry(const std::string& filename);
+    void BuildMeshGeometry(std::string Name, const std::string& filename);
+    void LoadMeshes(std::vector<MeshDesc>& MeshDescs);
     void BuildPSOs();
     void BuildFrameResources();
     void BuildMaterials(std::vector<MaterialDesc>& MaterialDescs);

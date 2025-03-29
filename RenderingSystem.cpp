@@ -234,16 +234,16 @@ void RenderingSystem::Render(const GameTimer& gt)
 	mCommandList->SetGraphicsRootConstantBufferView(2, passCB->GetGPUVirtualAddress());
 	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Opaque]);
 
-	// Mark the visible mirror pixels in the stencil buffer with the value 1
-	mCommandList->OMSetStencilRef(1);
-	mCommandList->SetPipelineState(mPSOs["markStencilMirrors"].Get());
-	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Mirrors]);
+	//// Mark the visible mirror pixels in the stencil buffer with the value 1
+	//mCommandList->OMSetStencilRef(1);
+	//mCommandList->SetPipelineState(mPSOs["markStencilMirrors"].Get());
+	//DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Mirrors]);
 
-	// Draw the reflection into the mirror only (only for pixels where the stencil buffer is 1).
-	// Note that we must supply a different per-pass constant buffer--one with the lights reflected.
-	mCommandList->SetGraphicsRootConstantBufferView(2, passCB->GetGPUVirtualAddress() + 1 * passCBByteSize);
-	mCommandList->SetPipelineState(mPSOs["drawStencilReflections"].Get());
-	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Reflected]);
+	//// Draw the reflection into the mirror only (only for pixels where the stencil buffer is 1).
+	//// Note that we must supply a different per-pass constant buffer--one with the lights reflected.
+	//mCommandList->SetGraphicsRootConstantBufferView(2, passCB->GetGPUVirtualAddress() + 1 * passCBByteSize);
+	//mCommandList->SetPipelineState(mPSOs["drawStencilReflections"].Get());
+	//DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Reflected]);
 
 	// Restore main pass constants and stencil ref.
 	mCommandList->SetGraphicsRootConstantBufferView(2, passCB->GetGPUVirtualAddress());
@@ -253,9 +253,9 @@ void RenderingSystem::Render(const GameTimer& gt)
 	mCommandList->SetPipelineState(mPSOs["transparent"].Get());
 	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Transparent]);
 
-	// Draw shadows
-	mCommandList->SetPipelineState(mPSOs["shadow"].Get());
-	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Shadow]);
+	//// Draw shadows
+	//mCommandList->SetPipelineState(mPSOs["shadow"].Get());
+	//DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Shadow]);
 
 	// Indicate a state transition on the resource usage.
 	//mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
@@ -364,8 +364,8 @@ void RenderingSystem::BuildRenderItems()
 	floorRitem->IndexCount = floorRitem->Geo->DrawArgs["grid"].IndexCount;
 	floorRitem->StartIndexLocation = floorRitem->Geo->DrawArgs["grid"].StartIndexLocation;
 	floorRitem->BaseVertexLocation = floorRitem->Geo->DrawArgs["grid"].BaseVertexLocation;
+	
 	mRitemLayer[(int)RenderLayer::Opaque].push_back(floorRitem.get());
-
 	mAllRitems.push_back(std::move(floorRitem));
 
 	/*auto wallsRitem = std::make_unique<RenderItem>();
@@ -634,7 +634,7 @@ void RenderingSystem::UpdateObjectCBs(const GameTimer& gt)
 
 }
 
-void RenderingSystem::BuildMeshGeometry(const std::string& filename) {
+void RenderingSystem::BuildMeshGeometry(std::string Name, const std::string & filename) {
 	Assimp::Importer importer;
 
 	// Загружаем сцену
@@ -689,7 +689,7 @@ void RenderingSystem::BuildMeshGeometry(const std::string& filename) {
 	const UINT ibByteSize = (UINT)indices.size() * sizeof(std::int32_t);
 
 	auto geo = std::make_unique<MeshGeometry>();
-	geo->Name = "skullGeo";
+	geo->Name = Name;
 
 	ThrowIfFailed(D3DCreateBlob(vbByteSize, &geo->VertexBufferCPU));
 	CopyMemory(geo->VertexBufferCPU->GetBufferPointer(), vertices.data(), vbByteSize);
@@ -713,10 +713,18 @@ void RenderingSystem::BuildMeshGeometry(const std::string& filename) {
 	submesh.StartIndexLocation = 0;
 	submesh.BaseVertexLocation = 0;
 
-	geo->DrawArgs["skull"] = submesh;
+	geo->DrawArgs[Name] = submesh;
 
 	mGeometries[geo->Name] = std::move(geo);
 
+}
+
+void RenderingSystem::LoadMeshes(std::vector<MeshDesc>& MeshDescs)
+{
+	for (MeshDesc& i : MeshDescs)
+	{
+		BuildMeshGeometry(i.Name, i.Path);
+	}
 }
 
 void RenderingSystem::BuildPSOs()
@@ -872,15 +880,15 @@ void RenderingSystem::BuildFrameResources()
 
 void RenderingSystem::BuildMaterials(std::vector<MaterialDesc>& MaterialDescs)
 {
-	for (MaterialDesc& i : MaterialDescs)
+	for (int i = 0; i < MaterialDescs.size(); i++)
 	{
 		auto t = std::make_unique<Material>();
-		t->Name = i.Name;
-		t->MatCBIndex = mTextures[i.DiffuseTexName].get()->srvHeapIndex;
-		t->DiffuseSrvHeapIndex = mTextures[i.DiffuseTexName].get()->srvHeapIndex;
-		t->DiffuseAlbedo = i.DiffuseAlbedo;
-		t->FresnelR0 = i.FresnelR0;
-		t->Roughness = i.Roughness;
+		t->Name = MaterialDescs[i].Name;
+		t->MatCBIndex = i;
+		t->DiffuseSrvHeapIndex = mTextures[MaterialDescs[i].DiffuseTexName].get()->srvHeapIndex;
+		t->DiffuseAlbedo = MaterialDescs[i].DiffuseAlbedo;
+		t->FresnelR0 = MaterialDescs[i].FresnelR0;
+		t->Roughness = MaterialDescs[i].Roughness;
 
 		mMaterials[t->Name] = std::move(t);
 	}
@@ -948,7 +956,6 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 
 	ThrowIfFailed(mCommandList->Reset(mDirectCmdListAlloc.Get(), nullptr));
 
-	//for (TextureDesc& i : TexDescs)
 	for (int i = 0; i < TexDescs.size() ; i++)
 	{
 		auto t = std::make_unique<Texture>();

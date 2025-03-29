@@ -249,7 +249,12 @@ void StencilApp::MakeMaterials()
 
 void StencilApp::LoadMeshes()
 {
-    mRenderingSystem->BuildMeshGeometry("../Models/african_head.obj");
+    std::vector<MeshDesc> MeshDescs =
+    {
+        MeshDesc("Head", "../Models/african_head.obj")
+    };
+
+    mRenderingSystem->LoadMeshes(MeshDescs);
 }
 
 void StencilApp::BuildRenderItems()
