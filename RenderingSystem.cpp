@@ -352,26 +352,33 @@ void RenderingSystem::LogAdapters()
 
 void RenderingSystem::BuildRenderItems(std::unordered_map<std::string, std::unique_ptr<DrawableObject>>& Objects)
 {
-	/*for (auto& pair : Objects)
+	int k = 0;
+	for (auto& pair : Objects)
 	{
+		auto i = pair.second.get();
+
 		auto t = std::make_unique<RenderItem>();
 		t->World = MathHelper::Identity4x4();
-		XMStoreFloat4x4(&t->World, XMMatrixScaling(10.0f, 1.0f, 10.0f));
+		XMStoreFloat4x4(&t->World, XMMatrixScaling(i->Scale.x, i->Scale.y, i->Scale.z) 
+			* XMMatrixRotationRollPitchYaw(i->WorldRotation.z, i->WorldRotation.y, i->WorldRotation.x) 
+			* XMMatrixTranslation(i->WorldLocation.x, i->WorldLocation.y, i->WorldLocation.z));
 		t->TexTransform = MathHelper::Identity4x4();
-		XMStoreFloat4x4(&t->TexTransform, XMMatrixScaling(10.0f, 10.0f, 1.0f));
-		t->ObjCBIndex = 0;
-		t->Mat = mMaterials["grass"].get();
-		t->Geo = mGeometries["BasicShapeGeo"].get();
+		XMStoreFloat4x4(&t->TexTransform, i->TexTransform);
+		t->ObjCBIndex = k;
+		t->Mat = mMaterials[i->MaterialName].get();
+		t->Geo = mGeometries[i->GeometryName].get();
 		t->PrimitiveType = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
-		t->IndexCount = t->Geo->DrawArgs["grid"].IndexCount;
-		t->StartIndexLocation = t->Geo->DrawArgs["grid"].StartIndexLocation;
-		t->BaseVertexLocation = t->Geo->DrawArgs["grid"].BaseVertexLocation;
+		t->IndexCount = t->Geo->DrawArgs[i->GeometryName].IndexCount;
+		t->StartIndexLocation = t->Geo->DrawArgs[i->GeometryName].StartIndexLocation;
+		t->BaseVertexLocation = t->Geo->DrawArgs[i->GeometryName].BaseVertexLocation;
 
-		mRitemLayer[(int)RenderLayer::Opaque].push_back(t.get());
+		mRitemLayer[i->RenderLayer].push_back(t.get());
 		mAllRitems.push_back(std::move(t));
-	}*/
+		
+		k++;
+	}
 
-	auto floorRitem = std::make_unique<RenderItem>();
+	/*auto floorRitem = std::make_unique<RenderItem>();
 	floorRitem->World = MathHelper::Identity4x4();
 	XMStoreFloat4x4(&floorRitem->World, XMMatrixScaling(10.0f, 1.0f, 10.0f));
 	floorRitem->TexTransform = MathHelper::Identity4x4();
@@ -385,7 +392,7 @@ void RenderingSystem::BuildRenderItems(std::unordered_map<std::string, std::uniq
 	floorRitem->BaseVertexLocation = floorRitem->Geo->DrawArgs["Grid"].BaseVertexLocation;
 	
 	mRitemLayer[(int)RenderLayer::Opaque].push_back(floorRitem.get());
-	mAllRitems.push_back(std::move(floorRitem));
+	mAllRitems.push_back(std::move(floorRitem));*/
 
 	/*auto wallsRitem = std::make_unique<RenderItem>();
 	wallsRitem->World = MathHelper::Identity4x4();

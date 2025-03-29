@@ -167,7 +167,7 @@ struct DrawableObject
     XMFLOAT3 WorldLocation = XMFLOAT3(0.f, 0.f, 0.f);
     XMFLOAT3 WorldRotation = XMFLOAT3(0.f, 0.f, 0.f);
     XMFLOAT3 Scale = XMFLOAT3(1.f, 1.f, 1.f);
-    XMFLOAT3 TexTransform = XMFLOAT3(0.f, 0.f, 0.f);
+    XMMATRIX TexTransform = XMMatrixIdentity();
 };
 
 enum class RenderLayer : int

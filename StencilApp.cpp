@@ -267,9 +267,9 @@ void StencilApp::MakeDrawableObjects()
     Floor->MaterialName = "grass";
     Floor->RenderLayer = (int)RenderLayer::Opaque;
     Floor->WorldLocation = XMFLOAT3(0.f, 0.f, 0.f);
-    Floor->WorldRotation= XMFLOAT3(0.f, 0.f, 0.f);
+    Floor->WorldRotation = XMFLOAT3(0.f, 0.f, 0.f);
     Floor->Scale = XMFLOAT3(10.0f, 1.0f, 10.0f);
-    Floor->TexTransform= XMFLOAT3(10.0f, 10.0f, 1.0f);
+    Floor->TexTransform = XMMatrixScaling(10.0f, 10.0f, 1.0f);
 
     mAllObjects[Floor->Name] = std::move(Floor);
 
