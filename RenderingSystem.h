@@ -9,6 +9,7 @@
 #include "FrameResource.h"
 //#include "d3dUtil.h"
 #include "MathHelper.h"
+#include "Camera.h"
 
 #include "assimp/Importer.hpp"
 #include <assimp/scene.h>
@@ -199,7 +200,7 @@ public:
     void UpdateMaterialCBs(const GameTimer& gt);
     void UpdateMainPassCB(const GameTimer& gt);
     void UpdateReflectedPassCB(const GameTimer& gt);
-    void BuildDescriptorHeaps();
+    void UpdateCamera(const GameTimer& gt);
     void BuildInputLayout();
     void BuildShaders(std::vector<ShaderDesc>& ShaderDescs);
     void BuildBasicGeometry();
@@ -230,59 +231,12 @@ public:
         return static_cast<float>(mClientWidth) / mClientHeight;
     }
 
-    Microsoft::WRL::ComPtr<IDXGIFactory4> getdxgiFactory() { return mdxgiFactory; };
     Microsoft::WRL::ComPtr<ID3D12Device> getd3dDevice() { return md3dDevice; };
-    Microsoft::WRL::ComPtr<ID3D12Fence> getFence() { return mFence; };
 
     void setScreenParams(int NewWidth, int NewHeight) { mClientWidth = NewWidth; mClientHeight = NewHeight; }
 
-    Microsoft::WRL::ComPtr<ID3D12CommandQueue> getCommandQueue() { return mCommandQueue; };
-    Microsoft::WRL::ComPtr<ID3D12CommandAllocator> getDirectCmdListAlloc() { return mDirectCmdListAlloc; };
-    Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> getCommandList() { return mCommandList; };
-
-    Microsoft::WRL::ComPtr<IDXGISwapChain> getSwapChain() { return mSwapChain; };
-    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> getRtvHeap() { return mRtvHeap; };
-    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> getDsvHeap() { return mDsvHeap; };
-
-    Microsoft::WRL::ComPtr<ID3D12RootSignature> getRootSignature() { return mRootSignature; };
-
-    UINT64 getCurrentFence() { return mCurrentFence; };
-
-    //static int getSwapChainBufferCount() { return SwapChainBufferCount; };
-    int getCurrBackBuffer() const { return mCurrBackBuffer; };
-
-    UINT getRtvDescriptorSize() { return mRtvDescriptorSize; };
-    UINT getDsvDescriptorSize() { return mDsvDescriptorSize; };
-    UINT getCbvSrvUavDescriptorSize() { return mCbvSrvUavDescriptorSize; };
-
-    DXGI_FORMAT getBackBufferFormat() { return mBackBufferFormat; };
-    DXGI_FORMAT getDepthStencilFormat() { return mDepthStencilFormat; };
-
-    Microsoft::WRL::ComPtr<ID3D12Resource>& getSwapChainBuffer(int index) {
-        if (index >= 0 && index < SwapChainBufferCount) {
-            return mSwapChainBuffer[index];
-        }
-        throw std::out_of_range("Index is out of range");
-    }
-
-    Microsoft::WRL::ComPtr<ID3D12Resource> getDepthStencilBuffer() { return mDepthStencilBuffer; };
-
-    D3D12_VIEWPORT getScreenViewport() { return mScreenViewport; };
-    D3D12_RECT getScissorRect() { return mScissorRect; };
-    int getClientWidth() { return mClientWidth; };
-    int getClientHeight() { return mClientHeight; };
-
-
-    void setCurrBackBuffer(int mCurrBackBuffer) { this->mCurrBackBuffer = mCurrBackBuffer; };
-
+    Camera mCamera;
     POINT mLastMousePos;
-    float mTheta = 1.24f * XM_PI;
-    float mPhi = 0.42f * XM_PI;
-    float mRadius = 12.0f;
-
-    XMFLOAT3 mEyePos = { 0.0f, 0.0f, 0.0f };
-    XMFLOAT4X4 mView = MathHelper::Identity4x4();
-    XMFLOAT4X4 mProj = MathHelper::Identity4x4();
 
 protected:
     HINSTANCE mhAppInst = nullptr; // application instance handle
@@ -351,6 +305,14 @@ protected:
 
     PassConstants mMainPassCB;
     PassConstants mReflectedPassCB;
+
+    float mTheta = 1.24f * XM_PI;
+    float mPhi = 0.42f * XM_PI;
+    float mRadius = 12.0f;
+
+    XMFLOAT3 mEyePos = { 0.0f, 0.0f, 0.0f };
+    XMFLOAT4X4 mView = MathHelper::Identity4x4();
+    XMFLOAT4X4 mProj = MathHelper::Identity4x4();
     
     GameTimer* gt = nullptr;
 };

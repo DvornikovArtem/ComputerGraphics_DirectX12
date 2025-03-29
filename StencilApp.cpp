@@ -31,7 +31,6 @@ private:
     virtual void OnMouseUp(WPARAM btnState, int x, int y)override;
     virtual void OnMouseMove(WPARAM btnState, int x, int y)override;
     void OnKeyboardInput(const GameTimer& gt);
-	void UpdateCamera(const GameTimer& gt);
 
     void LoadShaders();
     void MakePSOs();
@@ -93,6 +92,10 @@ bool StencilApp::Initialize()
     LoadMeshes();
     MakeDrawableObjects();
 
+    mRenderingSystem->mCamera.SetPosition(-1.0f, 3.0f, 5.0f);
+    mRenderingSystem->mCamera.RotateY(DirectX::XM_PI - 0.2f);
+    mRenderingSystem->mCamera.Pitch(DirectX::XM_PI / 12.f);
+
     //Called after all assets and render items are initialized
     mRenderingSystem->BuildFrameResources();
 
@@ -102,15 +105,11 @@ bool StencilApp::Initialize()
 void StencilApp::OnResize()
 {
     D3DApp::OnResize();
-
 }
 
 void StencilApp::Update(const GameTimer& gt)
 {
     OnKeyboardInput(gt);
-	UpdateCamera(gt);
-
-
 	mRenderingSystem->Update();
 }
 
@@ -134,55 +133,37 @@ void StencilApp::OnMouseUp(WPARAM btnState, int x, int y)
 
 void StencilApp::OnMouseMove(WPARAM btnState, int x, int y)
 {
-    if((btnState & MK_LBUTTON) != 0)
+    if ((btnState & MK_RBUTTON) != 0)
     {
         // Make each pixel correspond to a quarter of a degree.
-        float dx = XMConvertToRadians(0.25f*static_cast<float>(x - mRenderingSystem->mLastMousePos.x));
-        float dy = XMConvertToRadians(0.25f*static_cast<float>(y - mRenderingSystem->mLastMousePos.y));
+        float dx = XMConvertToRadians(0.25f * static_cast<float>(x - mRenderingSystem->mLastMousePos.x));
+        float dy = XMConvertToRadians(0.25f * static_cast<float>(y - mRenderingSystem->mLastMousePos.y));
 
-        // Update angles based on input to orbit camera around box.
-		mRenderingSystem->mTheta -= dx;
-		mRenderingSystem->mPhi -= dy;
-
-        // Restrict the angle mPhi.
-		mRenderingSystem->mPhi = MathHelper::Clamp(mRenderingSystem->mPhi, 0.1f, MathHelper::Pi - 0.1f);
-    }
-    else if((btnState & MK_RBUTTON) != 0)
-    {
-        // Make each pixel correspond to 0.2 unit in the scene.
-        float dx = 0.2f*static_cast<float>(x - mRenderingSystem->mLastMousePos.x);
-        float dy = 0.2f*static_cast<float>(y - mRenderingSystem->mLastMousePos.y);
-
-        // Update the camera radius based on input.
-		mRenderingSystem->mRadius += dx - dy;
-
-        // Restrict the radius.
-		mRenderingSystem->mRadius = MathHelper::Clamp(mRenderingSystem->mRadius, 5.0f, 150.0f);
+        mRenderingSystem->mCamera.Pitch(dy);
+        mRenderingSystem->mCamera.RotateY(dx);
     }
 
-	mRenderingSystem->mLastMousePos.x = x;
-	mRenderingSystem->mLastMousePos.y = y;
+    mRenderingSystem->mLastMousePos.x = x;
+    mRenderingSystem->mLastMousePos.y = y;
 }
  
 void StencilApp::OnKeyboardInput(const GameTimer& gt)
 {
+    const float dt = gt.DeltaTime();
 
-}
- 
-void StencilApp::UpdateCamera(const GameTimer& gt)
-{
-	// Convert Spherical to Cartesian coordinates.
-	mRenderingSystem->mEyePos.x = mRenderingSystem->mRadius*sinf(mRenderingSystem->mPhi)*cosf(mRenderingSystem->mTheta);
-	mRenderingSystem->mEyePos.z = mRenderingSystem->mRadius*sinf(mRenderingSystem->mPhi)*sinf(mRenderingSystem->mTheta);
-	mRenderingSystem->mEyePos.y = mRenderingSystem->mRadius*cosf(mRenderingSystem->mPhi);
+    if (GetAsyncKeyState('W') & 0x8000)
+        mRenderingSystem->mCamera.Walk(10.0f * dt);
 
-	// Build the view matrix.
-	XMVECTOR pos = XMVectorSet(mRenderingSystem->mEyePos.x, mRenderingSystem->mEyePos.y, mRenderingSystem->mEyePos.z, 1.0f);
-	XMVECTOR target = XMVectorZero();
-	XMVECTOR up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+    if (GetAsyncKeyState('S') & 0x8000)
+        mRenderingSystem->mCamera.Walk(-10.0f * dt);
 
-	XMMATRIX view = XMMatrixLookAtLH(pos, target, up);
-	XMStoreFloat4x4(&mRenderingSystem->mView, view);
+    if (GetAsyncKeyState('A') & 0x8000)
+        mRenderingSystem->mCamera.Strafe(-10.0f * dt);
+
+    if (GetAsyncKeyState('D') & 0x8000)
+        mRenderingSystem->mCamera.Strafe(10.0f * dt);
+
+    mRenderingSystem->mCamera.UpdateViewMatrix();
 }
 
 void StencilApp::LoadShaders()
@@ -272,6 +253,18 @@ void StencilApp::MakeDrawableObjects()
     Floor->TexTransform = XMMatrixScaling(10.0f, 10.0f, 1.0f);
 
     mAllObjects[Floor->Name] = std::move(Floor);
+
+    auto Head = std::make_unique<DrawableObject>();
+    Head->Name = "Head";
+    Head->GeometryName = "Head";
+    Head->MaterialName = "bricks";
+    Head->RenderLayer = (int)RenderLayer::Opaque;
+    Head->WorldLocation = XMFLOAT3(0.f, 2.f, 0.f);
+    Head->WorldRotation = XMFLOAT3(0.f, 0.f, 0.f);
+    Head->Scale = XMFLOAT3(1.0f, 1.0f, 1.0f);
+    Head->TexTransform = XMMatrixScaling(1.0f, 1.0f, 1.0f);
+
+    mAllObjects[Head->Name] = std::move(Head);
 
     mRenderingSystem->BuildRenderItems(mAllObjects);
 }

@@ -186,9 +186,7 @@ void RenderingSystem::OnResize() {
 
 	mScissorRect = { 0, 0, mClientWidth, mClientHeight };
 
-	// The window resized, so update the aspect ratio and recompute the projection matrix.
-	XMMATRIX P = XMMatrixPerspectiveFovLH(0.25f * MathHelper::Pi, AspectRatio(), 1.0f, 1000.0f);
-	XMStoreFloat4x4(&mProj, P);
+	mCamera.SetLens(0.25f * MathHelper::Pi, AspectRatio(), 1.0f, 100000.0f);
 }
 
 void RenderingSystem::Render(const GameTimer& gt)
@@ -274,7 +272,6 @@ void RenderingSystem::Render(const GameTimer& gt)
 	ThrowIfFailed(mSwapChain->Present(0, 0));
 	mCurrBackBuffer = (mCurrBackBuffer + 1) % SwapChainBufferCount;
 
-	setCurrBackBuffer(mCurrBackBuffer);
 
 	// Advance the fence value to mark commands up to this fence point.
 	mCurrFrameResource->Fence = ++mCurrentFence;
@@ -629,6 +626,7 @@ void RenderingSystem::Update()
 		CloseHandle(eventHandle);
 	}
 
+	UpdateCamera(*gt);
 	UpdateObjectCBs(*gt);
 	UpdateMaterialCBs(*gt);
 	UpdateMainPassCB(*gt);
@@ -747,10 +745,16 @@ void RenderingSystem::BuildMeshGeometry(std::string Name, const std::string & fi
 
 void RenderingSystem::LoadMeshes(std::vector<MeshDesc>& MeshDescs)
 {
+	ThrowIfFailed(mCommandList->Reset(mDirectCmdListAlloc.Get(), nullptr));
+
 	for (MeshDesc& i : MeshDescs)
 	{
 		BuildMeshGeometry(i.Name, i.Path);
 	}
+
+	ThrowIfFailed(mCommandList->Close());
+	ID3D12CommandList* cmdsLists[] = { mCommandList.Get() };
+	mCommandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
 }
 
 void RenderingSystem::BuildPSOs()
@@ -1041,56 +1045,6 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 	mCommandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
 }
 
-void RenderingSystem::BuildDescriptorHeaps()
-{
-	//
-	// Create the SRV heap.
-	//
-	D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
-	srvHeapDesc.NumDescriptors = 7;
-	srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-	srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-	ThrowIfFailed(md3dDevice->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&mSrvDescriptorHeap)));
-
-	//
-	// Fill out the heap with actual descriptors.
-	//
-	CD3DX12_CPU_DESCRIPTOR_HANDLE hDescriptor(mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
-
-
-	std::vector<std::string> textureNames = {
-	"bricksTex", "checkboardTex", "iceTex", "white1x1Tex", "meshTex", "redTex", "grassTex"
-	};
-
-
-	for (const auto& name : textureNames) {
-		auto it = mTextures.find(name);
-		if (it == mTextures.end()) {
-			// Обработка ошибки: текстура не найдена
-			OutputDebugStringA(("Texture not found: " + name + "\n").c_str());
-			continue;
-		}
-
-		auto& tex = it->second->Resource;
-		if (!tex) {
-			// Обработка ошибки: ресурс текстуры не инициализирован
-			OutputDebugStringA(("Texture resource is null: " + name + "\n").c_str());
-			continue;
-		}
-
-		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-
-		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-		srvDesc.Format = tex->GetDesc().Format;
-		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-		srvDesc.Texture2D.MostDetailedMip = 0;
-		srvDesc.Texture2D.MipLevels = -1;
-		md3dDevice->CreateShaderResourceView(tex.Get(), &srvDesc, hDescriptor);
-
-		hDescriptor.Offset(1, mCbvSrvDescriptorSize);
-	}
-}
-
 void RenderingSystem::BuildInputLayout()
 {
 	mInputLayout =
@@ -1170,8 +1124,8 @@ void RenderingSystem::BuildBasicGeometry()
 
 void RenderingSystem::UpdateMainPassCB(const GameTimer& gt)
 {
-	XMMATRIX view = XMLoadFloat4x4(&mView);
-	XMMATRIX proj = XMLoadFloat4x4(&mProj);
+	XMMATRIX view = mCamera.GetView();
+	XMMATRIX proj = mCamera.GetProj();
 
 	XMMATRIX viewProj = XMMatrixMultiply(view, proj);
 	XMMATRIX invView = XMMatrixInverse(&XMMatrixDeterminant(view), view);
@@ -1184,7 +1138,7 @@ void RenderingSystem::UpdateMainPassCB(const GameTimer& gt)
 	XMStoreFloat4x4(&mMainPassCB.InvProj, XMMatrixTranspose(invProj));
 	XMStoreFloat4x4(&mMainPassCB.ViewProj, XMMatrixTranspose(viewProj));
 	XMStoreFloat4x4(&mMainPassCB.InvViewProj, XMMatrixTranspose(invViewProj));
-	mMainPassCB.EyePosW = mEyePos;
+	mMainPassCB.EyePosW = mCamera.GetPosition3f();
 	mMainPassCB.RenderTargetSize = XMFLOAT2((float)mClientWidth, (float)mClientHeight);
 	mMainPassCB.InvRenderTargetSize = XMFLOAT2(1.0f / mClientWidth, 1.0f / mClientHeight);
 	mMainPassCB.NearZ = 1.0f;
@@ -1222,6 +1176,22 @@ void RenderingSystem::UpdateReflectedPassCB(const GameTimer& gt)
 	// Reflected pass stored in index 1
 	auto currPassCB = mCurrFrameResource->PassCB.get();
 	currPassCB->CopyData(1, mReflectedPassCB);
+}
+
+void RenderingSystem::UpdateCamera(const GameTimer& gt)
+{
+	// Convert Spherical to Cartesian coordinates.
+	mEyePos.x = mRadius * sinf(mPhi) * cosf(mTheta);
+	mEyePos.z = mRadius * sinf(mPhi) * sinf(mTheta);
+	mEyePos.y = mRadius * cosf(mPhi);
+
+	// Build the view matrix.
+	XMVECTOR pos = XMVectorSet(mEyePos.x, mEyePos.y, mEyePos.z, 1.0f);
+	XMVECTOR target = XMVectorZero();
+	XMVECTOR up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+
+	XMMATRIX view = XMMatrixLookAtLH(pos, target, up);
+	XMStoreFloat4x4(&mView, view);
 }
 
 std::array<const CD3DX12_STATIC_SAMPLER_DESC, 6> RenderingSystem::GetStaticSamplers()
