@@ -205,6 +205,7 @@ public:
     void BuildShaders(std::vector<ShaderDesc>& ShaderDescs);
     void BuildBasicGeometry();
     void LoadTextures(std::vector<TextureDesc>& TexDescs);
+    void UpdateRenderItems(std::unordered_map<std::string, std::unique_ptr<DrawableObject>>& mAllObjects);
 
     void BuildMeshGeometry(std::string Name, const std::string& filename);
     void LoadMeshes(std::vector<MeshDesc>& MeshDescs);
@@ -217,7 +218,7 @@ public:
 
     void Render(const GameTimer& gt);
 
-    void Update();
+    void Update(std::unordered_map<std::string, std::unique_ptr<DrawableObject>>& mAllObjects);
 
     std::array<const CD3DX12_STATIC_SAMPLER_DESC, 6> GetStaticSamplers();
 

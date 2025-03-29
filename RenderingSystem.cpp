@@ -610,7 +610,7 @@ void RenderingSystem::BuildRootSignature()
 		IID_PPV_ARGS(mRootSignature.GetAddressOf())));
 }
 
-void RenderingSystem::Update()
+void RenderingSystem::Update(std::unordered_map<std::string, std::unique_ptr<DrawableObject>>& mAllObjects)
 {
 	// Cycle through the circular frame resource array.
 	mCurrFrameResourceIndex = (mCurrFrameResourceIndex + 1) % gNumFrameResources;
@@ -627,6 +627,7 @@ void RenderingSystem::Update()
 	}
 
 	UpdateCamera(*gt);
+	UpdateRenderItems(mAllObjects);
 	UpdateObjectCBs(*gt);
 	UpdateMaterialCBs(*gt);
 	UpdateMainPassCB(*gt);
@@ -1043,6 +1044,23 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 	ThrowIfFailed(mCommandList->Close());
 	ID3D12CommandList* cmdsLists[] = { mCommandList.Get() };
 	mCommandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
+}
+
+void RenderingSystem::UpdateRenderItems(std::unordered_map<std::string, std::unique_ptr<DrawableObject>>& mAllObjects)
+{
+	int k = 0;
+	for (auto& pair : mAllObjects)
+	{
+		auto i = pair.second.get();
+
+		auto t = mAllRitems[k].get();
+		XMStoreFloat4x4(&t->World, XMMatrixScaling(i->Scale.x, i->Scale.y, i->Scale.z)
+			* XMMatrixRotationRollPitchYaw(i->WorldRotation.z, i->WorldRotation.y, i->WorldRotation.x)
+			* XMMatrixTranslation(i->WorldLocation.x, i->WorldLocation.y, i->WorldLocation.z));
+		XMStoreFloat4x4(&t->TexTransform, i->TexTransform);
+		t->NumFramesDirty = gNumFrameResources;
+		k++;
+	}
 }
 
 void RenderingSystem::BuildInputLayout()

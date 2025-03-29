@@ -110,7 +110,10 @@ void StencilApp::OnResize()
 void StencilApp::Update(const GameTimer& gt)
 {
     OnKeyboardInput(gt);
-	mRenderingSystem->Update();
+
+    mAllObjects["Head"]->WorldRotation.y = gt.TotalTime();
+
+	mRenderingSystem->Update(mAllObjects);
 }
 
 void StencilApp::Draw(const GameTimer& gt)
@@ -170,12 +173,14 @@ void StencilApp::LoadShaders()
 {
     const D3D_SHADER_MACRO defines[] =
     {
+        //{ "ROTATINGTILES", "1" },
         { "FOG", "1" },
         { NULL, NULL }
     };
 
     const D3D_SHADER_MACRO alphaTestDefines[] =
     {
+        //{ "ROTATINGTILES", "1" },
         { "FOG", "1" },
         { "ALPHA_TEST", "1" },
         { NULL, NULL }
@@ -206,7 +211,8 @@ void StencilApp::LoadTextures()
         TextureDesc("white1x1Tex", L"../Textures/white1x1.dds"),
         TextureDesc("meshTex", L"../Textures/african_head_diffuse.dds"),
         TextureDesc("redTex", L"../Textures/rsq.dds"),
-        TextureDesc("grassTex", L"../Textures/WoodCrate01.dds")
+        TextureDesc("grassTex", L"../Textures/WoodCrate01.dds"),
+        TextureDesc("PatrickTex", L"../Textures/patrickstar.dds")
     };
 
     mRenderingSystem->LoadTextures(TexDescs);
@@ -222,7 +228,8 @@ void StencilApp::MakeMaterials()
         MaterialDesc("skullMat", "white1x1Tex", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f),
         MaterialDesc("shadowMat", "redTex", XMFLOAT4(0.0f, 0.0f, 0.0f, 0.5f), XMFLOAT3(0.001f, 0.001f, 0.001f), 0.0f),
         MaterialDesc("mesh", "meshTex", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f),
-        MaterialDesc("grass", "grassTex", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f)
+        MaterialDesc("grass", "grassTex", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f),
+        MaterialDesc("PatrickMat", "PatrickTex", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f),
     };
 
     mRenderingSystem->BuildMaterials(MaterialDescs);
@@ -232,7 +239,8 @@ void StencilApp::LoadMeshes()
 {
     std::vector<MeshDesc> MeshDescs =
     {
-        MeshDesc("Head", "../Models/african_head.obj")
+        MeshDesc("Head", "../Models/african_head.obj"),
+        MeshDesc("PatrickStar", "../Models/patrickstar.obj")
     };
 
     mRenderingSystem->LoadMeshes(MeshDescs);
@@ -250,21 +258,33 @@ void StencilApp::MakeDrawableObjects()
     Floor->WorldLocation = XMFLOAT3(0.f, 0.f, 0.f);
     Floor->WorldRotation = XMFLOAT3(0.f, 0.f, 0.f);
     Floor->Scale = XMFLOAT3(10.0f, 1.0f, 10.0f);
-    Floor->TexTransform = XMMatrixScaling(10.0f, 10.0f, 1.0f);
+    Floor->TexTransform = XMMatrixScaling(50.0f, 50.0f, 1.0f);
 
     mAllObjects[Floor->Name] = std::move(Floor);
 
     auto Head = std::make_unique<DrawableObject>();
     Head->Name = "Head";
     Head->GeometryName = "Head";
-    Head->MaterialName = "bricks";
+    Head->MaterialName = "mesh";
     Head->RenderLayer = (int)RenderLayer::Opaque;
     Head->WorldLocation = XMFLOAT3(0.f, 2.f, 0.f);
     Head->WorldRotation = XMFLOAT3(0.f, 0.f, 0.f);
     Head->Scale = XMFLOAT3(1.0f, 1.0f, 1.0f);
-    Head->TexTransform = XMMatrixScaling(1.0f, 1.0f, 1.0f);
+    Head->TexTransform = XMMatrixScaling(1.f, 1.f, 1.f);
 
     mAllObjects[Head->Name] = std::move(Head);
+
+    auto Patrick = std::make_unique<DrawableObject>();
+    Patrick->Name = "Patrick";
+    Patrick->GeometryName = "PatrickStar";
+    Patrick->MaterialName = "PatrickMat";
+    Patrick->RenderLayer = (int)RenderLayer::Opaque;
+    Patrick->WorldLocation = XMFLOAT3(-3.f, 2.f, 0.f);
+    Patrick->WorldRotation = XMFLOAT3(0.f, 0.f, 0.f);
+    Patrick->Scale = XMFLOAT3(1.0f, 1.0f, 1.0f);
+    Patrick->TexTransform = XMMatrixScaling(1.f, 1.f, 1.f);
+
+    mAllObjects[Patrick->Name] = std::move(Patrick);
 
     mRenderingSystem->BuildRenderItems(mAllObjects);
 }

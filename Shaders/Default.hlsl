@@ -113,15 +113,16 @@ VertexOut VS(VertexIn vin)
 	
 	// Output vertex attributes for interpolation across triangle.
 	float4 texC = mul(float4(vin.TexC, 0.0f, 1.0f), gTexTransform);
-	//vout.TexC = mul(texC, gMatTransform).xy + gTotalTime * 0.2;
-    vout.TexC = mul(texC, gMatTransform).xy * 5;
+    vout.TexC = mul(texC, gMatTransform).xy;
 
     return vout;
 }
 
 float4 PS(VertexOut pin) : SV_Target
 {
+    float2 finalUV = pin.TexC;
     
+#ifdef ROTATINGTILES 
     // Получаем ID текущего тайла (целая часть UV)
     float2 tileID = floor(pin.TexC);
 
@@ -144,11 +145,10 @@ float4 PS(VertexOut pin) : SV_Target
     rotatedUV += 0.5;
 
     // Добавляем обратно целую часть, чтобы сохранить тайлинг
-    float2 finalUV = tileID + rotatedUV;
+    finalUV = tileID + rotatedUV;
+#endif
     
     float4 diffuseAlbedo = gDiffuseMap.Sample(gsamAnisotropicWrap, finalUV) * gDiffuseAlbedo;
-    
-    
     
     // Вычисляем границу тайла
     // float border = 0.005; // Толщина обводки
