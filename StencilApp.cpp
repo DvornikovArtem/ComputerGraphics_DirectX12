@@ -38,7 +38,7 @@ private:
     void LoadTextures();
     void MakeMaterials();
     void LoadMeshes();
-    void BuildRenderItems();
+    void MakeDrawableObjects();
 
 
 
@@ -91,7 +91,7 @@ bool StencilApp::Initialize()
     LoadTextures();
     MakeMaterials();
     LoadMeshes();
-    BuildRenderItems();
+    MakeDrawableObjects();
 
     //Called after all assets and render items are initialized
     mRenderingSystem->BuildFrameResources();
@@ -257,9 +257,23 @@ void StencilApp::LoadMeshes()
     mRenderingSystem->LoadMeshes(MeshDescs);
 }
 
-void StencilApp::BuildRenderItems()
+void StencilApp::MakeDrawableObjects()
 {
-    mRenderingSystem->BuildRenderItems();
+    //Has prebuilt geometries: "Box", "Grid", "Sphere", "Cylinder"
+
+    auto Floor = std::make_unique<DrawableObject>();
+    Floor->Name = "Floor";
+    Floor->GeometryName = "Grid";
+    Floor->MaterialName = "grass";
+    Floor->RenderLayer = (int)RenderLayer::Opaque;
+    Floor->WorldLocation = XMFLOAT3(0.f, 0.f, 0.f);
+    Floor->WorldRotation= XMFLOAT3(0.f, 0.f, 0.f);
+    Floor->Scale = XMFLOAT3(10.0f, 1.0f, 10.0f);
+    Floor->TexTransform= XMFLOAT3(10.0f, 10.0f, 1.0f);
+
+    mAllObjects[Floor->Name] = std::move(Floor);
+
+    mRenderingSystem->BuildRenderItems(mAllObjects);
 }
 
 

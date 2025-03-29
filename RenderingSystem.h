@@ -137,6 +137,39 @@ struct RenderItem
     int BaseVertexLocation = 0;
 };
 
+struct DrawableObject
+{
+    DrawableObject() {}
+
+    DrawableObject(std::string Name, std::string GeometryName, std::string MaterialName, int RenderLayer)
+    {
+        this->Name = Name;
+        this->GeometryName = GeometryName;
+        this->MaterialName = MaterialName;
+        this->RenderLayer = RenderLayer;
+    }
+    DrawableObject(std::string Name, std::string GeometryName, std::string MaterialName, int RenderLayer, XMFLOAT3 WorldLocation, XMFLOAT3 WorldRotation, XMFLOAT3 Scale)
+    {
+        this->Name = Name;
+        this->GeometryName = GeometryName;
+        this->MaterialName = MaterialName;
+        this->RenderLayer = RenderLayer;
+        this->WorldLocation = WorldLocation;
+        this->WorldRotation = WorldRotation;
+        this->Scale = Scale;
+    }
+
+    std::string Name;
+    std::string GeometryName;
+    std::string MaterialName;
+    int RenderLayer = 0;
+
+    XMFLOAT3 WorldLocation = XMFLOAT3(0.f, 0.f, 0.f);
+    XMFLOAT3 WorldRotation = XMFLOAT3(0.f, 0.f, 0.f);
+    XMFLOAT3 Scale = XMFLOAT3(1.f, 1.f, 1.f);
+    XMFLOAT3 TexTransform = XMFLOAT3(0.f, 0.f, 0.f);
+};
+
 enum class RenderLayer : int
 {
     Opaque = 0,
@@ -177,7 +210,7 @@ public:
     void BuildPSOs();
     void BuildFrameResources();
     void BuildMaterials(std::vector<MaterialDesc>& MaterialDescs);
-    void BuildRenderItems();
+    void BuildRenderItems(std::unordered_map<std::string, std::unique_ptr<DrawableObject>>& Objects);
 
     void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems);
 
