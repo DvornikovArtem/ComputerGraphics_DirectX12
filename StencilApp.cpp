@@ -29,7 +29,6 @@ private:
     void OnKeyboardInput(const GameTimer& gt);
 
     void LoadShaders();
-    void MakePSOs();
     void LoadTextures();
     void MakeMaterials();
     void LoadMeshes();
@@ -38,7 +37,7 @@ private:
 };
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prevInstance,
-	PSTR cmdLine, int showCmd)
+    PSTR cmdLine, int showCmd)
 {
     // Enable run-time memory check for debug builds.
 #if defined(DEBUG) | defined(_DEBUG)
@@ -48,12 +47,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prevInstance,
     try
     {
         StencilApp theApp(hInstance);
-        if(!theApp.Initialize())
+        if (!theApp.Initialize())
             return 0;
 
         return theApp.Run();
     }
-    catch(DxException& e)
+    catch (DxException& e)
     {
         MessageBox(nullptr, e.ToString().c_str(), L"HR Failed", MB_OK);
         return 0;
@@ -66,7 +65,6 @@ bool StencilApp::Initialize()
         return false;
 
     LoadShaders();
-    MakePSOs();
     LoadTextures();
     MakeMaterials();
     LoadMeshes();
@@ -153,14 +151,13 @@ void StencilApp::LoadShaders()
 {
     const D3D_SHADER_MACRO defines[] =
     {
-        //{ "ROTATINGTILES", "1" },
+        { "ROTATINGTILES", "1" },
         { "FOG", "1" },
         { NULL, NULL }
     };
 
     const D3D_SHADER_MACRO alphaTestDefines[] =
     {
-        //{ "ROTATINGTILES", "1" },
         { "FOG", "1" },
         { "ALPHA_TEST", "1" },
         { NULL, NULL }
@@ -169,16 +166,12 @@ void StencilApp::LoadShaders()
     std::vector<ShaderDesc> ShaderDescs = 
     {
         ShaderDesc("standardVS", L"../Shaders/Default.hlsl", "VS", nullptr, "vs_5_0"),
-        ShaderDesc("opaquePS", L"../Shaders/Default.hlsl", "PS", defines, "ps_5_0"),
-        ShaderDesc("alphaTestedPS", L"../Shaders/Default.hlsl", "PS", alphaTestDefines, "ps_5_0")
+        ShaderDesc("standardPS", L"../Shaders/Default.hlsl", "PS", nullptr, "ps_5_0"),
+        ShaderDesc("alphaTestedPS", L"../Shaders/Default.hlsl", "PS", alphaTestDefines, "ps_5_0"),
+        ShaderDesc("RotatingTilesPS", L"../Shaders/Default.hlsl", "PS", defines, "ps_5_0")
     };
 
     mRenderingSystem->BuildShaders(ShaderDescs);
-}
-
-void StencilApp::MakePSOs()
-{
-    mRenderingSystem->BuildPSOs();
 }
 
 void StencilApp::LoadTextures()
@@ -202,14 +195,14 @@ void StencilApp::MakeMaterials()
 {
     std::vector<MaterialDesc> MaterialDescs =
     {
-        MaterialDesc("bricks", "bricksTex", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.25f),
-        MaterialDesc("checkertile", "checkboardTex", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.07f, 0.07f, 0.07f), 0.3f),
-        MaterialDesc("icemirror", "iceTex", XMFLOAT4(1.0f, 1.0f, 1.0f, 0.3f), XMFLOAT3(0.1f, 0.1f, 0.1f), 0.5f),
-        MaterialDesc("skullMat", "white1x1Tex", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f),
-        MaterialDesc("shadowMat", "redTex", XMFLOAT4(0.0f, 0.0f, 0.0f, 0.5f), XMFLOAT3(0.001f, 0.001f, 0.001f), 0.0f),
-        MaterialDesc("mesh", "meshTex", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f),
-        MaterialDesc("grass", "grassTex", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f),
-        MaterialDesc("PatrickMat", "PatrickTex", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f),
+        MaterialDesc("bricks", "standardVS", "standardPS", "bricksTex", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.25f),
+        MaterialDesc("checkertile", "standardVS", "standardPS", "checkboardTex", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.07f, 0.07f, 0.07f), 0.3f),
+        MaterialDesc("icemirror", "standardVS", "standardPS", "iceTex", XMFLOAT4(1.0f, 1.0f, 1.0f, 0.3f), XMFLOAT3(0.1f, 0.1f, 0.1f), 0.5f),
+        MaterialDesc("skullMat", "standardVS", "standardPS", "white1x1Tex", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f),
+        MaterialDesc("shadowMat", "standardVS", "standardPS", "redTex", XMFLOAT4(0.0f, 0.0f, 0.0f, 0.5f), XMFLOAT3(0.001f, 0.001f, 0.001f), 0.0f),
+        MaterialDesc("mesh", "standardVS", "standardPS", "meshTex", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f),
+        MaterialDesc("grass", "standardVS", "RotatingTilesPS", "grassTex", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f),
+        MaterialDesc("PatrickMat", "standardVS", "standardPS", "PatrickTex", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f),
     };
 
     mRenderingSystem->BuildMaterials(MaterialDescs);

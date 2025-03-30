@@ -64,20 +64,23 @@ struct MaterialDesc
 {
     MaterialDesc() {}
 
-    MaterialDesc(std::string Name, std::string DiffuseTexName, XMFLOAT4 DiffuseAlbedo, XMFLOAT3 FresnelR0, float Roughness)
+    MaterialDesc(std::string Name, std::string VertexShaderName, std::string PixelShaderName, std::string DiffuseTexName, XMFLOAT4 DiffuseAlbedo, XMFLOAT3 FresnelR0, float Roughness)
     {
         this->Name = Name;
+        this->VertexShaderName = VertexShaderName;
+        this->PixelShaderName = PixelShaderName;
         this->DiffuseTexName = DiffuseTexName;
         this->DiffuseAlbedo = DiffuseAlbedo;
         this->FresnelR0 = FresnelR0;
         this->Roughness = Roughness;
     }
-
     std::string Name;
     std::string DiffuseTexName;
     XMFLOAT4 DiffuseAlbedo;
     XMFLOAT3 FresnelR0;
     float Roughness;
+    std::string PixelShaderName;
+    std::string VertexShaderName;
 };
 
 struct MeshDesc
@@ -204,12 +207,12 @@ public:
 
     void BuildMeshGeometry(std::string Name, const std::string& filename);
     void LoadMeshes(std::vector<MeshDesc>& MeshDescs);
-    void BuildPSOs();
+    void BuildPSOs(MaterialDesc& MDesc, std::unordered_map<std::string, ComPtr<ID3D12PipelineState>>& mPSOs);
     void BuildFrameResources();
     void BuildMaterials(std::vector<MaterialDesc>& MaterialDescs);
     void BuildRenderItems(std::unordered_map<std::string, std::unique_ptr<DrawableObject>>& Objects);
 
-    void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems);
+    void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems, std::string RenderLayerName);
 
     void Render();
 
@@ -293,7 +296,6 @@ protected:
     std::unordered_map<std::string, std::unique_ptr<Material>> mMaterials;
     std::unordered_map<std::string, std::unique_ptr<Texture>> mTextures;
     std::unordered_map<std::string, ComPtr<ID3DBlob>> mShaders;
-    std::unordered_map<std::string, ComPtr<ID3D12PipelineState>> mPSOs;
 
     std::vector<D3D12_INPUT_ELEMENT_DESC> mInputLayout;
     std::vector<std::unique_ptr<RenderItem>> mAllRitems;
