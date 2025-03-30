@@ -1,4 +1,3 @@
-// RenderingSystem.h
 #pragma once
 
 #ifndef RENDERINGSYSTEM_H
@@ -7,19 +6,16 @@
 #include "UploadBuffer.h"
 #include "GeometryGenerator.h"
 #include "FrameResource.h"
-//#include "d3dUtil.h"
 #include "MathHelper.h"
-
+#include "Camera.h"
 #include "assimp/Importer.hpp"
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
-
 #include "GameTimer.h"
-
-#include <d3dcommon.h> // Äëÿ ID3DBlob
-#include <wrl/client.h> // Äëÿ ComPtr
-#include <unordered_map> // Äëÿ std::unordered_map
-#include <string> // Äëÿ std::string
+#include <d3dcommon.h> 
+#include <wrl/client.h> 
+#include <unordered_map>
+#include <string>
 
 #pragma comment(lib,"d3dcompiler.lib")
 #pragma comment(lib, "D3D12.lib")
@@ -31,8 +27,83 @@ using namespace DirectX::PackedVector;
 
 const int gNumFrameResources = 3;
 
-// Lightweight structure stores parameters to draw a shape.  This will
-// vary from app-to-app.
+struct ShaderDesc
+{
+    ShaderDesc() {}
+
+    ShaderDesc(std::string Name, std::wstring Path, std::string FunctionName, const D3D_SHADER_MACRO* ShaderDefines, std::string ShaderProfile)
+    {
+        this->Name = Name;
+        this->Path = Path;
+        this->FunctionName = FunctionName;
+        this->ShaderDefines = ShaderDefines;
+        this->ShaderProfile = ShaderProfile;
+    }
+
+    std::string Name;
+    std::wstring Path;
+    std::string FunctionName;
+    const D3D_SHADER_MACRO* ShaderDefines;
+    std::string ShaderProfile;
+};
+
+struct TextureDesc
+{
+    TextureDesc() {}
+
+    TextureDesc(std::string Name, std::wstring Path)
+    {
+        this->Name = Name;
+        this->Path = Path;
+    }
+    std::string Name;
+    std::wstring Path;
+};
+
+struct MaterialDesc
+{
+    MaterialDesc() {}
+
+    MaterialDesc(std::string Name, std::string VertexShaderName, std::string PixelShaderName, std::string DiffuseTexName, XMFLOAT4 DiffuseAlbedo, XMFLOAT3 FresnelR0, float Roughness)
+    {
+        this->Name = Name;
+        this->VertexShaderName = VertexShaderName;
+        this->PixelShaderName = PixelShaderName;
+        this->DiffuseTexName = DiffuseTexName;
+        this->DiffuseAlbedo = DiffuseAlbedo;
+        this->FresnelR0 = FresnelR0;
+        this->Roughness = Roughness;
+    }
+    std::string Name;
+    std::string DiffuseTexName;
+    XMFLOAT4 DiffuseAlbedo;
+    XMFLOAT3 FresnelR0;
+    float Roughness;
+    std::string PixelShaderName;
+    std::string VertexShaderName;
+};
+
+struct MeshDesc
+{
+    MeshDesc() {}
+
+    MeshDesc(std::string Name, std::string Path)
+    {
+        this->Name = Name;
+        this->Path = Path;
+    }
+    MeshDesc(std::string Name, std::string Path, std::string TextureName)
+    {
+        this->Name = Name;
+        this->Path = Path;
+        this->TextureName = TextureName;
+    }
+    std::string Name;
+    std::string Path;
+    std::string TextureName = "";
+};
+
+// Lightweight structure stores parameters to draw a shape.
 struct RenderItem
 {
     RenderItem() = default;
@@ -65,6 +136,39 @@ struct RenderItem
     int BaseVertexLocation = 0;
 };
 
+struct DrawableObject
+{
+    DrawableObject() {}
+
+    DrawableObject(std::string Name, std::string GeometryName, std::string MaterialName, int RenderLayer)
+    {
+        this->Name = Name;
+        this->GeometryName = GeometryName;
+        this->MaterialName = MaterialName;
+        this->RenderLayer = RenderLayer;
+    }
+    DrawableObject(std::string Name, std::string GeometryName, std::string MaterialName, int RenderLayer, XMFLOAT3 WorldLocation, XMFLOAT3 WorldRotation, XMFLOAT3 Scale)
+    {
+        this->Name = Name;
+        this->GeometryName = GeometryName;
+        this->MaterialName = MaterialName;
+        this->RenderLayer = RenderLayer;
+        this->WorldLocation = WorldLocation;
+        this->WorldRotation = WorldRotation;
+        this->Scale = Scale;
+    }
+
+    std::string Name;
+    std::string GeometryName;
+    std::string MaterialName;
+    int RenderLayer = 0;
+
+    XMFLOAT3 WorldLocation = XMFLOAT3(0.f, 0.f, 0.f);
+    XMFLOAT3 WorldRotation = XMFLOAT3(0.f, 0.f, 0.f);
+    XMFLOAT3 Scale = XMFLOAT3(1.f, 1.f, 1.f);
+    XMMATRIX TexTransform = XMMatrixIdentity();
+};
+
 enum class RenderLayer : int
 {
     Opaque = 0,
@@ -94,22 +198,25 @@ public:
     void UpdateMaterialCBs(const GameTimer& gt);
     void UpdateMainPassCB(const GameTimer& gt);
     void UpdateReflectedPassCB(const GameTimer& gt);
-    void BuildDescriptorHeaps();
-    void BuildShadersAndInputLayout();
-    void BuildRoomGeometry();
-    void LoadTextures();
+    void UpdateCamera(const GameTimer& gt);
+    void BuildInputLayout();
+    void BuildShaders(std::vector<ShaderDesc>& ShaderDescs);
+    void BuildBasicGeometry();
+    void LoadTextures(std::vector<TextureDesc>& TexDescs);
+    void UpdateRenderItems(std::unordered_map<std::string, std::unique_ptr<DrawableObject>>& mAllObjects);
 
-    void BuildMeshGeometry(const std::string& filename);
-    void BuildPSOs();
+    void BuildMeshGeometry(std::string Name, const std::string& filename);
+    void LoadMeshes(std::vector<MeshDesc>& MeshDescs);
+    void BuildPSOs(MaterialDesc& MDesc, std::unordered_map<std::string, ComPtr<ID3D12PipelineState>>& mPSOs);
     void BuildFrameResources();
-    void BuildMaterials();
-    void BuildRenderItems();
+    void BuildMaterials(std::vector<MaterialDesc>& MaterialDescs);
+    void BuildRenderItems(std::unordered_map<std::string, std::unique_ptr<DrawableObject>>& Objects);
 
-    void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems);
+    void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems, std::string RenderLayerName);
 
-    void Render(const GameTimer& gt);
+    void Render();
 
-    void Update();
+    void Update(std::unordered_map<std::string, std::unique_ptr<DrawableObject>>& mAllObjects);
 
     std::array<const CD3DX12_STATIC_SAMPLER_DESC, 6> GetStaticSamplers();
 
@@ -123,59 +230,12 @@ public:
         return static_cast<float>(mClientWidth) / mClientHeight;
     }
 
-    Microsoft::WRL::ComPtr<IDXGIFactory4> getdxgiFactory() { return mdxgiFactory; };
     Microsoft::WRL::ComPtr<ID3D12Device> getd3dDevice() { return md3dDevice; };
-    Microsoft::WRL::ComPtr<ID3D12Fence> getFence() { return mFence; };
 
     void setScreenParams(int NewWidth, int NewHeight) { mClientWidth = NewWidth; mClientHeight = NewHeight; }
 
-    Microsoft::WRL::ComPtr<ID3D12CommandQueue> getCommandQueue() { return mCommandQueue; };
-    Microsoft::WRL::ComPtr<ID3D12CommandAllocator> getDirectCmdListAlloc() { return mDirectCmdListAlloc; };
-    Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> getCommandList() { return mCommandList; };
-
-    Microsoft::WRL::ComPtr<IDXGISwapChain> getSwapChain() { return mSwapChain; };
-    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> getRtvHeap() { return mRtvHeap; };
-    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> getDsvHeap() { return mDsvHeap; };
-
-    Microsoft::WRL::ComPtr<ID3D12RootSignature> getRootSignature() { return mRootSignature; };
-
-    UINT64 getCurrentFence() { return mCurrentFence; };
-
-    //static int getSwapChainBufferCount() { return SwapChainBufferCount; };
-    int getCurrBackBuffer() const { return mCurrBackBuffer; };
-
-    UINT getRtvDescriptorSize() { return mRtvDescriptorSize; };
-    UINT getDsvDescriptorSize() { return mDsvDescriptorSize; };
-    UINT getCbvSrvUavDescriptorSize() { return mCbvSrvUavDescriptorSize; };
-
-    DXGI_FORMAT getBackBufferFormat() { return mBackBufferFormat; };
-    DXGI_FORMAT getDepthStencilFormat() { return mDepthStencilFormat; };
-
-    Microsoft::WRL::ComPtr<ID3D12Resource>& getSwapChainBuffer(int index) {
-        if (index >= 0 && index < SwapChainBufferCount) {
-            return mSwapChainBuffer[index];
-        }
-        throw std::out_of_range("Index is out of range");
-    }
-
-    Microsoft::WRL::ComPtr<ID3D12Resource> getDepthStencilBuffer() { return mDepthStencilBuffer; };
-
-    D3D12_VIEWPORT getScreenViewport() { return mScreenViewport; };
-    D3D12_RECT getScissorRect() { return mScissorRect; };
-    int getClientWidth() { return mClientWidth; };
-    int getClientHeight() { return mClientHeight; };
-
-
-    void setCurrBackBuffer(int mCurrBackBuffer) { this->mCurrBackBuffer = mCurrBackBuffer; };
-
+    Camera mCamera;
     POINT mLastMousePos;
-    float mTheta = 1.24f * XM_PI;
-    float mPhi = 0.42f * XM_PI;
-    float mRadius = 12.0f;
-
-    XMFLOAT3 mEyePos = { 0.0f, 0.0f, 0.0f };
-    XMFLOAT4X4 mView = MathHelper::Identity4x4();
-    XMFLOAT4X4 mProj = MathHelper::Identity4x4();
 
 protected:
     HINSTANCE mhAppInst = nullptr; // application instance handle
@@ -236,7 +296,6 @@ protected:
     std::unordered_map<std::string, std::unique_ptr<Material>> mMaterials;
     std::unordered_map<std::string, std::unique_ptr<Texture>> mTextures;
     std::unordered_map<std::string, ComPtr<ID3DBlob>> mShaders;
-    std::unordered_map<std::string, ComPtr<ID3D12PipelineState>> mPSOs;
 
     std::vector<D3D12_INPUT_ELEMENT_DESC> mInputLayout;
     std::vector<std::unique_ptr<RenderItem>> mAllRitems;
@@ -244,6 +303,14 @@ protected:
 
     PassConstants mMainPassCB;
     PassConstants mReflectedPassCB;
+
+    float mTheta = 1.24f * XM_PI;
+    float mPhi = 0.42f * XM_PI;
+    float mRadius = 12.0f;
+
+    XMFLOAT3 mEyePos = { 0.0f, 0.0f, 0.0f };
+    XMFLOAT4X4 mView = MathHelper::Identity4x4();
+    XMFLOAT4X4 mProj = MathHelper::Identity4x4();
     
     GameTimer* gt = nullptr;
 };

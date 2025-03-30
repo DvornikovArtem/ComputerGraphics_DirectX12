@@ -53,6 +53,7 @@ protected:
 
     virtual void OnKeyboardPressed(WPARAM pressedButton, const GameTimer& gt) {}
 
+
 protected:
 
 	bool InitMainWindow();
@@ -85,4 +86,6 @@ protected:
 
     //std::unique_ptr<RenderingSystem> mRenderingSystem;
 	std::unique_ptr<RenderingSystem> mRenderingSystem = std::make_unique<RenderingSystem>();
+
+	std::unordered_map<std::string, std::unique_ptr<DrawableObject>> mAllObjects;
 };

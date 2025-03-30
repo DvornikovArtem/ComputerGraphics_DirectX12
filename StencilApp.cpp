@@ -1,7 +1,3 @@
-//***************************************************************************************
-// StencilApp.cpp by Frank Luna (C) 2015 All Rights Reserved.
-//***************************************************************************************
-
 #include "d3dApp.h"
 #include "MathHelper.h"
 
@@ -15,10 +11,10 @@ using namespace DirectX::PackedVector;
 class StencilApp : public D3DApp
 {
 public:
-    StencilApp(HINSTANCE hInstance);
+    StencilApp(HINSTANCE hInstance) : D3DApp(hInstance) {}
     StencilApp(const StencilApp& rhs) = delete;
     StencilApp& operator=(const StencilApp& rhs) = delete;
-    ~StencilApp();
+    ~StencilApp() {};
 
     virtual bool Initialize()override;
 
@@ -30,17 +26,18 @@ private:
     virtual void OnMouseDown(WPARAM btnState, int x, int y)override;
     virtual void OnMouseUp(WPARAM btnState, int x, int y)override;
     virtual void OnMouseMove(WPARAM btnState, int x, int y)override;
-
     void OnKeyboardInput(const GameTimer& gt);
-	void UpdateCamera(const GameTimer& gt);
 
-    void BuildRenderItems();
+    void LoadShaders();
+    void LoadTextures();
+    void MakeMaterials();
+    void LoadMeshes();
+    void MakeDrawableObjects();
 
 };
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prevInstance,
-	PSTR cmdLine, int showCmd)
-//int main()
+    PSTR cmdLine, int showCmd)
 {
     // Enable run-time memory check for debug builds.
 #if defined(DEBUG) | defined(_DEBUG)
@@ -50,28 +47,16 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prevInstance,
     try
     {
         StencilApp theApp(hInstance);
-		//StencilApp theApp(0);
-        if(!theApp.Initialize())
+        if (!theApp.Initialize())
             return 0;
 
         return theApp.Run();
     }
-    catch(DxException& e)
+    catch (DxException& e)
     {
         MessageBox(nullptr, e.ToString().c_str(), L"HR Failed", MB_OK);
         return 0;
     }
-}
-
-StencilApp::StencilApp(HINSTANCE hInstance)
-    : D3DApp(hInstance)
-{
-}
-
-StencilApp::~StencilApp() {
-	if (mRenderingSystem->getd3dDevice() != nullptr) {
-		mRenderingSystem->FlushCommandQueue();
-	}
 }
 
 bool StencilApp::Initialize()
@@ -79,27 +64,39 @@ bool StencilApp::Initialize()
     if(!D3DApp::Initialize())
         return false;
 
+    LoadShaders();
+    LoadTextures();
+    MakeMaterials();
+    LoadMeshes();
+    MakeDrawableObjects();
+
+    mRenderingSystem->mCamera.SetPosition(-1.0f, 3.0f, 5.0f);
+    mRenderingSystem->mCamera.RotateY(DirectX::XM_PI - 0.2f);
+    mRenderingSystem->mCamera.Pitch(DirectX::XM_PI / 12.f);
+
+    //Called after all assets and render items are initialized
+    mRenderingSystem->BuildFrameResources();
+
     return true;
 }
  
 void StencilApp::OnResize()
 {
     D3DApp::OnResize();
-
 }
 
 void StencilApp::Update(const GameTimer& gt)
 {
     OnKeyboardInput(gt);
-	UpdateCamera(gt);
 
+    mAllObjects["Head"]->WorldRotation.y = gt.TotalTime();
 
-	mRenderingSystem->Update();
+	mRenderingSystem->Update(mAllObjects);
 }
 
 void StencilApp::Draw(const GameTimer& gt)
 {
-	mRenderingSystem->Render(gt);
+	mRenderingSystem->Render();
 }
 
 void StencilApp::OnMouseDown(WPARAM btnState, int x, int y)
@@ -117,58 +114,154 @@ void StencilApp::OnMouseUp(WPARAM btnState, int x, int y)
 
 void StencilApp::OnMouseMove(WPARAM btnState, int x, int y)
 {
-    if((btnState & MK_LBUTTON) != 0)
+    if ((btnState & MK_RBUTTON) != 0)
     {
         // Make each pixel correspond to a quarter of a degree.
-        float dx = XMConvertToRadians(0.25f*static_cast<float>(x - mRenderingSystem->mLastMousePos.x));
-        float dy = XMConvertToRadians(0.25f*static_cast<float>(y - mRenderingSystem->mLastMousePos.y));
+        float dx = XMConvertToRadians(0.25f * static_cast<float>(x - mRenderingSystem->mLastMousePos.x));
+        float dy = XMConvertToRadians(0.25f * static_cast<float>(y - mRenderingSystem->mLastMousePos.y));
 
-        // Update angles based on input to orbit camera around box.
-		mRenderingSystem->mTheta -= dx;
-		mRenderingSystem->mPhi -= dy;
-
-        // Restrict the angle mPhi.
-		mRenderingSystem->mPhi = MathHelper::Clamp(mRenderingSystem->mPhi, 0.1f, MathHelper::Pi - 0.1f);
-    }
-    else if((btnState & MK_RBUTTON) != 0)
-    {
-        // Make each pixel correspond to 0.2 unit in the scene.
-        float dx = 0.2f*static_cast<float>(x - mRenderingSystem->mLastMousePos.x);
-        float dy = 0.2f*static_cast<float>(y - mRenderingSystem->mLastMousePos.y);
-
-        // Update the camera radius based on input.
-		mRenderingSystem->mRadius += dx - dy;
-
-        // Restrict the radius.
-		mRenderingSystem->mRadius = MathHelper::Clamp(mRenderingSystem->mRadius, 5.0f, 150.0f);
+        mRenderingSystem->mCamera.Pitch(dy);
+        mRenderingSystem->mCamera.RotateY(dx);
     }
 
-	mRenderingSystem->mLastMousePos.x = x;
-	mRenderingSystem->mLastMousePos.y = y;
+    mRenderingSystem->mLastMousePos.x = x;
+    mRenderingSystem->mLastMousePos.y = y;
 }
  
 void StencilApp::OnKeyboardInput(const GameTimer& gt)
 {
+    const float dt = gt.DeltaTime();
 
+    if (GetAsyncKeyState('W') & 0x8000)
+        mRenderingSystem->mCamera.Walk(10.0f * dt);
+
+    if (GetAsyncKeyState('S') & 0x8000)
+        mRenderingSystem->mCamera.Walk(-10.0f * dt);
+
+    if (GetAsyncKeyState('A') & 0x8000)
+        mRenderingSystem->mCamera.Strafe(-10.0f * dt);
+
+    if (GetAsyncKeyState('D') & 0x8000)
+        mRenderingSystem->mCamera.Strafe(10.0f * dt);
+
+    mRenderingSystem->mCamera.UpdateViewMatrix();
 }
- 
-void StencilApp::UpdateCamera(const GameTimer& gt)
+
+void StencilApp::LoadShaders()
 {
-	// Convert Spherical to Cartesian coordinates.
-	mRenderingSystem->mEyePos.x = mRenderingSystem->mRadius*sinf(mRenderingSystem->mPhi)*cosf(mRenderingSystem->mTheta);
-	mRenderingSystem->mEyePos.z = mRenderingSystem->mRadius*sinf(mRenderingSystem->mPhi)*sinf(mRenderingSystem->mTheta);
-	mRenderingSystem->mEyePos.y = mRenderingSystem->mRadius*cosf(mRenderingSystem->mPhi);
+    const D3D_SHADER_MACRO defines[] =
+    {
+        { "ROTATINGTILES", "1" },
+        { "FOG", "1" },
+        { NULL, NULL }
+    };
 
-	// Build the view matrix.
-	XMVECTOR pos = XMVectorSet(mRenderingSystem->mEyePos.x, mRenderingSystem->mEyePos.y, mRenderingSystem->mEyePos.z, 1.0f);
-	XMVECTOR target = XMVectorZero();
-	XMVECTOR up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+    const D3D_SHADER_MACRO alphaTestDefines[] =
+    {
+        { "FOG", "1" },
+        { "ALPHA_TEST", "1" },
+        { NULL, NULL }
+    };
 
-	XMMATRIX view = XMMatrixLookAtLH(pos, target, up);
-	XMStoreFloat4x4(&mRenderingSystem->mView, view);
+    std::vector<ShaderDesc> ShaderDescs = 
+    {
+        ShaderDesc("standardVS", L"../Shaders/Default.hlsl", "VS", nullptr, "vs_5_0"),
+        ShaderDesc("standardPS", L"../Shaders/Default.hlsl", "PS", nullptr, "ps_5_0"),
+        ShaderDesc("alphaTestedPS", L"../Shaders/Default.hlsl", "PS", alphaTestDefines, "ps_5_0"),
+        ShaderDesc("RotatingTilesPS", L"../Shaders/Default.hlsl", "PS", defines, "ps_5_0")
+    };
+
+    mRenderingSystem->BuildShaders(ShaderDescs);
 }
 
-void StencilApp::BuildRenderItems()
+void StencilApp::LoadTextures()
 {
-    mRenderingSystem->BuildRenderItems();
+    std::vector<TextureDesc> TexDescs = 
+    {
+        TextureDesc("bricksTex", L"../Textures/bricks3.dds"),
+        TextureDesc("checkboardTex", L"../Textures/checkboard.dds"),
+        TextureDesc("iceTex", L"../Textures/ice.dds"),
+        TextureDesc("white1x1Tex", L"../Textures/white1x1.dds"),
+        TextureDesc("meshTex", L"../Textures/african_head_diffuse.dds"),
+        TextureDesc("redTex", L"../Textures/rsq.dds"),
+        TextureDesc("grassTex", L"../Textures/WoodCrate01.dds"),
+        TextureDesc("PatrickTex", L"../Textures/patrickstar.dds")
+    };
+
+    mRenderingSystem->LoadTextures(TexDescs);
 }
+
+void StencilApp::MakeMaterials()
+{
+    std::vector<MaterialDesc> MaterialDescs =
+    {
+        MaterialDesc("bricks", "standardVS", "standardPS", "bricksTex", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.25f),
+        MaterialDesc("checkertile", "standardVS", "standardPS", "checkboardTex", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.07f, 0.07f, 0.07f), 0.3f),
+        MaterialDesc("icemirror", "standardVS", "standardPS", "iceTex", XMFLOAT4(1.0f, 1.0f, 1.0f, 0.3f), XMFLOAT3(0.1f, 0.1f, 0.1f), 0.5f),
+        MaterialDesc("skullMat", "standardVS", "standardPS", "white1x1Tex", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f),
+        MaterialDesc("shadowMat", "standardVS", "standardPS", "redTex", XMFLOAT4(0.0f, 0.0f, 0.0f, 0.5f), XMFLOAT3(0.001f, 0.001f, 0.001f), 0.0f),
+        MaterialDesc("mesh", "standardVS", "standardPS", "meshTex", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f),
+        MaterialDesc("grass", "standardVS", "RotatingTilesPS", "grassTex", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f),
+        MaterialDesc("PatrickMat", "standardVS", "standardPS", "PatrickTex", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f),
+    };
+
+    mRenderingSystem->BuildMaterials(MaterialDescs);
+}
+
+void StencilApp::LoadMeshes()
+{
+    std::vector<MeshDesc> MeshDescs =
+    {
+        MeshDesc("Head", "../Models/african_head.obj"),
+        MeshDesc("PatrickStar", "../Models/patrickstar.obj")
+    };
+
+    mRenderingSystem->LoadMeshes(MeshDescs);
+}
+
+void StencilApp::MakeDrawableObjects()
+{
+    //Has prebuilt geometries: "Box", "Grid", "Sphere", "Cylinder"
+
+    auto Floor = std::make_unique<DrawableObject>();
+    Floor->Name = "Floor";
+    Floor->GeometryName = "Grid";
+    Floor->MaterialName = "grass";
+    Floor->RenderLayer = (int)RenderLayer::Opaque;
+    Floor->WorldLocation = XMFLOAT3(0.f, 0.f, 0.f);
+    Floor->WorldRotation = XMFLOAT3(0.f, 0.f, 0.f);
+    Floor->Scale = XMFLOAT3(10.0f, 1.0f, 10.0f);
+    Floor->TexTransform = XMMatrixScaling(50.0f, 50.0f, 1.0f);
+
+    mAllObjects[Floor->Name] = std::move(Floor);
+
+    auto Head = std::make_unique<DrawableObject>();
+    Head->Name = "Head";
+    Head->GeometryName = "Head";
+    Head->MaterialName = "mesh";
+    Head->RenderLayer = (int)RenderLayer::Opaque;
+    Head->WorldLocation = XMFLOAT3(0.f, 2.f, 0.f);
+    Head->WorldRotation = XMFLOAT3(0.f, 0.f, 0.f);
+    Head->Scale = XMFLOAT3(1.0f, 1.0f, 1.0f);
+    Head->TexTransform = XMMatrixScaling(1.f, 1.f, 1.f);
+
+    mAllObjects[Head->Name] = std::move(Head);
+
+    auto Patrick = std::make_unique<DrawableObject>();
+    Patrick->Name = "Patrick";
+    Patrick->GeometryName = "PatrickStar";
+    Patrick->MaterialName = "PatrickMat";
+    Patrick->RenderLayer = (int)RenderLayer::Opaque;
+    Patrick->WorldLocation = XMFLOAT3(-3.f, 2.f, 0.f);
+    Patrick->WorldRotation = XMFLOAT3(0.f, 0.f, 0.f);
+    Patrick->Scale = XMFLOAT3(1.0f, 1.0f, 1.0f);
+    Patrick->TexTransform = XMMatrixScaling(1.f, 1.f, 1.f);
+
+    mAllObjects[Patrick->Name] = std::move(Patrick);
+
+    mRenderingSystem->BuildRenderItems(mAllObjects);
+}
+
+
+
+
