@@ -37,6 +37,7 @@ cbuffer cbPerObject : register(b0)
 {
     float4x4 gWorld;
 	float4x4 gTexTransform;
+    float TesselationFactor;
 };
 
 // Constant data that varies per frame.
@@ -94,7 +95,7 @@ struct VertexOut
 	float2 TexC    : TEXCOORD;
 };
 
-// Функция хэширования для получения случайных значений
+// For random values
 float random(float2 uv)
 {
     return frac(sin(dot(uv, float2(12.9898, 78.233))) * 43758.5453);

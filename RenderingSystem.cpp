@@ -596,6 +596,11 @@ void RenderingSystem::UpdateObjectCBs(const GameTimer& gt)
 			XMStoreFloat4x4(&objConstants.World, XMMatrixTranspose(world));
 			XMStoreFloat4x4(&objConstants.TexTransform, XMMatrixTranspose(texTransform));
 
+
+			XMVECTOR diff = XMVectorSubtract(XMLoadFloat4x4(&e->World).r[3], mCamera.GetPosition());
+
+			objConstants.TesselationFactor = 1 / XMVectorGetX(XMVector3Length(diff));
+
 			currObjectCB->CopyData(e->ObjCBIndex, objConstants);
 
 			// Next FrameResource need to be updated too.
