@@ -176,8 +176,11 @@ void StencilApp::LoadShaders()
 
 void StencilApp::LoadTextures()
 {
+    // First Texture in the list will be used as invalid texture
+
     std::vector<TextureDesc> TexDescs = 
     {
+        TextureDesc("INVALID", L"../Textures/INVALID.dds"),
         TextureDesc("bricksTex", L"../Textures/bricks3.dds"),
         TextureDesc("checkboardTex", L"../Textures/checkboard.dds"),
         TextureDesc("iceTex", L"../Textures/ice.dds"),
@@ -185,7 +188,10 @@ void StencilApp::LoadTextures()
         TextureDesc("meshTex", L"../Textures/african_head_diffuse.dds"),
         TextureDesc("redTex", L"../Textures/rsq.dds"),
         TextureDesc("grassTex", L"../Textures/WoodCrate01.dds"),
-        TextureDesc("PatrickTex", L"../Textures/patrickstar.dds")
+        TextureDesc("PatrickTex", L"../Textures/patrickstar.dds"),
+        TextureDesc("Semechki_Diffuse", L"../Textures/semente_BaseColor.dds"),
+        TextureDesc("Semechki_NormalMap", L"../Textures/semente_Normal.dds"),
+        TextureDesc("Semechki_HeightMap", L"../Textures/semente_Height.dds")
     };
 
     mRenderingSystem->LoadTextures(TexDescs);
@@ -195,14 +201,15 @@ void StencilApp::MakeMaterials()
 {
     std::vector<MaterialDesc> MaterialDescs =
     {
-        MaterialDesc("bricks", "standardVS", "standardPS", "bricksTex", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.25f),
-        MaterialDesc("checkertile", "standardVS", "standardPS", "checkboardTex", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.07f, 0.07f, 0.07f), 0.3f),
-        MaterialDesc("icemirror", "standardVS", "standardPS", "iceTex", XMFLOAT4(1.0f, 1.0f, 1.0f, 0.3f), XMFLOAT3(0.1f, 0.1f, 0.1f), 0.5f),
-        MaterialDesc("skullMat", "standardVS", "standardPS", "white1x1Tex", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f),
-        MaterialDesc("shadowMat", "standardVS", "standardPS", "redTex", XMFLOAT4(0.0f, 0.0f, 0.0f, 0.5f), XMFLOAT3(0.001f, 0.001f, 0.001f), 0.0f),
-        MaterialDesc("mesh", "standardVS", "standardPS", "meshTex", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f),
-        MaterialDesc("grass", "standardVS", "RotatingTilesPS", "grassTex", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f),
-        MaterialDesc("PatrickMat", "standardVS", "standardPS", "PatrickTex", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f),
+        MaterialDesc("bricks", "standardVS", "standardPS", "bricksTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.25f),
+        MaterialDesc("checkertile", "standardVS", "standardPS", "checkboardTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.07f, 0.07f, 0.07f), 0.3f),
+        MaterialDesc("icemirror", "standardVS", "standardPS", "iceTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 0.3f), XMFLOAT3(0.1f, 0.1f, 0.1f), 0.5f),
+        MaterialDesc("skullMat", "standardVS", "standardPS", "white1x1Tex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f),
+        MaterialDesc("shadowMat", "standardVS", "standardPS", "redTex", "", "", XMFLOAT4(0.0f, 0.0f, 0.0f, 0.5f), XMFLOAT3(0.001f, 0.001f, 0.001f), 0.0f),
+        MaterialDesc("mesh", "standardVS", "standardPS", "meshTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f),
+        MaterialDesc("grass", "standardVS", "RotatingTilesPS", "grassTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f),
+        MaterialDesc("PatrickMat", "standardVS", "standardPS", "PatrickTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f),
+        MaterialDesc("Semechki", "standardVS", "standardPS", "Semechki_Diffuse", "Semechki_NormalMap", "Semechki_HeightMap", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f)
     };
 
     mRenderingSystem->BuildMaterials(MaterialDescs);
@@ -222,6 +229,18 @@ void StencilApp::LoadMeshes()
 void StencilApp::MakeDrawableObjects()
 {
     //Has prebuilt geometries: "Box", "Grid", "Sphere", "Cylinder"
+
+    auto TesselationTestSphere = std::make_unique<DrawableObject>();
+    TesselationTestSphere->Name = "TesselationTestSphere";
+    TesselationTestSphere->GeometryName = "Sphere";
+    TesselationTestSphere->MaterialName = "Semechki";
+    TesselationTestSphere->RenderLayer = (int)RenderLayer::Opaque;
+    TesselationTestSphere->WorldLocation = XMFLOAT3(5.f, 3.f, -1.f);
+    TesselationTestSphere->WorldRotation = XMFLOAT3(0.f, 0.f, 0.f);
+    TesselationTestSphere->Scale = XMFLOAT3(5.0f, 5.0f, 5.0f);
+    TesselationTestSphere->TexTransform = XMMatrixScaling(10.0f, 10.0f, 1.0f);
+
+    mAllObjects[TesselationTestSphere->Name] = std::move(TesselationTestSphere);
 
     auto Floor = std::make_unique<DrawableObject>();
     Floor->Name = "Floor";

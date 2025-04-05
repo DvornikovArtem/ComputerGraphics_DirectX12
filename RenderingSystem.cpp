@@ -220,9 +220,6 @@ void RenderingSystem::Render()
 	//mCommandList->OMSetRenderTargets(1, &CurrentBackBufferView(), true, &DepthStencilView());
 	mCommandList->OMSetRenderTargets(1, &CurrentBackBufferView(), true, &DepthStencilView());
 
-	ID3D12DescriptorHeap* descriptorHeaps[] = { mSrvDescriptorHeap.Get() };
-	mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
-
 	mCommandList->SetGraphicsRootSignature(mRootSignature.Get());
 
 	UINT passCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(PassConstants));
@@ -372,84 +369,6 @@ void RenderingSystem::BuildRenderItems(std::unordered_map<std::string, std::uniq
 		
 		k++;
 	}
-
-	/*auto floorRitem = std::make_unique<RenderItem>();
-	floorRitem->World = MathHelper::Identity4x4();
-	XMStoreFloat4x4(&floorRitem->World, XMMatrixScaling(10.0f, 1.0f, 10.0f));
-	floorRitem->TexTransform = MathHelper::Identity4x4();
-	XMStoreFloat4x4(&floorRitem->TexTransform, XMMatrixScaling(10.0f, 10.0f, 1.0f));
-	floorRitem->ObjCBIndex = 0;
-	floorRitem->Mat = mMaterials["grass"].get();
-	floorRitem->Geo = mGeometries["Grid"].get();
-	floorRitem->PrimitiveType = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
-	floorRitem->IndexCount = floorRitem->Geo->DrawArgs["Grid"].IndexCount;
-	floorRitem->StartIndexLocation = floorRitem->Geo->DrawArgs["Grid"].StartIndexLocation;
-	floorRitem->BaseVertexLocation = floorRitem->Geo->DrawArgs["Grid"].BaseVertexLocation;
-	
-	mRitemLayer[(int)RenderLayer::Opaque].push_back(floorRitem.get());
-	mAllRitems.push_back(std::move(floorRitem));*/
-
-	/*auto wallsRitem = std::make_unique<RenderItem>();
-	wallsRitem->World = MathHelper::Identity4x4();
-	XMStoreFloat4x4(&wallsRitem->World, XMMatrixScaling(10.0f, 1.0f, 1.0f) * XMMatrixTranslation(0.0f, 0.0f, 0.0f));
-	XMStoreFloat4x4(&wallsRitem->TexTransform, XMMatrixScaling(1.0f, 1.0f, 1.0f));
-	wallsRitem->ObjCBIndex = 1;
-	wallsRitem->Mat = mMaterials["bricks"].get();
-	wallsRitem->Geo = mGeometries["roomGeo"].get();
-	wallsRitem->PrimitiveType = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
-	wallsRitem->IndexCount = wallsRitem->Geo->DrawArgs["wall"].IndexCount;
-	wallsRitem->StartIndexLocation = wallsRitem->Geo->DrawArgs["wall"].StartIndexLocation;
-	wallsRitem->BaseVertexLocation = wallsRitem->Geo->DrawArgs["wall"].BaseVertexLocation;
-	mRitemLayer[(int)RenderLayer::Opaque].push_back(wallsRitem.get());*/
-
-	//auto skullRitem = std::make_unique<RenderItem>();
-	//skullRitem->World = MathHelper::Identity4x4();
-	//XMStoreFloat4x4(&skullRitem->World, XMMatrixScaling(3.0f, 3.0f, 3.0f) * XMMatrixRotationRollPitchYaw(0.3f, 0.0f, 0.0f) * XMMatrixTranslation(10.0f, 0.0f, 0.0f));
-	//skullRitem->TexTransform = MathHelper::Identity4x4();
-	////XMStoreFloat4x4(&skullRitem->TexTransform, XMMatrixScaling(1.0f, 10.0f, 1.0f));
-	//skullRitem->ObjCBIndex = 1;
-	//skullRitem->Mat = mMaterials["mesh"].get();
-	//skullRitem->Geo = mGeometries["skullGeo"].get();
-	//skullRitem->PrimitiveType = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
-	//skullRitem->IndexCount = skullRitem->Geo->DrawArgs["skull"].IndexCount;
-	//skullRitem->StartIndexLocation = skullRitem->Geo->DrawArgs["skull"].StartIndexLocation;
-	//skullRitem->BaseVertexLocation = skullRitem->Geo->DrawArgs["skull"].BaseVertexLocation;
-	//mSkullRitem = skullRitem.get();
-	//mRitemLayer[(int)RenderLayer::Opaque].push_back(skullRitem.get());
-
-	// Reflected skull will have different world matrix, so it needs to be its own render item.
-	//auto reflectedSkullRitem = std::make_unique<RenderItem>();
-	//*reflectedSkullRitem = *skullRitem;
-	//reflectedSkullRitem->ObjCBIndex = 3;
-	//mReflectedSkullRitem = reflectedSkullRitem.get();
-	//mRitemLayer[(int)RenderLayer::Reflected].push_back(reflectedSkullRitem.get());
-
-	//// Shadowed skull will have different world matrix, so it needs to be its own render item.
-	//auto shadowedSkullRitem = std::make_unique<RenderItem>();
-	//*shadowedSkullRitem = *skullRitem;
-	//shadowedSkullRitem->ObjCBIndex = 4;
-	//shadowedSkullRitem->Mat = mMaterials["shadowMat"].get();
-	//mShadowedSkullRitem = shadowedSkullRitem.get();
-	//mRitemLayer[(int)RenderLayer::Shadow].push_back(shadowedSkullRitem.get());
-
-	//auto mirrorRitem = std::make_unique<RenderItem>();
-	//mirrorRitem->World = MathHelper::Identity4x4();
-	//mirrorRitem->TexTransform = MathHelper::Identity4x4();
-	//mirrorRitem->ObjCBIndex = 5;
-	//mirrorRitem->Mat = mMaterials["icemirror"].get();
-	//mirrorRitem->Geo = mGeometries["roomGeo"].get();
-	//mirrorRitem->PrimitiveType = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
-	//mirrorRitem->IndexCount = mirrorRitem->Geo->DrawArgs["mirror"].IndexCount;
-	//mirrorRitem->StartIndexLocation = mirrorRitem->Geo->DrawArgs["mirror"].StartIndexLocation;
-	//mirrorRitem->BaseVertexLocation = mirrorRitem->Geo->DrawArgs["mirror"].BaseVertexLocation;
-	//mRitemLayer[(int)RenderLayer::Mirrors].push_back(mirrorRitem.get());
-	//mRitemLayer[(int)RenderLayer::Transparent].push_back(mirrorRitem.get());
-
-	//mAllRitems.push_back(std::move(wallsRitem));
-	//mAllRitems.push_back(std::move(skullRitem));
-	//mAllRitems.push_back(std::move(reflectedSkullRitem));
-	//mAllRitems.push_back(std::move(shadowedSkullRitem));
-	//mAllRitems.push_back(std::move(mirrorRitem));
 }
 
 void RenderingSystem::LogAdapterOutputs(IDXGIAdapter* adapter)
@@ -571,13 +490,13 @@ void RenderingSystem::CreateRtvAndDsvDescriptorHeaps()
 void RenderingSystem::BuildRootSignature()
 {
 	CD3DX12_DESCRIPTOR_RANGE texTable;
-	texTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
+	texTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, 0);
 
 	// Root parameter can be a table, root descriptor or root constants.
 	CD3DX12_ROOT_PARAMETER slotRootParameter[4];
 
 	// Perfomance TIP: Order from most frequent to least frequent.
-	slotRootParameter[0].InitAsDescriptorTable(1, &texTable, D3D12_SHADER_VISIBILITY_PIXEL);
+	slotRootParameter[0].InitAsDescriptorTable(1, &texTable, D3D12_SHADER_VISIBILITY_ALL);
 	slotRootParameter[1].InitAsConstantBufferView(0);
 	slotRootParameter[2].InitAsConstantBufferView(1);
 	slotRootParameter[3].InitAsConstantBufferView(2);
@@ -606,6 +525,35 @@ void RenderingSystem::BuildRootSignature()
 		serializedRootSig->GetBufferPointer(),
 		serializedRootSig->GetBufferSize(),
 		IID_PPV_ARGS(mRootSignature.GetAddressOf())));
+}
+
+void RenderingSystem::BuildDescriptorHeap(Material* t)
+{
+	D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
+	srvHeapDesc.NumDescriptors = 3;
+	srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+	srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+	ThrowIfFailed(md3dDevice->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&t->mSrvDescriptorHeap)));
+
+
+	//Copying Descriptors from global SRVHeap
+
+	D3D12_CPU_DESCRIPTOR_HANDLE srcDescriptors[] = 
+	{
+		mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart().ptr + t->DiffuseSrvHeapIndex * mCbvSrvDescriptorSize,
+		mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart().ptr + t->NormalSrvHeapIndex * mCbvSrvDescriptorSize,
+		mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart().ptr + t->HeightSrvHeapIndex * mCbvSrvDescriptorSize
+	};
+
+	D3D12_CPU_DESCRIPTOR_HANDLE destDescriptors[] =
+	{
+		t->mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart().ptr,
+		t->mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart().ptr + 1 * mCbvSrvDescriptorSize,
+		t->mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart().ptr + 2 * mCbvSrvDescriptorSize
+	};
+
+	md3dDevice->CopyDescriptors( 3, destDescriptors, nullptr, 3, srcDescriptors, nullptr, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
 }
 
 void RenderingSystem::Update(std::unordered_map<std::string, std::unique_ptr<DrawableObject>>& mAllObjects)
@@ -914,12 +862,15 @@ void RenderingSystem::BuildMaterials(std::vector<MaterialDesc>& MaterialDescs)
 		auto t = std::make_unique<Material>();
 		t->Name = MaterialDescs[i].Name;
 		t->MatCBIndex = i;
-		t->DiffuseSrvHeapIndex = mTextures[MaterialDescs[i].DiffuseTexName].get()->srvHeapIndex;
+		t->DiffuseSrvHeapIndex = ((mTextures.find(MaterialDescs[i].DiffuseTexName) == mTextures.end())) ? 0 : mTextures[MaterialDescs[i].DiffuseTexName].get()->srvHeapIndex;
+		t->NormalSrvHeapIndex = ((mTextures.find(MaterialDescs[i].NormalMapName) == mTextures.end())) ? 0 : mTextures[MaterialDescs[i].NormalMapName].get()->srvHeapIndex;
+		t->HeightSrvHeapIndex = ((mTextures.find(MaterialDescs[i].HeightMapName) == mTextures.end())) ? 0 : mTextures[MaterialDescs[i].HeightMapName].get()->srvHeapIndex;
 		t->DiffuseAlbedo = MaterialDescs[i].DiffuseAlbedo;
 		t->FresnelR0 = MaterialDescs[i].FresnelR0;
 		t->Roughness = MaterialDescs[i].Roughness;
 
 		BuildPSOs(MaterialDescs[i], t->PSOs);
+		BuildDescriptorHeap(t.get());
 
 		mMaterials[t->Name] = std::move(t);
 	}
@@ -943,13 +894,15 @@ void RenderingSystem::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const 
 		cmdList->IASetPrimitiveTopology(ri->PrimitiveType);
 		cmdList->SetPipelineState(ri->Mat->PSOs[RenderLayerName].Get());
 
-		CD3DX12_GPU_DESCRIPTOR_HANDLE tex(mSrvDescriptorHeap->GetGPUDescriptorHandleForHeapStart());
-		tex.Offset(ri->Mat->DiffuseSrvHeapIndex, mCbvSrvDescriptorSize);
+		ID3D12DescriptorHeap* descriptorHeaps[] = { ri->Mat->mSrvDescriptorHeap.Get() };
+		cmdList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
+
+		CD3DX12_GPU_DESCRIPTOR_HANDLE TextureDescs(ri->Mat->mSrvDescriptorHeap->GetGPUDescriptorHandleForHeapStart());
 
 		D3D12_GPU_VIRTUAL_ADDRESS objCBAddress = objectCB->GetGPUVirtualAddress() + ri->ObjCBIndex * objCBByteSize;
 		D3D12_GPU_VIRTUAL_ADDRESS matCBAddress = matCB->GetGPUVirtualAddress() + ri->Mat->MatCBIndex * matCBByteSize;
 
-		cmdList->SetGraphicsRootDescriptorTable(0, tex);
+		cmdList->SetGraphicsRootDescriptorTable(0, TextureDescs);
 		cmdList->SetGraphicsRootConstantBufferView(1, objCBAddress);
 		cmdList->SetGraphicsRootConstantBufferView(3, matCBAddress);
 
@@ -1007,7 +960,7 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 	D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
 	srvHeapDesc.NumDescriptors = TexDescs.size();
 	srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-	srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+	srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
 	ThrowIfFailed(md3dDevice->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&mSrvDescriptorHeap)));
 
 	//

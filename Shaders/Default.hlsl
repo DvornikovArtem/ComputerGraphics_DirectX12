@@ -20,7 +20,9 @@
 // Include structures and functions for lighting.
 #include "LightingUtil.hlsl"
 
-Texture2D    gDiffuseMap : register(t0);
+Texture2D gDiffuseMap : register(t0);
+Texture2D gNormalMap : register(t1);
+Texture2D gHeightMap : register(t2);
 
 
 SamplerState gsamPointWrap        : register(s0);
@@ -30,14 +32,14 @@ SamplerState gsamLinearClamp      : register(s3);
 SamplerState gsamAnisotropicWrap  : register(s4);
 SamplerState gsamAnisotropicClamp : register(s5);
 
-// Constant data that varies per frame.
+// Constant data that varies per object.
 cbuffer cbPerObject : register(b0)
 {
     float4x4 gWorld;
 	float4x4 gTexTransform;
 };
 
-// Constant data that varies per material.
+// Constant data that varies per frame.
 cbuffer cbPass : register(b1)
 {
     float4x4 gView;
@@ -68,6 +70,7 @@ cbuffer cbPass : register(b1)
     Light gLights[MaxLights];
 };
 
+// Constant data that varies per material.
 cbuffer cbMaterial : register(b2)
 {
 	float4   gDiffuseAlbedo;

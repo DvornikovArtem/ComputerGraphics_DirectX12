@@ -64,18 +64,22 @@ struct MaterialDesc
 {
     MaterialDesc() {}
 
-    MaterialDesc(std::string Name, std::string VertexShaderName, std::string PixelShaderName, std::string DiffuseTexName, XMFLOAT4 DiffuseAlbedo, XMFLOAT3 FresnelR0, float Roughness)
+    MaterialDesc(std::string Name, std::string VertexShaderName, std::string PixelShaderName, std::string DiffuseTexName, std::string NormalMapName, std::string HeightMapName, XMFLOAT4 DiffuseAlbedo, XMFLOAT3 FresnelR0, float Roughness)
     {
         this->Name = Name;
         this->VertexShaderName = VertexShaderName;
         this->PixelShaderName = PixelShaderName;
         this->DiffuseTexName = DiffuseTexName;
+        this->NormalMapName = NormalMapName;
+        this->HeightMapName = HeightMapName;
         this->DiffuseAlbedo = DiffuseAlbedo;
         this->FresnelR0 = FresnelR0;
         this->Roughness = Roughness;
     }
     std::string Name;
     std::string DiffuseTexName;
+    std::string NormalMapName;
+    std::string HeightMapName;
     XMFLOAT4 DiffuseAlbedo;
     XMFLOAT3 FresnelR0;
     float Roughness;
@@ -193,6 +197,7 @@ public:
     void CreateSwapChain();
     void CreateRtvAndDsvDescriptorHeaps();
     void BuildRootSignature();
+    void BuildDescriptorHeap(Material* t);
 
     void UpdateObjectCBs(const GameTimer& gt);
     void UpdateMaterialCBs(const GameTimer& gt);

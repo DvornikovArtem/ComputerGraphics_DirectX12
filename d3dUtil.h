@@ -248,6 +248,8 @@ struct Material
 	// Index into SRV heap for normal texture.
 	int NormalSrvHeapIndex = -1;
 
+    int HeightSrvHeapIndex = -1;
+
 	// Dirty flag indicating the material has changed and we need to update the constant buffer.
 	// Because we have a material constant buffer for each FrameResource, we have to apply the
 	// update to each FrameResource.  Thus, when we modify a material we should set 
@@ -261,6 +263,10 @@ struct Material
 	DirectX::XMFLOAT4X4 MatTransform = MathHelper::Identity4x4();
 
     std::unordered_map<std::string, Microsoft::WRL::ComPtr<ID3D12PipelineState>> PSOs;
+
+    //Descriptor Heap, containing all current Texture Descs
+    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> mSrvDescriptorHeap = nullptr;
+
 };
 
 struct Texture
