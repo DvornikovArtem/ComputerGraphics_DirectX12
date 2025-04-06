@@ -194,8 +194,11 @@ DS_VS_OUTPUT_PS_INPUT DSMain(HS_CONSTANT_DATA_OUTPUT input, float3 BarycentricCo
 
     // sample the displacement map for the magnitude of displacement
     float fDisplacement = gHeightMap.SampleLevel(gsamAnisotropicWrap, Out.TexC.xy, 0).r;
-    fDisplacement *= 0.3f;
-    //fDisplacement += g_Bias;
+
+    float scale_x = length(float3(gTexTransform[0][0], gTexTransform[1][0], gTexTransform[2][0])); // TexScaleX
+    float scale_y = length(float3(gTexTransform[0][1], gTexTransform[1][1], gTexTransform[2][1])); // TexScaleY
+ 
+    fDisplacement *= (1 / scale_x + 1 / scale_y);
     
     float3 vDirection = normalize(Out.Normal); // direction is opposite normal
     // translate the position
@@ -233,20 +236,22 @@ float4 PS(DS_VS_OUTPUT_PS_INPUT pin) : SV_Target
 #endif
     
     float3 NormalMapSample = gNormalMap.Sample(gsamAnisotropicWrap, uv).rgb;
-    float3 UnpackedNormal = NormalMapSample * 2.f - 1.f;
+    float3 WorldNormal;
+    if (!length(NormalMapSample) == 0.f)
+    {
+        float3 UnpackedNormal = NormalMapSample * 2.f - 1.f;
     // TBN
-    float3 N = normalize(pin.Normal);
-    float3 T = normalize(pin.Tangent);
-    T = normalize(T - dot(T, N) * N);
-    float3 B = cross(N, T);
-    float3x3 TBN = float3x3(T, B, N);
+        float3 N = normalize(pin.Normal);
+        float3 T = normalize(pin.Tangent);
+        T = normalize(T - dot(T, N) * N);
+        float3 B = cross(N, T);
+        float3x3 TBN = float3x3(T, B, N);
     
     // TangentSpace to WorldSpace
-    float3 BumpedNormal = normalize(mul(UnpackedNormal, TBN));
-
-    // Use your average normal if no NormalMap is specified
-    if (length(NormalMapSample) == 0.f)
-        BumpedNormal = normalize(pin.Normal);
+        WorldNormal = normalize(mul(UnpackedNormal, TBN));
+    }
+    else
+        WorldNormal = normalize(pin.Normal);
         
     // vector from point being lit to eye. 
     float3 ToEyeW = gEyePosW - pin.PosW;
@@ -259,7 +264,7 @@ float4 PS(DS_VS_OUTPUT_PS_INPUT pin) : SV_Target
     const float Shininess = 1.0f - gRoughness;
     Material mat = { diffusealbedo, gFresnelR0, Shininess };
     float3 shadowFactor = float3(1.f, 1.f, 1.f);
-    float4 directlight = ComputeLighting(gLights, mat, pin.PosW, BumpedNormal, ToEyeW, shadowFactor);
+    float4 directlight = ComputeLighting(gLights, mat, pin.PosW, WorldNormal, ToEyeW, shadowFactor);
 
     float4 litcolor = ambient + directlight;
    
