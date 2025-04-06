@@ -64,11 +64,13 @@ struct MaterialDesc
 {
     MaterialDesc() {}
 
-    MaterialDesc(std::string Name, std::string VertexShaderName, std::string PixelShaderName, std::string DiffuseTexName, std::string NormalMapName, std::string HeightMapName, XMFLOAT4 DiffuseAlbedo, XMFLOAT3 FresnelR0, float Roughness, bool UseTesselation)
+    MaterialDesc(std::string Name, std::string VertexShaderName, std::string PixelShaderName, std::string HullShaderName, std::string DomainShaderName, std::string DiffuseTexName, std::string NormalMapName, std::string HeightMapName, XMFLOAT4 DiffuseAlbedo, XMFLOAT3 FresnelR0, float Roughness, bool UseTesselation)
     {
         this->Name = Name;
         this->VertexShaderName = VertexShaderName;
         this->PixelShaderName = PixelShaderName;
+        this->HullShaderName = HullShaderName;
+        this->DomainShaderName = DomainShaderName;
         this->DiffuseTexName = DiffuseTexName;
         this->NormalMapName = NormalMapName;
         this->HeightMapName = HeightMapName;
@@ -86,6 +88,8 @@ struct MaterialDesc
     float Roughness;
     std::string PixelShaderName;
     std::string VertexShaderName;
+    std::string HullShaderName;
+    std::string DomainShaderName;
     bool UseTesselation;
 };
 
@@ -201,6 +205,9 @@ public:
     void CreateRtvAndDsvDescriptorHeaps();
     void BuildRootSignature();
     void BuildDescriptorHeap(Material* t);
+
+    //DELETE AFTER TESTING
+    void MakeDecal() { XMStoreFloat4(&mMainPassCB.Decals[0], mCamera.GetPosition() + mCamera.GetLook() * 4); }
 
     void UpdateObjectCBs(const GameTimer& gt);
     void UpdateMaterialCBs(const GameTimer& gt);

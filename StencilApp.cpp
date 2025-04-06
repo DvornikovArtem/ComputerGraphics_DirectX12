@@ -144,6 +144,9 @@ void StencilApp::OnKeyboardInput(const GameTimer& gt)
     if (GetAsyncKeyState('D') & 0x8000)
         mRenderingSystem->mCamera.Strafe(10.0f * dt);
 
+    if(GetAsyncKeyState(VK_SPACE) & 0x8000)
+        mRenderingSystem->MakeDecal();
+
     mRenderingSystem->mCamera.UpdateViewMatrix();
 }
 
@@ -170,7 +173,9 @@ void StencilApp::LoadShaders()
         ShaderDesc("alphaTestedPS", L"../Shaders/Default.hlsl", "PS", alphaTestDefines, "ps_5_0"),
         ShaderDesc("RotatingTilesPS", L"../Shaders/Default.hlsl", "PS", defines, "ps_5_0"),
         ShaderDesc("standardHS", L"../Shaders/Default.hlsl", "HSMain", nullptr, "hs_5_0"),
-        ShaderDesc("standardDS", L"../Shaders/Default.hlsl", "DSMain", nullptr, "ds_5_0")
+        ShaderDesc("standardDS", L"../Shaders/Default.hlsl", "DSMain", nullptr, "ds_5_0"),
+        ShaderDesc("HSForDecals", L"../Shaders/Default.hlsl", "HSForDecals", nullptr, "hs_5_0"),
+        ShaderDesc("DSForDecals", L"../Shaders/Default.hlsl", "DSForDecals", nullptr, "ds_5_0")
     };
 
     mRenderingSystem->BuildShaders(ShaderDescs);
@@ -193,7 +198,10 @@ void StencilApp::LoadTextures()
         TextureDesc("PatrickTex", L"../Textures/patrickstar.dds"),
         TextureDesc("Semechki_Diffuse", L"../Textures/semente_BaseColor.dds"),
         TextureDesc("Semechki_NormalMap", L"../Textures/semente_Normal.dds"),
-        TextureDesc("Semechki_HeightMap", L"../Textures/semente_Height.dds")
+        TextureDesc("Semechki_HeightMap", L"../Textures/semente_Height.dds"),
+        TextureDesc("ShinyStones_Diffuse", L"../Textures/ShinyStones_Diffuse.dds"),
+        TextureDesc("ShinyStones_NormalMap", L"../Textures/ShinyStones_NormalMap.dds"),
+        TextureDesc("ShinyStones_HeightMap", L"../Textures/ShinyStones_HeightMap.dds")
     };
 
     mRenderingSystem->LoadTextures(TexDescs);
@@ -203,15 +211,16 @@ void StencilApp::MakeMaterials()
 {
     std::vector<MaterialDesc> MaterialDescs =
     {
-        MaterialDesc("bricks", "standardVS", "standardPS", "bricksTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.25f, false),
-        MaterialDesc("checkertile", "standardVS", "standardPS", "checkboardTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.07f, 0.07f, 0.07f), 0.3f, false),
-        MaterialDesc("icemirror", "standardVS", "standardPS", "iceTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 0.3f), XMFLOAT3(0.1f, 0.1f, 0.1f), 0.5f, false),
-        MaterialDesc("skullMat", "standardVS", "standardPS", "white1x1Tex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, false),
-        MaterialDesc("shadowMat", "standardVS", "standardPS", "redTex", "", "", XMFLOAT4(0.0f, 0.0f, 0.0f, 0.5f), XMFLOAT3(0.001f, 0.001f, 0.001f), 0.0f, false),
-        MaterialDesc("mesh", "standardVS", "standardPS", "meshTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, false),
-        MaterialDesc("grass", "standardVS", "RotatingTilesPS", "grassTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, false),
-        MaterialDesc("PatrickMat", "standardVS", "standardPS", "PatrickTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, false),
-        MaterialDesc("Semechki", "standardVS", "standardPS", "Semechki_Diffuse", "Semechki_NormalMap", "Semechki_HeightMap", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, true)
+        MaterialDesc("bricks", "standardVS", "standardPS",  "", "", "bricksTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.25f, false),
+        MaterialDesc("checkertile", "standardVS", "standardPS", "", "", "checkboardTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.07f, 0.07f, 0.07f), 0.3f, false),
+        MaterialDesc("icemirror", "standardVS", "standardPS", "", "", "iceTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 0.3f), XMFLOAT3(0.1f, 0.1f, 0.1f), 0.5f, false),
+        MaterialDesc("skullMat", "standardVS", "standardPS", "HSForDecals", "DSForDecals", "bricksTex", "ShinyStones_NormalMap", "ShinyStones_HeightMap", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, true),
+        MaterialDesc("shadowMat", "standardVS", "standardPS", "", "", "redTex", "", "", XMFLOAT4(0.0f, 0.0f, 0.0f, 0.5f), XMFLOAT3(0.001f, 0.001f, 0.001f), 0.0f, false),
+        MaterialDesc("mesh", "standardVS", "standardPS", "", "", "meshTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, false),
+        MaterialDesc("grass", "standardVS", "RotatingTilesPS", "", "", "grassTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, false),
+        MaterialDesc("PatrickMat", "standardVS", "standardPS", "", "", "PatrickTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, false),
+        MaterialDesc("Semechki", "standardVS", "standardPS", "standardHS", "standardDS", "Semechki_Diffuse", "Semechki_NormalMap", "Semechki_HeightMap", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, true),
+        MaterialDesc("ShinyStones", "standardVS", "standardPS", "standardHS", "standardDS", "ShinyStones_Diffuse", "ShinyStones_NormalMap", "ShinyStones_HeightMap", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, true)
     };
 
     mRenderingSystem->BuildMaterials(MaterialDescs);
@@ -243,6 +252,19 @@ void StencilApp::MakeDrawableObjects()
     TesselationTestSphere->TexTransform = XMMatrixScaling(5.0f, 5.0f, 1.0f);
 
     mAllObjects[TesselationTestSphere->Name] = std::move(TesselationTestSphere);
+
+    auto DecalTestCube = std::make_unique<DrawableObject>();
+    DecalTestCube->Name = "DecalTestCube";
+    DecalTestCube->GeometryName = "Cylinder";
+    DecalTestCube->MaterialName = "skullMat";
+    DecalTestCube->RenderLayer = (int)RenderLayer::Opaque;
+    DecalTestCube->WorldLocation = XMFLOAT3(10.f, 3.f, 5.f);
+    DecalTestCube->WorldRotation = XMFLOAT3(0.f, 0.f, 0.f);
+    DecalTestCube->Scale = XMFLOAT3(5.0f, 5.0f, 5.0f);
+    DecalTestCube->TexTransform = XMMatrixScaling(5.0f, 5.0f, 1.0f);
+
+    mAllObjects[DecalTestCube->Name] = std::move(DecalTestCube);
+
 
     auto Floor = std::make_unique<DrawableObject>();
     Floor->Name = "Floor";

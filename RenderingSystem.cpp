@@ -740,13 +740,13 @@ void RenderingSystem::BuildPSOs(MaterialDesc& MDesc, std::unordered_map<std::str
 	{
 		opaquePsoDesc.HS =
 		{
-			reinterpret_cast<BYTE*>(mShaders["standardHS"]->GetBufferPointer()),
-			mShaders["standardHS"]->GetBufferSize()
+			reinterpret_cast<BYTE*>(mShaders[MDesc.HullShaderName]->GetBufferPointer()),
+			mShaders[MDesc.HullShaderName]->GetBufferSize()
 		};
 		opaquePsoDesc.DS =
 		{
-			reinterpret_cast<BYTE*>(mShaders["standardDS"]->GetBufferPointer()),
-			mShaders["standardDS"]->GetBufferSize()
+			reinterpret_cast<BYTE*>(mShaders[MDesc.DomainShaderName]->GetBufferPointer()),
+			mShaders[MDesc.DomainShaderName]->GetBufferSize()
 		};
 		opaquePsoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_PATCH;
 	}

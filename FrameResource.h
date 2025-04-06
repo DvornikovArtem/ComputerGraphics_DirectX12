@@ -40,6 +40,8 @@ struct PassConstants
     // indices [NUM_DIR_LIGHTS+NUM_POINT_LIGHTS, NUM_DIR_LIGHTS+NUM_POINT_LIGHT+NUM_SPOT_LIGHTS)
     // are spot lights for a maximum of MaxLights per object.
     Light Lights[MaxLights];
+
+    DirectX::XMFLOAT4 Decals[3] = { {9.242, 1.876, 6.691, 0.f}, {9.242, 1.876, 6.691, 0.f}, {8.511, 2.540, 4.177, 0.f} };
 };
 
 struct Vertex
