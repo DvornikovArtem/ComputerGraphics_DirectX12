@@ -64,7 +64,7 @@ struct MaterialDesc
 {
     MaterialDesc() {}
 
-    MaterialDesc(std::string Name, std::string VertexShaderName, std::string PixelShaderName, std::string DiffuseTexName, std::string NormalMapName, std::string HeightMapName, XMFLOAT4 DiffuseAlbedo, XMFLOAT3 FresnelR0, float Roughness)
+    MaterialDesc(std::string Name, std::string VertexShaderName, std::string PixelShaderName, std::string DiffuseTexName, std::string NormalMapName, std::string HeightMapName, XMFLOAT4 DiffuseAlbedo, XMFLOAT3 FresnelR0, float Roughness, bool UseTesselation)
     {
         this->Name = Name;
         this->VertexShaderName = VertexShaderName;
@@ -75,6 +75,7 @@ struct MaterialDesc
         this->DiffuseAlbedo = DiffuseAlbedo;
         this->FresnelR0 = FresnelR0;
         this->Roughness = Roughness;
+        this->UseTesselation = UseTesselation;
     }
     std::string Name;
     std::string DiffuseTexName;
@@ -85,6 +86,7 @@ struct MaterialDesc
     float Roughness;
     std::string PixelShaderName;
     std::string VertexShaderName;
+    bool UseTesselation;
 };
 
 struct MeshDesc
@@ -130,6 +132,7 @@ struct RenderItem
 
     Material* Mat = nullptr;
     MeshGeometry* Geo = nullptr;
+
 
     // Primitive topology.
     D3D12_PRIMITIVE_TOPOLOGY PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_3_CONTROL_POINT_PATCHLIST;

@@ -203,15 +203,15 @@ void StencilApp::MakeMaterials()
 {
     std::vector<MaterialDesc> MaterialDescs =
     {
-        MaterialDesc("bricks", "standardVS", "standardPS", "bricksTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.25f),
-        MaterialDesc("checkertile", "standardVS", "standardPS", "checkboardTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.07f, 0.07f, 0.07f), 0.3f),
-        MaterialDesc("icemirror", "standardVS", "standardPS", "iceTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 0.3f), XMFLOAT3(0.1f, 0.1f, 0.1f), 0.5f),
-        MaterialDesc("skullMat", "standardVS", "standardPS", "white1x1Tex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f),
-        MaterialDesc("shadowMat", "standardVS", "standardPS", "redTex", "", "", XMFLOAT4(0.0f, 0.0f, 0.0f, 0.5f), XMFLOAT3(0.001f, 0.001f, 0.001f), 0.0f),
-        MaterialDesc("mesh", "standardVS", "standardPS", "meshTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f),
-        MaterialDesc("grass", "standardVS", "RotatingTilesPS", "grassTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f),
-        MaterialDesc("PatrickMat", "standardVS", "standardPS", "PatrickTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f),
-        MaterialDesc("Semechki", "standardVS", "standardPS", "Semechki_Diffuse", "Semechki_NormalMap", "Semechki_HeightMap", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f)
+        MaterialDesc("bricks", "standardVS", "standardPS", "bricksTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.25f, false),
+        MaterialDesc("checkertile", "standardVS", "standardPS", "checkboardTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.07f, 0.07f, 0.07f), 0.3f, false),
+        MaterialDesc("icemirror", "standardVS", "standardPS", "iceTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 0.3f), XMFLOAT3(0.1f, 0.1f, 0.1f), 0.5f, false),
+        MaterialDesc("skullMat", "standardVS", "standardPS", "white1x1Tex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, false),
+        MaterialDesc("shadowMat", "standardVS", "standardPS", "redTex", "", "", XMFLOAT4(0.0f, 0.0f, 0.0f, 0.5f), XMFLOAT3(0.001f, 0.001f, 0.001f), 0.0f, false),
+        MaterialDesc("mesh", "standardVS", "standardPS", "meshTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, false),
+        MaterialDesc("grass", "standardVS", "RotatingTilesPS", "grassTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, false),
+        MaterialDesc("PatrickMat", "standardVS", "standardPS", "PatrickTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, false),
+        MaterialDesc("Semechki", "standardVS", "standardPS", "Semechki_Diffuse", "Semechki_NormalMap", "Semechki_HeightMap", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, true)
     };
 
     mRenderingSystem->BuildMaterials(MaterialDescs);

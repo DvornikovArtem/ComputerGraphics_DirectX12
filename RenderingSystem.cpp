@@ -736,21 +736,25 @@ void RenderingSystem::BuildPSOs(MaterialDesc& MDesc, std::unordered_map<std::str
 		reinterpret_cast<BYTE*>(mShaders[MDesc.PixelShaderName]->GetBufferPointer()),
 		mShaders[MDesc.PixelShaderName]->GetBufferSize()
 	};
-	opaquePsoDesc.HS =
+	if (MDesc.UseTesselation)
 	{
-		reinterpret_cast<BYTE*>(mShaders["standardHS"]->GetBufferPointer()),
-		mShaders["standardHS"]->GetBufferSize()
-	};
-	opaquePsoDesc.DS =
-	{
-		reinterpret_cast<BYTE*>(mShaders["standardDS"]->GetBufferPointer()),
-		mShaders["standardDS"]->GetBufferSize()
-	};
+		opaquePsoDesc.HS =
+		{
+			reinterpret_cast<BYTE*>(mShaders["standardHS"]->GetBufferPointer()),
+			mShaders["standardHS"]->GetBufferSize()
+		};
+		opaquePsoDesc.DS =
+		{
+			reinterpret_cast<BYTE*>(mShaders["standardDS"]->GetBufferPointer()),
+			mShaders["standardDS"]->GetBufferSize()
+		};
+		opaquePsoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_PATCH;
+	}
+	else opaquePsoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 	opaquePsoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
 	opaquePsoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
 	opaquePsoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
 	opaquePsoDesc.SampleMask = UINT_MAX;
-	opaquePsoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_PATCH;
 	opaquePsoDesc.NumRenderTargets = 1;
 	opaquePsoDesc.RTVFormats[0] = mBackBufferFormat;
 	opaquePsoDesc.SampleDesc.Count = m4xMsaaState ? 4 : 1;
@@ -891,6 +895,7 @@ void RenderingSystem::BuildMaterials(std::vector<MaterialDesc>& MaterialDescs)
 		t->DiffuseAlbedo = MaterialDescs[i].DiffuseAlbedo;
 		t->FresnelR0 = MaterialDescs[i].FresnelR0;
 		t->Roughness = MaterialDescs[i].Roughness;
+		t->UseTesselation = MaterialDescs[i].UseTesselation;
 
 		BuildPSOs(MaterialDescs[i], t->PSOs);
 		BuildDescriptorHeap(t.get());
@@ -914,7 +919,7 @@ void RenderingSystem::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const 
 
 		cmdList->IASetVertexBuffers(0, 1, &ri->Geo->VertexBufferView());
 		cmdList->IASetIndexBuffer(&ri->Geo->IndexBufferView());
-		cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_3_CONTROL_POINT_PATCHLIST);
+		cmdList->IASetPrimitiveTopology(ri->Mat->UseTesselation ? D3D_PRIMITIVE_TOPOLOGY_3_CONTROL_POINT_PATCHLIST : D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 		cmdList->SetPipelineState(ri->Mat->PSOs[RenderLayerName].Get());
 
 		ID3D12DescriptorHeap* descriptorHeaps[] = { ri->Mat->mSrvDescriptorHeap.Get() };

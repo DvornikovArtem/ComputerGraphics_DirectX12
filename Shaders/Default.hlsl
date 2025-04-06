@@ -232,12 +232,8 @@ float4 PS(DS_VS_OUTPUT_PS_INPUT pin) : SV_Target
 	clip(diffusealbedo.a - 0.1f);
 #endif
     
-
-    // interpolating normal can unnormalize it, so renormalize it.
-    pin.Normal = normalize(pin.Normal);
-    
-    float3 normalMapSample = gNormalMap.Sample(gsamAnisotropicWrap, uv).rgb;
-    float3 UnpackedNormal = normalMapSample * 2.f -1.f;
+    float3 NormalMapSample = gNormalMap.Sample(gsamAnisotropicWrap, uv).rgb;
+    float3 UnpackedNormal = NormalMapSample * 2.f - 1.f;
     // TBN
     float3 N = normalize(pin.Normal);
     float3 T = normalize(pin.Tangent);
@@ -249,7 +245,7 @@ float4 PS(DS_VS_OUTPUT_PS_INPUT pin) : SV_Target
     float3 BumpedNormal = normalize(mul(UnpackedNormal, TBN));
 
     // Use your average normal if no NormalMap is specified
-    if (length(normalMapSample) == 0.f)
+    if (length(NormalMapSample) == 0.f)
         BumpedNormal = normalize(pin.Normal);
         
     // vector from point being lit to eye. 
