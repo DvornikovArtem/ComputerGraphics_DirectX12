@@ -615,7 +615,7 @@ void RenderingSystem::BuildMeshGeometry(std::string Name, const std::string & fi
 
 	// Загружаем сцену
 	const aiScene* scene = importer.ReadFile(filename,
-		aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_GenNormals);
+		aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_GenNormals | aiProcess_CalcTangentSpace);
 
 	if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
 		MessageBoxW(0, L"Model not found.", 0, 0);
@@ -653,6 +653,13 @@ void RenderingSystem::BuildMeshGeometry(std::string Name, const std::string & fi
 			else {
 				vertex.TexC.x = 0.0f;
 				vertex.TexC.y = 0.0f;
+			}
+
+			// Тангенты
+			if (mesh->HasTangentsAndBitangents()) {
+				vertex.Tangent.x = mesh->mTangents[j].x;
+				vertex.Tangent.y = mesh->mTangents[j].y;
+				vertex.Tangent.z = mesh->mTangents[j].z;
 			}
 
 			vertices.push_back(vertex);
@@ -1040,6 +1047,7 @@ void RenderingSystem::BuildInputLayout()
 		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
 		{ "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
 		{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{ "TANGENT", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 36, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
 	};
 }
 
@@ -1076,6 +1084,7 @@ void RenderingSystem::BuildBasicGeometry()
 			vertices[i].Pos = Objects[k]->Vertices[i].Position;
 			vertices[i].Normal = Objects[k]->Vertices[i].Normal;
 			vertices[i].TexC = Objects[k]->Vertices[i].TexC;
+			vertices[i].Tangent = Objects[k]->Vertices[i].TangentU;
 		}
 
 		std::vector<std::uint16_t> indices;

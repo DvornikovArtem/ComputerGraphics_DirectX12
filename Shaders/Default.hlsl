@@ -81,17 +81,19 @@ float random(float2 uv)
 
 struct VS_INPUT
 {
-	float3 Pos    : POSITION;
-	float2 TexC    : TEXCOORD;
-    float3 Normal : NORMAL;
+	float3 Pos      : POSITION;
+	float2 TexC     : TEXCOORD;
+    float3 Normal   : NORMAL;
+    float3 Tangent  : TANGENT;
 };
 
 struct DS_VS_OUTPUT_PS_INPUT
 {
-    float4 PosCS : SV_POSITION;
-    float3 PosW : POSITION;
-    float2 TexC : TEXCOORD;
-    float3 Normal : NORMAL;
+    float4 PosCS   : SV_POSITION;
+    float3 PosW    : POSITION;
+    float2 TexC    : TEXCOORD;
+    float3 Normal  : NORMAL;
+    float3 Tangent : TANGENT;
 };
 
 DS_VS_OUTPUT_PS_INPUT VS(VS_INPUT vin)
@@ -103,7 +105,9 @@ DS_VS_OUTPUT_PS_INPUT VS(VS_INPUT vin)
     vout.PosW = posW.xyz;
 
     // Assumes nonuniform scaling; otherwise, need to use inverse-transpose of world matrix.
-    vout.Normal = mul(vin.Normal, (float3x3)gWorld);
+    vout.Normal = normalize(mul(vin.Normal, (float3x3) gWorld));
+    
+    vout.Tangent = normalize(mul(vin.Tangent, (float3x3) gWorld));
 
     // Transform to homogeneous clip space.
     vout.PosCS = mul(posW, gViewProj);
@@ -140,7 +144,7 @@ struct HS_CONTROL_POINT_OUTPUT
     float3 vWorldPos : POSITION;
     float2 vTexCoord : TEXCOORD;
     float3 vNormal   : NORMAL;
-    
+    float3 vTangent  : TANGENT;
 };
 
 [domain("tri")] // indicates a triangle patch (3 verts)
@@ -157,7 +161,7 @@ HS_CONTROL_POINT_OUTPUT HSMain(InputPatch<DS_VS_OUTPUT_PS_INPUT, 3> inputPatch, 
     Out.vWorldPos = inputPatch[uCPID].PosW.xyz;
     Out.vTexCoord = inputPatch[uCPID].TexC;
     Out.vNormal = inputPatch[uCPID].Normal;
-    //Out.vLightTS = inputPatch[uCPID].vLightTS;
+    Out.vTangent = inputPatch[uCPID].Tangent;
     return Out;
 }
 
@@ -182,6 +186,11 @@ DS_VS_OUTPUT_PS_INPUT DSMain(HS_CONSTANT_DATA_OUTPUT input, float3 BarycentricCo
     BarycentricCoordinates.x * TrianglePatch[0].vNormal +
     BarycentricCoordinates.y * TrianglePatch[1].vNormal +
     BarycentricCoordinates.z * TrianglePatch[2].vNormal;
+    
+    Out.Tangent =
+    BarycentricCoordinates.x * TrianglePatch[0].vTangent +
+    BarycentricCoordinates.y * TrianglePatch[1].vTangent +
+    BarycentricCoordinates.z * TrianglePatch[2].vTangent;
 
     // sample the displacement map for the magnitude of displacement
     float fDisplacement = gHeightMap.SampleLevel(gsamAnisotropicWrap, Out.TexC.xy, 0).r;
@@ -227,9 +236,22 @@ float4 PS(DS_VS_OUTPUT_PS_INPUT pin) : SV_Target
     // interpolating normal can unnormalize it, so renormalize it.
     pin.Normal = normalize(pin.Normal);
     
-    float3 TexNormal = normalize((gNormalMap.Sample(gsamAnisotropicWrap, uv).rgb) * 2 - 1);
+    float3 normalMapSample = gNormalMap.Sample(gsamAnisotropicWrap, uv).rgb;
+    float3 UnpackedNormal = normalMapSample * 2.f -1.f;
+    // TBN
+    float3 N = normalize(pin.Normal);
+    float3 T = normalize(pin.Tangent);
+    T = normalize(T - dot(T, N) * N);
+    float3 B = cross(N, T);
+    float3x3 TBN = float3x3(T, B, N);
     
+    // TangentSpace to WorldSpace
+    float3 BumpedNormal = normalize(mul(UnpackedNormal, TBN));
 
+    // Use your average normal if no NormalMap is specified
+    if (length(normalMapSample) == 0.f)
+        BumpedNormal = normalize(pin.Normal);
+        
     // vector from point being lit to eye. 
     float3 ToEyeW = gEyePosW - pin.PosW;
     float DistToEye = length(ToEyeW);
@@ -241,7 +263,7 @@ float4 PS(DS_VS_OUTPUT_PS_INPUT pin) : SV_Target
     const float Shininess = 1.0f - gRoughness;
     Material mat = { diffusealbedo, gFresnelR0, Shininess };
     float3 shadowFactor = float3(1.f, 1.f, 1.f);
-    float4 directlight = ComputeLighting(gLights, mat, pin.PosW, pin.Normal, ToEyeW, shadowFactor);
+    float4 directlight = ComputeLighting(gLights, mat, pin.PosW, BumpedNormal, ToEyeW, shadowFactor);
 
     float4 litcolor = ambient + directlight;
    
