@@ -1,9 +1,3 @@
-//***************************************************************************************
-// Default.hlsl by Frank Luna (C) 2015 All Rights Reserved.
-//
-// Default shader, currently supports lighting.
-//***************************************************************************************
-
 // Defaults for number of lights.
 #ifndef NUM_DIR_LIGHTS
     #define NUM_DIR_LIGHTS 3
@@ -17,7 +11,6 @@
     #define NUM_SPOT_LIGHTS 0
 #endif
 
-// Include structures and functions for lighting.
 #include "LightingUtil.hlsl"
 
 Texture2D gDiffuseMap : register(t0);
@@ -37,7 +30,7 @@ cbuffer cbPerObject : register(b0)
 {
     float4x4 gWorld;
 	float4x4 gTexTransform;
-    float TesselationFactor;
+    float gTesselationFactor;
 };
 
 // Constant data that varies per frame.
@@ -80,40 +73,40 @@ cbuffer cbMaterial : register(b2)
 	float4x4 gMatTransform;
 };
 
-struct VertexIn
-{
-	float3 PosL    : POSITION;
-    float3 NormalL : NORMAL;
-	float2 TexC    : TEXCOORD;
-};
-
-struct VertexOut
-{
-	float4 PosH    : SV_POSITION;
-    float3 PosW    : POSITION;
-    float3 NormalW : NORMAL;
-	float2 TexC    : TEXCOORD;
-};
-
 // For random values
 float random(float2 uv)
 {
     return frac(sin(dot(uv, float2(12.9898, 78.233))) * 43758.5453);
 }
 
-VertexOut VS(VertexIn vin)
+struct VS_INPUT
 {
-	VertexOut vout = (VertexOut)0.0f;
+	float3 Pos    : POSITION;
+	float2 TexC    : TEXCOORD;
+    float3 Normal : NORMAL;
+};
+
+struct DS_VS_OUTPUT_PS_INPUT
+{
+    float4 PosCS : SV_POSITION;
+    float3 PosW : POSITION;
+    float2 TexC : TEXCOORD;
+    float3 Normal : NORMAL;
+};
+
+DS_VS_OUTPUT_PS_INPUT VS(VS_INPUT vin)
+{
+    DS_VS_OUTPUT_PS_INPUT vout = (DS_VS_OUTPUT_PS_INPUT) 0.0f;
 	
     // Transform to world space.
-    float4 posW = mul(float4(vin.PosL, 1.0f), gWorld);
+    float4 posW = mul(float4(vin.Pos, 1.0f), gWorld);
     vout.PosW = posW.xyz;
 
     // Assumes nonuniform scaling; otherwise, need to use inverse-transpose of world matrix.
-    vout.NormalW = mul(vin.NormalL, (float3x3)gWorld);
+    vout.Normal = mul(vin.Normal, (float3x3)gWorld);
 
     // Transform to homogeneous clip space.
-    vout.PosH = mul(posW, gViewProj);
+    vout.PosCS = mul(posW, gViewProj);
 	
 	// Output vertex attributes for interpolation across triangle.
 	float4 texC = mul(float4(vin.TexC, 0.0f, 1.0f), gTexTransform);
@@ -122,58 +115,145 @@ VertexOut VS(VertexIn vin)
     return vout;
 }
 
-float4 PS(VertexOut pin) : SV_Target
+struct HS_CONSTANT_DATA_OUTPUT
 {
-    float2 UV = pin.TexC;
+    float Edges[3] : SV_TessFactor;
+    float Inside : SV_InsideTessFactor;
+};
+//Called once per patch. The patch and an index to the patch (patch ID) are passed in
+HS_CONSTANT_DATA_OUTPUT ConstantsHS(InputPatch<DS_VS_OUTPUT_PS_INPUT, 3> p, uint PatchID : SV_PrimitiveID)
+{
+    HS_CONSTANT_DATA_OUTPUT Out;
+// Assign tessellation factors – in this case use a global
+// tessellation factor for all edges and the inside. These are
+// constant for the whole mesh.
+    float TessFactor = 20.f;
+    Out.Edges[0] = gTesselationFactor;
+    Out.Edges[1] = gTesselationFactor;
+    Out.Edges[2] = gTesselationFactor;
+    Out.Inside = gTesselationFactor;
+    return Out;
+}
+
+struct HS_CONTROL_POINT_OUTPUT
+{
+    float3 vWorldPos : POSITION;
+    float2 vTexCoord : TEXCOORD;
+    float3 vNormal   : NORMAL;
+    
+};
+
+[domain("tri")] // indicates a triangle patch (3 verts)
+[partitioning("fractional_odd")] // available options: fractional_even, fractional_odd, integer, pow2
+[outputtopology("triangle_cw")] // vertex ordering for the output triangles
+[outputcontrolpoints(3)]
+[patchconstantfunc("ConstantsHS")] // name of the patch constant hull shader
+[maxtessfactor(64.0)] //hint to the driver – the lower the better
+// Pass in the input patch and an index for the control point
+HS_CONTROL_POINT_OUTPUT HSMain(InputPatch<DS_VS_OUTPUT_PS_INPUT, 3> inputPatch, uint uCPID : SV_OutputControlPointID)
+{
+    HS_CONTROL_POINT_OUTPUT Out;
+// Copy inputs to outputs – “pass through” shaders are optimal
+    Out.vWorldPos = inputPatch[uCPID].PosW.xyz;
+    Out.vTexCoord = inputPatch[uCPID].TexC;
+    Out.vNormal = inputPatch[uCPID].Normal;
+    //Out.vLightTS = inputPatch[uCPID].vLightTS;
+    return Out;
+}
+
+// Called once per tessellated vertex
+[domain("tri")] // indicates that triangle patches were used
+// The original patch is passed in, along with the vertex position in barycentric coordinates, and the patch constant phase hull shader output(tessellation factors)
+DS_VS_OUTPUT_PS_INPUT DSMain(HS_CONSTANT_DATA_OUTPUT input, float3 BarycentricCoordinates : SV_DomainLocation, const OutputPatch<HS_CONTROL_POINT_OUTPUT, 3> TrianglePatch)
+{
+    DS_VS_OUTPUT_PS_INPUT Out;
+    // Interpolate world space position with barycentric coordinates
+    float3 vWorldPos =
+    BarycentricCoordinates.x * TrianglePatch[0].vWorldPos +
+    BarycentricCoordinates.y * TrianglePatch[1].vWorldPos +
+    BarycentricCoordinates.z * TrianglePatch[2].vWorldPos;
+    // Interpolate texture coordinates with barycentric coordinates
+    Out.TexC = 
+    BarycentricCoordinates.x * TrianglePatch[0].vTexCoord +
+    BarycentricCoordinates.y * TrianglePatch[1].vTexCoord +
+    BarycentricCoordinates.z * TrianglePatch[2].vTexCoord;
+    // Interpolate normal with barycentric coordinates
+    Out.Normal =
+    BarycentricCoordinates.x * TrianglePatch[0].vNormal +
+    BarycentricCoordinates.y * TrianglePatch[1].vNormal +
+    BarycentricCoordinates.z * TrianglePatch[2].vNormal;
+
+    // sample the displacement map for the magnitude of displacement
+    float fDisplacement = gHeightMap.SampleLevel(gsamAnisotropicWrap, Out.TexC.xy, 0).r;
+    fDisplacement *= 0.3f;
+    //fDisplacement += g_Bias;
+    
+    float3 vDirection = normalize(Out.Normal); // direction is opposite normal
+    // translate the position
+    Out.PosW = vWorldPos;
+    vWorldPos += vDirection * fDisplacement;
+    // transform to clip space
+    Out.PosCS = mul(float4(vWorldPos.xyz, 1), gViewProj);
+    return Out;
+} 
+
+
+float4 PS(DS_VS_OUTPUT_PS_INPUT pin) : SV_Target
+{
+    
+    float2 uv = pin.TexC;
     
 #ifdef ROTATINGTILES 
-    float2 tileID = floor(pin.TexC);
-    float2 localUV = frac(pin.TexC) - 0.5;
-    float Angle = tileID % 2 ? gTotalTime : -gTotalTime;
-    float2 rotatedUV;
-    rotatedUV.x = localUV.x * cos(Angle) - localUV.y * sin(Angle);
-    rotatedUV.y = localUV.x * sin(Angle) + localUV.y * cos(Angle);
-    rotatedUV += 0.5;
-    UV = rotatedUV;
+    float2 tileid = floor(pin.TexC);
+    float2 localuv = frac(pin.TexC) - 0.5;
+    float angle = tileid % 2 ? gTotalTime : -gTotalTime;
+    float2 rotateduv;
+    rotateduv.x = localuv.x * cos(angle) - localuv.y * sin(angle);
+    rotateduv.y = localuv.x * sin(angle) + localuv.y * cos(angle);
+    rotateduv += 0.5;
+    uv = rotateduv;
 #endif
     
-    float4 diffuseAlbedo = gDiffuseMap.Sample(gsamAnisotropicWrap, UV) * gDiffuseAlbedo;
+    float4 diffusealbedo = gDiffuseMap.Sample(gsamAnisotropicWrap, uv) * gDiffuseAlbedo;
     
 #ifdef ALPHA_TEST
-	// Discard pixel if texture alpha < 0.1.  We do this test as soon 
+	// discard pixel if texture alpha < 0.1.  we do this test as soon 
 	// as possible in the shader so that we can potentially exit the
 	// shader early, thereby skipping the rest of the shader code.
-	clip(diffuseAlbedo.a - 0.1f);
+	clip(diffusealbedo.a - 0.1f);
 #endif
+    
 
-    // Interpolating normal can unnormalize it, so renormalize it.
-    pin.NormalW = normalize(pin.NormalW);
+    // interpolating normal can unnormalize it, so renormalize it.
+    pin.Normal = normalize(pin.Normal);
+    
+    float3 TexNormal = normalize((gNormalMap.Sample(gsamAnisotropicWrap, uv).rgb) * 2 - 1);
+    
 
-    // Vector from point being lit to eye. 
-	float3 toEyeW = gEyePosW - pin.PosW;
-	float distToEye = length(toEyeW);
-	toEyeW /= distToEye; // normalize
+    // vector from point being lit to eye. 
+    float3 ToEyeW = gEyePosW - pin.PosW;
+    float DistToEye = length(ToEyeW);
+    ToEyeW /= DistToEye; // normalize
 
-    // Light terms.
-    float4 ambient = gAmbientLight*diffuseAlbedo;
+    // light terms.
+    float4 ambient = gAmbientLight * diffusealbedo;
 
-    const float shininess = 1.0f - gRoughness;
-    Material mat = { diffuseAlbedo, gFresnelR0, shininess };
-    float3 shadowFactor = 1.0f;
-    float4 directLight = ComputeLighting(gLights, mat, pin.PosW,
-        pin.NormalW, toEyeW, shadowFactor);
+    const float Shininess = 1.0f - gRoughness;
+    Material mat = { diffusealbedo, gFresnelR0, Shininess };
+    float3 shadowFactor = float3(1.f, 1.f, 1.f);
+    float4 directlight = ComputeLighting(gLights, mat, pin.PosW, pin.Normal, ToEyeW, shadowFactor);
 
-    float4 litColor = ambient + directLight;
-
+    float4 litcolor = ambient + directlight;
+   
 #ifdef FOG
-	float fogAmount = saturate((distToEye - gFogStart) / gFogRange);
-	litColor = lerp(litColor, gFogColor, fogAmount);
+    float FogAmount = saturate((DistToEye - gFogStart) / gFogRange);
+    litcolor = lerp(litcolor, gFogColor, FogAmount);
 #endif
-
-    // Common convention to take alpha from diffuse albedo.
-    litColor.a = diffuseAlbedo.a;
-
-    return litColor;
+    
+    // common convention to take alpha from diffuse albedo.
+    litcolor.a = diffusealbedo.a;
+    
+    return litcolor;
 }
 
 

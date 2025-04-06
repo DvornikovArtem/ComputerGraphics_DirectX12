@@ -168,7 +168,9 @@ void StencilApp::LoadShaders()
         ShaderDesc("standardVS", L"../Shaders/Default.hlsl", "VS", nullptr, "vs_5_0"),
         ShaderDesc("standardPS", L"../Shaders/Default.hlsl", "PS", nullptr, "ps_5_0"),
         ShaderDesc("alphaTestedPS", L"../Shaders/Default.hlsl", "PS", alphaTestDefines, "ps_5_0"),
-        ShaderDesc("RotatingTilesPS", L"../Shaders/Default.hlsl", "PS", defines, "ps_5_0")
+        ShaderDesc("RotatingTilesPS", L"../Shaders/Default.hlsl", "PS", defines, "ps_5_0"),
+        ShaderDesc("standardHS", L"../Shaders/Default.hlsl", "HSMain", nullptr, "hs_5_0"),
+        ShaderDesc("standardDS", L"../Shaders/Default.hlsl", "DSMain", nullptr, "ds_5_0")
     };
 
     mRenderingSystem->BuildShaders(ShaderDescs);
@@ -238,7 +240,7 @@ void StencilApp::MakeDrawableObjects()
     TesselationTestSphere->WorldLocation = XMFLOAT3(5.f, 3.f, -1.f);
     TesselationTestSphere->WorldRotation = XMFLOAT3(0.f, 0.f, 0.f);
     TesselationTestSphere->Scale = XMFLOAT3(5.0f, 5.0f, 5.0f);
-    TesselationTestSphere->TexTransform = XMMatrixScaling(10.0f, 10.0f, 1.0f);
+    TesselationTestSphere->TexTransform = XMMatrixScaling(5.0f, 5.0f, 1.0f);
 
     mAllObjects[TesselationTestSphere->Name] = std::move(TesselationTestSphere);
 

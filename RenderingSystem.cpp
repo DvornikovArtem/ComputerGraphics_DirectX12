@@ -241,10 +241,10 @@ void RenderingSystem::Render()
 	//DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Reflected]);
 
 	// Restore main pass constants and stencil ref.
-	mCommandList->SetGraphicsRootConstantBufferView(2, passCB->GetGPUVirtualAddress());
-	mCommandList->OMSetStencilRef(0);
+	//mCommandList->SetGraphicsRootConstantBufferView(2, passCB->GetGPUVirtualAddress());
+	//mCommandList->OMSetStencilRef(0);
 
-	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Transparent], "transparent");
+	//DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Transparent], "transparent");
 
 	//// Draw shadows
 	//mCommandList->SetPipelineState(mPSOs["shadow"].Get());
@@ -599,7 +599,7 @@ void RenderingSystem::UpdateObjectCBs(const GameTimer& gt)
 
 			XMVECTOR diff = XMVectorSubtract(XMLoadFloat4x4(&e->World).r[3], mCamera.GetPosition());
 
-			objConstants.TesselationFactor = 1 / XMVectorGetX(XMVector3Length(diff));
+			objConstants.TesselationFactor = 50 / XMVectorGetX(XMVector3Length(diff));
 
 			currObjectCB->CopyData(e->ObjCBIndex, objConstants);
 
@@ -729,16 +729,27 @@ void RenderingSystem::BuildPSOs(MaterialDesc& MDesc, std::unordered_map<std::str
 		reinterpret_cast<BYTE*>(mShaders[MDesc.PixelShaderName]->GetBufferPointer()),
 		mShaders[MDesc.PixelShaderName]->GetBufferSize()
 	};
+	opaquePsoDesc.HS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["standardHS"]->GetBufferPointer()),
+		mShaders["standardHS"]->GetBufferSize()
+	};
+	opaquePsoDesc.DS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["standardDS"]->GetBufferPointer()),
+		mShaders["standardDS"]->GetBufferSize()
+	};
 	opaquePsoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
 	opaquePsoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
 	opaquePsoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
 	opaquePsoDesc.SampleMask = UINT_MAX;
-	opaquePsoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	opaquePsoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_PATCH;
 	opaquePsoDesc.NumRenderTargets = 1;
 	opaquePsoDesc.RTVFormats[0] = mBackBufferFormat;
 	opaquePsoDesc.SampleDesc.Count = m4xMsaaState ? 4 : 1;
 	opaquePsoDesc.SampleDesc.Quality = m4xMsaaState ? (m4xMsaaQuality - 1) : 0;
 	opaquePsoDesc.DSVFormat = mDepthStencilFormat;
+	//opaquePsoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_WIREFRAME;
 	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&opaquePsoDesc, IID_PPV_ARGS(&mPSOs["opaque"])));
 
 	//
@@ -896,7 +907,7 @@ void RenderingSystem::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const 
 
 		cmdList->IASetVertexBuffers(0, 1, &ri->Geo->VertexBufferView());
 		cmdList->IASetIndexBuffer(&ri->Geo->IndexBufferView());
-		cmdList->IASetPrimitiveTopology(ri->PrimitiveType);
+		cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_3_CONTROL_POINT_PATCHLIST);
 		cmdList->SetPipelineState(ri->Mat->PSOs[RenderLayerName].Get());
 
 		ID3D12DescriptorHeap* descriptorHeaps[] = { ri->Mat->mSrvDescriptorHeap.Get() };
