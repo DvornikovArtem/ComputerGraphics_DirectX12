@@ -1152,8 +1152,14 @@ void RenderingSystem::UpdateMainPassCB(const GameTimer& gt)
 	mMainPassCB.Lights[0].Strength = { 0.6f, 0.6f, 0.6f };
 	mMainPassCB.Lights[1].Direction = { -0.57735f, -0.57735f, 0.57735f };
 	mMainPassCB.Lights[1].Strength = { 0.3f, 0.3f, 0.3f };
-	mMainPassCB.Lights[2].Direction = { 0.0f, -0.707f, -0.707f };
-	mMainPassCB.Lights[2].Strength = { 0.15f, 0.15f, 0.15f };
+
+
+	//mMainPassCB.Lights[2].Direction = { 0.0f, -0.707f, -0.707f };
+	mMainPassCB.Lights[2].Strength = { 1.f, 1.f, 1.f };
+	mMainPassCB.Lights[2].FalloffStart = 0.f;
+	mMainPassCB.Lights[2].FalloffEnd = 100.f;
+	mMainPassCB.Lights[2].Position = { 1.f, 1.f, 1.f };
+
 
 	// Main pass stored in index 2
 	auto currPassCB = mCurrFrameResource->PassCB.get();
