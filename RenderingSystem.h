@@ -50,15 +50,18 @@ struct ShaderDesc
 
 struct TextureDesc
 {
+    enum TextureType { Texture2D, CubeMap };
     TextureDesc() {}
 
-    TextureDesc(std::string Name, std::wstring Path)
+    TextureDesc(std::string Name, std::wstring Path, TextureType TexType)
     {
         this->Name = Name;
         this->Path = Path;
+        this->TexType = TexType;
     }
     std::string Name;
     std::wstring Path;
+    TextureType TexType;
 };
 
 struct MaterialDesc
@@ -80,18 +83,18 @@ struct MaterialDesc
         this->Roughness = Roughness;
         this->UseTesselation = UseTesselation;
     }
-    std::string Name;
-    std::string DiffuseTexName;
-    std::string NormalMapName;
-    std::string HeightMapName;
-    XMFLOAT4 DiffuseAlbedo;
-    XMFLOAT3 FresnelR0;
-    float Roughness;
-    std::string PixelShaderName;
-    std::string VertexShaderName;
-    std::string HullShaderName;
-    std::string DomainShaderName;
-    bool UseTesselation;
+    std::string Name = "";
+    std::string DiffuseTexName = "";
+    std::string NormalMapName = "";
+    std::string HeightMapName = "";
+    XMFLOAT4 DiffuseAlbedo = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
+    XMFLOAT3 FresnelR0 = XMFLOAT3(0.05f, 0.05f, 0.05f);
+    float Roughness = 0.f;
+    std::string PixelShaderName = "";
+    std::string VertexShaderName = "";
+    std::string HullShaderName = "";
+    std::string DomainShaderName = "";
+    bool UseTesselation = false;
 };
 
 struct MeshDesc
@@ -140,7 +143,7 @@ struct RenderItem
 
 
     // Primitive topology.
-    D3D12_PRIMITIVE_TOPOLOGY PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_3_CONTROL_POINT_PATCHLIST;
+    D3D12_PRIMITIVE_TOPOLOGY PrimitiveType = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 
     // DrawIndexedInstanced parameters.
     UINT IndexCount = 0;
@@ -188,7 +191,8 @@ enum class RenderLayer : int
     Reflected,
     Transparent,
     Shadow,
-    Count
+    Sky,
+    Count,
 };
 
 class RenderingSystem {
@@ -204,7 +208,7 @@ public:
     void CreateCommandObjects();
     void CreateSwapChain();
     void CreateRtvAndDsvDescriptorHeaps();
-    void BuildRootSignature();
+    void BuildRootSignatures();
     void BuildDescriptorHeap(Material* t);
 
     //DELETE AFTER TESTING
@@ -305,8 +309,6 @@ protected:
 
     UINT mCbvSrvDescriptorSize = 0;
 
-    ComPtr<ID3D12RootSignature> mRootSignature = nullptr;
-
     ComPtr<ID3D12DescriptorHeap> mSrvDescriptorHeap = nullptr;
 
     std::unordered_map<std::string, std::unique_ptr<MeshGeometry>> mGeometries;
@@ -332,9 +334,9 @@ protected:
     GameTimer* gt = nullptr;
 
     std::unique_ptr<Gbuffer> mGbuffer;
-    ComPtr<ID3D12RootSignature> mLightPassRootSignature = nullptr;
 
     std::unordered_map<std::string, Microsoft::WRL::ComPtr<ID3D12PipelineState>> GlobalPSOs;
+    std::unordered_map<std::string, Microsoft::WRL::ComPtr<ID3D12RootSignature>> RootSignatures;
 };
 
 

@@ -68,7 +68,7 @@ public:
     void TransitFromRenderTargetToCommon(ComPtr<ID3D12GraphicsCommandList>& c);
     void TransitFromShaderResourceToCommon(ComPtr<ID3D12GraphicsCommandList>& c);
 
-    void Resize(int width, int height);
+    void Resize(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device> device);
 
     void Dispose();
 };

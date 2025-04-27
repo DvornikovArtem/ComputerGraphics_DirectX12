@@ -186,8 +186,6 @@ void StencilApp::LoadShaders()
         ShaderDesc("HSForDecals_deferred", L"../Shaders/DeferredGeometryPass.hlsl", "HSForDecals", nullptr, "hs_5_0"),
         ShaderDesc("DSForDecals_deferred", L"../Shaders/DeferredGeometryPass.hlsl", "DSForDecals", nullptr, "ds_5_0"),
 
-        ShaderDesc("DeferredLightPassVS", L"../Shaders/DeferredLightPass.hlsl", "VS", nullptr, "vs_5_0"),
-        ShaderDesc("DeferredLightPassPS", L"../Shaders/DeferredLightPass.hlsl", "PS", nullptr, "ps_5_0"),
     };
 
     mRenderingSystem->BuildShaders(ShaderDescs);
@@ -199,21 +197,22 @@ void StencilApp::LoadTextures()
 
     std::vector<TextureDesc> TexDescs = 
     {
-        TextureDesc("INVALID", L"../Textures/INVALID.dds"),
-        TextureDesc("bricksTex", L"../Textures/bricks3.dds"),
-        TextureDesc("checkboardTex", L"../Textures/checkboard.dds"),
-        TextureDesc("iceTex", L"../Textures/ice.dds"),
-        TextureDesc("white1x1Tex", L"../Textures/white1x1.dds"),
-        TextureDesc("meshTex", L"../Textures/african_head_diffuse.dds"),
-        TextureDesc("redTex", L"../Textures/rsq.dds"),
-        TextureDesc("grassTex", L"../Textures/WoodCrate01.dds"),
-        TextureDesc("PatrickTex", L"../Textures/patrickstar.dds"),
-        TextureDesc("Semechki_Diffuse", L"../Textures/semente_BaseColor.dds"),
-        TextureDesc("Semechki_NormalMap", L"../Textures/semente_Normal.dds"),
-        TextureDesc("Semechki_HeightMap", L"../Textures/semente_Height.dds"),
-        TextureDesc("ShinyStones_Diffuse", L"../Textures/ShinyStones_Diffuse.dds"),
-        TextureDesc("ShinyStones_NormalMap", L"../Textures/ShinyStones_NormalMap.dds"),
-        TextureDesc("ShinyStones_HeightMap", L"../Textures/ShinyStones_HeightMap.dds")
+        TextureDesc("INVALID", L"../Textures/INVALID.dds", TextureDesc::Texture2D),
+        TextureDesc("bricksTex", L"../Textures/bricks3.dds", TextureDesc::Texture2D),
+        TextureDesc("checkboardTex", L"../Textures/checkboard.dds", TextureDesc::Texture2D),
+        TextureDesc("iceTex", L"../Textures/ice.dds", TextureDesc::Texture2D),
+        TextureDesc("white1x1Tex", L"../Textures/white1x1.dds", TextureDesc::Texture2D),
+        TextureDesc("meshTex", L"../Textures/african_head_diffuse.dds", TextureDesc::Texture2D),
+        TextureDesc("redTex", L"../Textures/rsq.dds", TextureDesc::Texture2D),
+        TextureDesc("grassTex", L"../Textures/WoodCrate01.dds", TextureDesc::Texture2D),
+        TextureDesc("PatrickTex", L"../Textures/patrickstar.dds", TextureDesc::Texture2D),
+        TextureDesc("Semechki_Diffuse", L"../Textures/semente_BaseColor.dds", TextureDesc::Texture2D),
+        TextureDesc("Semechki_NormalMap", L"../Textures/semente_Normal.dds", TextureDesc::Texture2D),
+        TextureDesc("Semechki_HeightMap", L"../Textures/semente_Height.dds", TextureDesc::Texture2D),
+        TextureDesc("ShinyStones_Diffuse", L"../Textures/ShinyStones_Diffuse.dds", TextureDesc::Texture2D),
+        TextureDesc("ShinyStones_NormalMap", L"../Textures/ShinyStones_NormalMap.dds", TextureDesc::Texture2D),
+        TextureDesc("ShinyStones_HeightMap", L"../Textures/ShinyStones_HeightMap.dds", TextureDesc::Texture2D),
+        TextureDesc("SkyCubeMap", L"../Textures/snowcube1024.dds", TextureDesc::CubeMap),
     };
 
     mRenderingSystem->LoadTextures(TexDescs);
@@ -223,17 +222,19 @@ void StencilApp::MakeMaterials()
 {
     std::vector<MaterialDesc> MaterialDescs =
     {
-        MaterialDesc("bricks", "standardVS", "standardPS",  "", "", "bricksTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.25f, false),
-        MaterialDesc("checkertile", "standardVS", "standardPS", "", "", "checkboardTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.07f, 0.07f, 0.07f), 0.3f, false),
-        MaterialDesc("icemirror", "standardVS", "standardPS", "", "", "iceTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 0.3f), XMFLOAT3(0.1f, 0.1f, 0.1f), 0.5f, false),
-        MaterialDesc("skullMat", "standardVS", "standardPS", "HSForDecals", "DSForDecals", "bricksTex", "ShinyStones_NormalMap", "ShinyStones_HeightMap", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, true),
-        MaterialDesc("shadowMat", "standardVS", "standardPS", "", "", "redTex", "", "", XMFLOAT4(0.0f, 0.0f, 0.0f, 0.5f), XMFLOAT3(0.001f, 0.001f, 0.001f), 0.0f, false),
-        MaterialDesc("mesh", "standardVS", "standardPS", "", "", "meshTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, false),
-        MaterialDesc("grass", "standardVS", "RotatingTilesPS", "", "", "grassTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, false),
-        MaterialDesc("PatrickMat", "standardVS", "standardPS", "", "", "PatrickTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, false),
-        MaterialDesc("Semechki", "standardVS", "standardPS", "standardHS", "standardDS", "Semechki_Diffuse", "Semechki_NormalMap", "Semechki_HeightMap", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, true),
-        MaterialDesc("ShinyStones", "standardVS", "standardPS", "standardHS", "standardDS", "ShinyStones_Diffuse", "ShinyStones_NormalMap", "ShinyStones_HeightMap", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, true)
+        MaterialDesc("bricks", "standardVS_deferred", "standardPS_deferred",  "", "", "bricksTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.25f, false),
+        MaterialDesc("checkertile", "standardVS_deferred", "standardPS_deferred", "", "", "checkboardTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.07f, 0.07f, 0.07f), 0.3f, false),
+        MaterialDesc("icemirror", "standardVS_deferred", "standardPS_deferred", "", "", "iceTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 0.3f), XMFLOAT3(0.1f, 0.1f, 0.1f), 0.5f, false),
+        MaterialDesc("skullMat", "standardVS_deferred", "standardPS_deferred", "HSForDecals_deferred", "DSForDecals_deferred", "bricksTex", "ShinyStones_NormalMap", "ShinyStones_HeightMap", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, true),
+        MaterialDesc("shadowMat", "standardVS_deferred", "standardPS_deferred", "", "", "redTex", "", "", XMFLOAT4(0.0f, 0.0f, 0.0f, 0.5f), XMFLOAT3(0.001f, 0.001f, 0.001f), 0.0f, false),
+        MaterialDesc("mesh", "standardVS_deferred", "standardPS_deferred", "", "", "meshTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, false),
+        MaterialDesc("grass", "standardVS_deferred", "RotatingTilesPS_deferred", "", "", "grassTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, false),
+        MaterialDesc("PatrickMat", "standardVS_deferred", "standardPS_deferred", "", "", "PatrickTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, false),
+        MaterialDesc("Semechki", "standardVS_deferred", "standardPS_deferred", "standardHS_deferred", "standardDS_deferred", "Semechki_Diffuse", "Semechki_NormalMap", "Semechki_HeightMap", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, true),
+        MaterialDesc("ShinyStones", "standardVS_deferred", "standardPS_deferred", "standardHS_deferred", "standardDS_deferred", "ShinyStones_Diffuse", "ShinyStones_NormalMap", "ShinyStones_HeightMap", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, true),
+        MaterialDesc("SkyBox", "SkyBoxVS", "SkyBoxPS",  "", "", "SkyCubeMap", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.1f, 0.1f, 0.1f), 1.f, false),
     };
+
 
     mRenderingSystem->BuildMaterials(MaterialDescs);
 }
@@ -252,6 +253,16 @@ void StencilApp::LoadMeshes()
 void StencilApp::MakeDrawableObjects()
 {
     //Has prebuilt geometries: "Box", "Grid", "Sphere", "Cylinder"
+
+    auto SkyBoxSphere = std::make_unique<DrawableObject>();
+    SkyBoxSphere->Name = "SkyBoxSphere";
+    SkyBoxSphere->GeometryName = "Sphere";
+    SkyBoxSphere->MaterialName = "SkyBox";
+    SkyBoxSphere->RenderLayer = (int)RenderLayer::Sky;
+    SkyBoxSphere->Scale = XMFLOAT3(5000.0f, 5000.0f, 5000.0f);
+
+    mAllObjects[SkyBoxSphere->Name] = std::move(SkyBoxSphere);
+
 
     auto TesselationTestSphere = std::make_unique<DrawableObject>();
     TesselationTestSphere->Name = "TesselationTestSphere";
@@ -285,7 +296,7 @@ void StencilApp::MakeDrawableObjects()
     Floor->RenderLayer = (int)RenderLayer::Opaque;
     Floor->WorldLocation = XMFLOAT3(0.f, 0.f, 0.f);
     Floor->WorldRotation = XMFLOAT3(0.f, 0.f, 0.f);
-    Floor->Scale = XMFLOAT3(10.0f, 1.0f, 10.0f);
+    Floor->Scale = XMFLOAT3(5.0f, 1.0f, 5.0f);
     Floor->TexTransform = XMMatrixScaling(50.0f, 50.0f, 1.0f);
 
     mAllObjects[Floor->Name] = std::move(Floor);

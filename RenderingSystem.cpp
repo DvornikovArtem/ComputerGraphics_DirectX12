@@ -80,7 +80,7 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 	// so we have to query this information.
 	mCbvSrvDescriptorSize = md3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
-	BuildRootSignature();
+	BuildRootSignatures();
 	BuildInputLayout();
 	BuildBasicGeometry();
 
@@ -189,6 +189,10 @@ void RenderingSystem::OnResize() {
 	mScissorRect = { 0, 0, mClientWidth, mClientHeight };
 
 	mCamera.SetLens(0.25f * MathHelper::Pi, AspectRatio(), 1.0f, 100000.0f);
+	
+
+	// FINISH ME
+	//mGbuffer->Resize(mClientWidth, mClientHeight, md3dDevice.Get());
 }
 
 void RenderingSystem::Render()
@@ -217,7 +221,7 @@ void RenderingSystem::Render()
 	// 1. Geometry: draw scene into G-buffer.
 	//
 	 
-	mCommandList->SetGraphicsRootSignature(mRootSignature.Get());
+	mCommandList->SetGraphicsRootSignature(RootSignatures["Default"].Get());
 
 	D3D12_CPU_DESCRIPTOR_HANDLE rtvs[5] = {
 		mGbuffer->DiffuseRTV,
@@ -256,19 +260,13 @@ void RenderingSystem::Render()
 	//cmdList->SetPipelineState(mPSOs["deferredLighting"].Get());
 	mCommandList->SetPipelineState(GlobalPSOs["DeferredLightPass"].Get());
 	// Устанавливаем корневую сигнатуру (можно использовать ту же, что и в BuildRootSignature или создать отдельную)
-	mCommandList->SetGraphicsRootSignature(mLightPassRootSignature.Get());
+	mCommandList->SetGraphicsRootSignature(RootSignatures["DeferredLightPass"].Get());
 
 
 	// Устанавливаем несколько render target view из G-buffer.
 
 	//mCommandList->OMSetRenderTargets(3, rtvs, false, nullptr);
 	mCommandList->OMSetRenderTargets(1, &CurrentBackBufferView(), false, &DepthStencilView());
-
-	// Здесь необходимо установить дескрипторы SRV G-buffer.
-	// Например, если в корневой таблице у нас ожидается 3 SRV (t0..t2):
-	// Получаем дескриптор из SRV кучки (рассчитав смещение, если требуется)
-	// Для простоты полагаем, что G-buffer SRV уже находятся в нужном порядке.
-	// Также следует обновить константный буфер с данными источников света (mLights) – этот момент опущен для краткости.
 
 
 
@@ -308,6 +306,44 @@ void RenderingSystem::Render()
 	//auto passCB = mCurrFrameResource->PassCB->Resource();
 	//mCommandList->SetGraphicsRootConstantBufferView(2, passCB->GetGPUVirtualAddress());
 	//DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Opaque], "opaque");
+
+	//
+	//Draw SkyBox
+	//
+	mCommandList->OMSetRenderTargets(1, &CurrentBackBufferView(), true, &DepthStencilView());
+	mCommandList->SetGraphicsRootSignature(RootSignatures["Default"].Get());
+	mCommandList->SetPipelineState(GlobalPSOs["SkyBox"].Get());
+	mCommandList->SetGraphicsRootConstantBufferView(2, passCB->GetGPUVirtualAddress());
+	//DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Sky], "SkyBox");
+	UINT objCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(ObjectConstants));
+	UINT matCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(MaterialConstants));
+
+	auto objectCB = mCurrFrameResource->ObjectCB->Resource();
+	auto matCB = mCurrFrameResource->MaterialCB->Resource();
+
+	// For each render item...
+	for (size_t i = 0; i < mRitemLayer[(int)RenderLayer::Sky].size(); ++i)
+	{
+		auto ri = mRitemLayer[(int)RenderLayer::Sky][i];
+
+		mCommandList->IASetVertexBuffers(0, 1, &ri->Geo->VertexBufferView());
+		mCommandList->IASetIndexBuffer(&ri->Geo->IndexBufferView());
+		mCommandList->IASetPrimitiveTopology(ri->Mat->UseTesselation ? D3D_PRIMITIVE_TOPOLOGY_3_CONTROL_POINT_PATCHLIST : D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+		ID3D12DescriptorHeap* descriptorHeaps[] = { ri->Mat->mSrvDescriptorHeap.Get() };
+		mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
+
+		CD3DX12_GPU_DESCRIPTOR_HANDLE TextureDescs(ri->Mat->mSrvDescriptorHeap->GetGPUDescriptorHandleForHeapStart());
+
+		D3D12_GPU_VIRTUAL_ADDRESS objCBAddress = objectCB->GetGPUVirtualAddress() + ri->ObjCBIndex * objCBByteSize;
+		D3D12_GPU_VIRTUAL_ADDRESS matCBAddress = matCB->GetGPUVirtualAddress() + ri->Mat->MatCBIndex * matCBByteSize;
+
+		mCommandList->SetGraphicsRootDescriptorTable(0, TextureDescs);
+		mCommandList->SetGraphicsRootConstantBufferView(1, objCBAddress);
+		mCommandList->SetGraphicsRootConstantBufferView(3, matCBAddress);
+
+		mCommandList->DrawIndexedInstanced(ri->IndexCount, 1, ri->StartIndexLocation, ri->BaseVertexLocation, 0);
+	}
 
 	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
 		D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
@@ -543,15 +579,16 @@ void RenderingSystem::CreateRtvAndDsvDescriptorHeaps()
 		&dsvHeapDesc, IID_PPV_ARGS(mDsvHeap.GetAddressOf())));
 }
 
-void RenderingSystem::BuildRootSignature()
+void RenderingSystem::BuildRootSignatures()
 {
+
+	//default
+
 	CD3DX12_DESCRIPTOR_RANGE texTable;
 	texTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, 0);
 
-	// Root parameter can be a table, root descriptor or root constants.
 	CD3DX12_ROOT_PARAMETER slotRootParameter[4];
 
-	// Perfomance TIP: Order from most frequent to least frequent.
 	slotRootParameter[0].InitAsDescriptorTable(1, &texTable, D3D12_SHADER_VISIBILITY_ALL);
 	slotRootParameter[1].InitAsConstantBufferView(0);
 	slotRootParameter[2].InitAsConstantBufferView(1);
@@ -559,12 +596,10 @@ void RenderingSystem::BuildRootSignature()
 
 	auto staticSamplers = GetStaticSamplers();
 
-	// A root signature is an array of root parameters.
 	CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(4, slotRootParameter,
 		(UINT)staticSamplers.size(), staticSamplers.data(),
 		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
-	// create a root signature with a single slot which points to a descriptor range consisting of a single constant buffer
 	ComPtr<ID3DBlob> serializedRootSig = nullptr;
 	ComPtr<ID3DBlob> errorBlob = nullptr;
 	HRESULT hr = D3D12SerializeRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1,
@@ -580,10 +615,10 @@ void RenderingSystem::BuildRootSignature()
 		0,
 		serializedRootSig->GetBufferPointer(),
 		serializedRootSig->GetBufferSize(),
-		IID_PPV_ARGS(mRootSignature.GetAddressOf())));
+		IID_PPV_ARGS(RootSignatures["Default"].GetAddressOf())));
 
 
-
+	// for deferred light pass
 
 	CD3DX12_DESCRIPTOR_RANGE lightPassTexTable;
 	lightPassTexTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 5, 0);
@@ -619,7 +654,37 @@ void RenderingSystem::BuildRootSignature()
 		0,
 		serializedLightPassRootSig->GetBufferPointer(),
 		serializedLightPassRootSig->GetBufferSize(),
-		IID_PPV_ARGS(mLightPassRootSignature.GetAddressOf())));
+		IID_PPV_ARGS(RootSignatures["DeferredLightPass"].GetAddressOf())));
+
+	// For skyboxes
+
+
+	CD3DX12_ROOT_PARAMETER SkyBoxSlotRootParameter[3];
+
+	SkyBoxSlotRootParameter[0].InitAsShaderResourceView(0, 1); // for skybox texture
+	SkyBoxSlotRootParameter[1].InitAsConstantBufferView(0); // for objectCB
+	SkyBoxSlotRootParameter[2].InitAsConstantBufferView(1); //for MainPassCB
+
+	CD3DX12_ROOT_SIGNATURE_DESC SkyBoxRootSigDesc(3, SkyBoxSlotRootParameter,
+		(UINT)lightPassStaticSamplers.size(), lightPassStaticSamplers.data(),
+		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+
+	ComPtr<ID3DBlob> serializedSkyBoxRootSig = nullptr;
+	ComPtr<ID3DBlob> SkyBoxErrorBlob = nullptr;
+	HRESULT SkyBoxHr = D3D12SerializeRootSignature(&SkyBoxRootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1,
+		serializedSkyBoxRootSig.GetAddressOf(), SkyBoxErrorBlob.GetAddressOf());
+
+	if (SkyBoxErrorBlob != nullptr)
+	{
+		::OutputDebugStringA((char*)SkyBoxErrorBlob->GetBufferPointer());
+	}
+	ThrowIfFailed(SkyBoxHr);
+
+	ThrowIfFailed(md3dDevice->CreateRootSignature(
+		0,
+		serializedSkyBoxRootSig->GetBufferPointer(),
+		serializedSkyBoxRootSig->GetBufferSize(),
+		IID_PPV_ARGS(RootSignatures["SkyBox"].GetAddressOf())));
 }
 
 void RenderingSystem::BuildDescriptorHeap(Material* t)
@@ -820,7 +885,7 @@ void RenderingSystem::BuildPSOs(MaterialDesc& MDesc, std::unordered_map<std::str
 	//
 	ZeroMemory(&opaquePsoDesc, sizeof(D3D12_GRAPHICS_PIPELINE_STATE_DESC));
 	opaquePsoDesc.InputLayout = { mInputLayout.data(), (UINT)mInputLayout.size() };
-	opaquePsoDesc.pRootSignature = mRootSignature.Get();
+	opaquePsoDesc.pRootSignature = RootSignatures["Default"].Get();
 	opaquePsoDesc.VS =
 	{
 		reinterpret_cast<BYTE*>(mShaders[MDesc.VertexShaderName]->GetBufferPointer()),
@@ -975,31 +1040,31 @@ void RenderingSystem::BuildPSOs(MaterialDesc& MDesc, std::unordered_map<std::str
 	ZeroMemory(&descPipelineState, sizeof(descPipelineState));
 	descPipelineState.VS =
 	{
-		reinterpret_cast<BYTE*>(mShaders["standardVS_deferred"]->GetBufferPointer()),
-		mShaders["standardVS_deferred"]->GetBufferSize()
+		reinterpret_cast<BYTE*>(mShaders[MDesc.VertexShaderName]->GetBufferPointer()),
+		mShaders[MDesc.VertexShaderName]->GetBufferSize()
 	};
 	descPipelineState.PS =
 	{
-		reinterpret_cast<BYTE*>(mShaders["standardPS_deferred"]->GetBufferPointer()),
-		mShaders["standardPS_deferred"]->GetBufferSize()
+		reinterpret_cast<BYTE*>(mShaders[MDesc.PixelShaderName]->GetBufferPointer()),
+		mShaders[MDesc.PixelShaderName]->GetBufferSize()
 	};
 	if (MDesc.UseTesselation)
 	{
 		descPipelineState.HS =
 		{
-			reinterpret_cast<BYTE*>(mShaders["standardHS_deferred"]->GetBufferPointer()),
-			mShaders["standardHS_deferred"]->GetBufferSize()
+			reinterpret_cast<BYTE*>(mShaders[MDesc.HullShaderName]->GetBufferPointer()),
+			mShaders[MDesc.HullShaderName]->GetBufferSize()
 		};
 		descPipelineState.DS =
 		{
-			reinterpret_cast<BYTE*>(mShaders["standardDS_deferred"]->GetBufferPointer()),
-			mShaders["standardDS_deferred"]->GetBufferSize()
+			reinterpret_cast<BYTE*>(mShaders[MDesc.DomainShaderName]->GetBufferPointer()),
+			mShaders[MDesc.DomainShaderName]->GetBufferSize()
 		};
 		descPipelineState.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_PATCH;
 	}
 	else descPipelineState.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 	descPipelineState.InputLayout = { mInputLayout.data(), (UINT)mInputLayout.size() };
-	descPipelineState.pRootSignature = mRootSignature.Get();
+	descPipelineState.pRootSignature = RootSignatures["Default"].Get();
 	descPipelineState.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
 	descPipelineState.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
 	descPipelineState.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
@@ -1027,7 +1092,7 @@ void RenderingSystem::BuildGlobalPSOs()
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC deferredPsoDesc = {};
 	// Поскольку для полноэкранного квадрата не нужен входной layout, оставляем его пустым:
 	deferredPsoDesc.InputLayout = { nullptr, 0 };
-	deferredPsoDesc.pRootSignature = mLightPassRootSignature.Get(); // либо создайте отдельную корневую сигнатуру для deferred рендера
+	deferredPsoDesc.pRootSignature = RootSignatures["DeferredLightPass"].Get(); // либо создайте отдельную корневую сигнатуру для deferred рендера
 
 	// Загрузка шейдеров deferred освещения (предварительно скомпилированных, например, "DeferredLightVS.cso" и "DeferredLightPS.cso")
 	deferredPsoDesc.VS =
@@ -1064,6 +1129,46 @@ void RenderingSystem::BuildGlobalPSOs()
 	deferredPsoDesc.SampleDesc.Count = 1;
 
 	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&deferredPsoDesc, IID_PPV_ARGS(&GlobalPSOs["DeferredLightPass"])));
+
+
+	//
+	// PSO for skybox
+	//
+
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC skyPsoDesc;
+
+	ZeroMemory(&skyPsoDesc, sizeof(D3D12_GRAPHICS_PIPELINE_STATE_DESC));
+	skyPsoDesc.InputLayout = { mInputLayout.data(), (UINT)mInputLayout.size() };
+	skyPsoDesc.pRootSignature = RootSignatures["Default"].Get();
+	skyPsoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+	skyPsoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+	skyPsoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+	skyPsoDesc.SampleMask = UINT_MAX;
+	skyPsoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	skyPsoDesc.NumRenderTargets = 1;
+	skyPsoDesc.RTVFormats[0] = mBackBufferFormat;
+	skyPsoDesc.SampleDesc.Count = m4xMsaaState ? 4 : 1;
+	skyPsoDesc.SampleDesc.Quality = m4xMsaaState ? (m4xMsaaQuality - 1) : 0;
+	skyPsoDesc.DSVFormat = mDepthStencilFormat;
+
+	// The camera is inside the sky sphere, so just turn off culling.
+	skyPsoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+
+	// Make sure the depth function is LESS_EQUAL and not just LESS.  
+	// Otherwise, the normalized depth values at z = 1 (NDC) will 
+	// fail the depth test if the depth buffer was cleared to 1.
+	skyPsoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
+	skyPsoDesc.VS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["SkyBoxVS"]->GetBufferPointer()),
+		mShaders["SkyBoxVS"]->GetBufferSize()
+	};
+	skyPsoDesc.PS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["SkyBoxPS"]->GetBufferPointer()),
+		mShaders["SkyBoxPS"]->GetBufferSize()
+	};
+	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&skyPsoDesc, IID_PPV_ARGS(&GlobalPSOs["SkyBox"])));
 }
 
 void RenderingSystem::BuildFrameResources()
@@ -1204,14 +1309,25 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 			OutputDebugStringA(("Texture resource is null: " + i.Name + "\n").c_str());
 			continue;
 		}
-
+		
 		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-
 		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 		srvDesc.Format = tex->GetDesc().Format;
-		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-		srvDesc.Texture2D.MostDetailedMip = 0;
-		srvDesc.Texture2D.MipLevels = tex->GetDesc().MipLevels;
+		switch (i.TexType)
+		{
+		case TextureDesc::Texture2D:
+			srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+			srvDesc.Texture2D.MostDetailedMip = 0;
+			srvDesc.Texture2D.MipLevels = tex->GetDesc().MipLevels;
+			break;
+		case TextureDesc::CubeMap:
+			srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
+			srvDesc.TextureCube.MostDetailedMip = 0;
+			srvDesc.TextureCube.MipLevels = tex->GetDesc().MipLevels;
+			srvDesc.TextureCube.ResourceMinLODClamp = 0.0f;
+			break;
+		}
+
 		md3dDevice->CreateShaderResourceView(tex.Get(), &srvDesc, hDescriptor);
 
 		hDescriptor.Offset(1, mCbvSrvDescriptorSize);
@@ -1256,6 +1372,13 @@ void RenderingSystem::BuildShaders(std::vector<ShaderDesc>& ShaderDescs)
 	{
 		mShaders[i.Name] = d3dUtil::CompileShader(i.Path, i.ShaderDefines, i.FunctionName, i.ShaderProfile);
 	}
+
+	//global shaders for deferred rendering
+	mShaders["DeferredLightPassVS"] = d3dUtil::CompileShader(L"../Shaders/DeferredLightPass.hlsl", nullptr, "VS", "vs_5_0");
+	mShaders["DeferredLightPassPS"] = d3dUtil::CompileShader(L"../Shaders/DeferredLightPass.hlsl", nullptr, "PS", "ps_5_0");
+	//for skybox rendering
+	mShaders["SkyBoxVS"] = d3dUtil::CompileShader(L"../Shaders/SkyBox.hlsl", nullptr, "VS", "vs_5_0");
+	mShaders["SkyBoxPS"] = d3dUtil::CompileShader(L"../Shaders/SkyBox.hlsl", nullptr, "PS", "ps_5_0");
 }
 
 void RenderingSystem::BuildBasicGeometry()

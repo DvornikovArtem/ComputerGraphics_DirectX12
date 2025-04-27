@@ -422,10 +422,8 @@ void Gbuffer::TransitFromShaderResourceToCommon(ComPtr<ID3D12GraphicsCommandList
 }
 
 // Функция изменения размеров: освобождает текущие ресурсы и воссоздает их с новыми размерами.
-void Gbuffer::Resize(int width, int height)
+void Gbuffer::Resize(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device> device)
 {
-    ID3D12Device* device = md3dDevice.Get();
-
     // Освобождаем старые ресурсы
     DiffuseTex.Reset();
     EmissiveTex.Reset();

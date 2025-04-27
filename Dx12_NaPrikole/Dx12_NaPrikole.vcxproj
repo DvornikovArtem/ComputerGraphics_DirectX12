@@ -211,6 +211,7 @@
     <FxCompile Include="..\Shaders\DeferredLightPass.hlsl" />
     <FxCompile Include="..\Shaders\DeferredGeometryPass.hlsl" />
     <FxCompile Include="..\Shaders\LightingUtil.hlsl" />
+    <FxCompile Include="..\Shaders\SkyBox.hlsl" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\Camera.h" />
