@@ -30,7 +30,7 @@ struct PassConstants
 
     DirectX::XMFLOAT4 AmbientLight = { 0.0f, 0.0f, 0.0f, 1.0f };
 
-	DirectX::XMFLOAT4 FogColor = { 0.18f, 0.53f, 0.9f, 1.0f };
+	DirectX::XMFLOAT4 FogColor = { 0.f, 0.f, 0.f, 1.0f };//{ 0.18f, 0.53f, 0.9f, 1.0f };
 	float gFogStart = 5.0f;
 	float gFogRange = 150.0f;
 	DirectX::XMFLOAT2 cbPerObjectPad2;

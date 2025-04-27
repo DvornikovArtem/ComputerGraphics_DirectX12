@@ -224,6 +224,7 @@ public:
     void BuildMeshGeometry(std::string Name, const std::string& filename);
     void LoadMeshes(std::vector<MeshDesc>& MeshDescs);
     void BuildPSOs(MaterialDesc& MDesc, std::unordered_map<std::string, ComPtr<ID3D12PipelineState>>& mPSOs);
+    void BuildGlobalPSOs();
     void BuildFrameResources();
     void BuildMaterials(std::vector<MaterialDesc>& MaterialDescs);
     void BuildRenderItems(std::unordered_map<std::string, std::unique_ptr<DrawableObject>>& Objects);
@@ -332,6 +333,8 @@ protected:
 
     std::unique_ptr<Gbuffer> mGbuffer;
     ComPtr<ID3D12RootSignature> mLightPassRootSignature = nullptr;
+
+    std::unordered_map<std::string, Microsoft::WRL::ComPtr<ID3D12PipelineState>> GlobalPSOs;
 };
 
 

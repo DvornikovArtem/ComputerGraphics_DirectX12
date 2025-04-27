@@ -195,66 +195,120 @@ void RenderingSystem::Render()
 {
 	auto cmdListAlloc = mCurrFrameResource->CmdListAlloc;
 
-	// Reuse the memory associated with command recording.
-	// We can only reset when the associated command lists have finished execution on the GPU.
 	ThrowIfFailed(cmdListAlloc->Reset());
 
-	// A command list can be reset after it has been added to the command queue via ExecuteCommandList.
-	// Reusing the command list reuses memory.
 	ThrowIfFailed(mCommandList->Reset(cmdListAlloc.Get(), nullptr));
 
 	mCommandList->RSSetViewports(1, &mScreenViewport);
 	mCommandList->RSSetScissorRects(1, &mScissorRect);
 
 	// Indicate a state transition on the resource usage.
-	/*mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
-		D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));*/
 	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mSwapChainBuffer[mCurrBackBuffer].Get(),
 		D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
 
 	// Clear the back buffer and depth buffer.
-	//mCommandList->ClearRenderTargetView(CurrentBackBufferView(), (float*)&mMainPassCB.FogColor, 0, nullptr);
 	mCommandList->ClearRenderTargetView(CurrentBackBufferView(), (float*)&mMainPassCB.FogColor, 0, nullptr);
-	//mCommandList->ClearDepthStencilView(DepthStencilView(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
 	mCommandList->ClearDepthStencilView(DepthStencilView(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
 
-	// Specify the buffers we are going to render to.
-	//mCommandList->OMSetRenderTargets(1, &CurrentBackBufferView(), true, &DepthStencilView());
-	mCommandList->OMSetRenderTargets(1, &CurrentBackBufferView(), true, &DepthStencilView());
-
+	// Deferred Passes:
+	mGbuffer->TransitToOpaqueRenderingState(mCommandList);
+	
+	//
+	// 1. Geometry: draw scene into G-buffer.
+	//
+	 
 	mCommandList->SetGraphicsRootSignature(mRootSignature.Get());
 
-	UINT passCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(PassConstants));
+	D3D12_CPU_DESCRIPTOR_HANDLE rtvs[5] = {
+		mGbuffer->DiffuseRTV,
+		mGbuffer->EmissiveRTV,
+		mGbuffer->NormalRTV,
+		mGbuffer->MaterialAlbedoRTV,
+		mGbuffer->MaterialFresnelRoughnessRTV
+	};
 
-	// Draw opaque items--floors, walls, skull.
+	mCommandList->OMSetRenderTargets(5, rtvs, false, &DepthStencilView());
+
+	// clear G-buffer
+	float clearColor[4] = { 0.f, 0.f, 0.f, 1.f };
+	for (int i = 0; i < 5; ++i)
+	{
+		mCommandList->ClearRenderTargetView(rtvs[i], clearColor, 0, nullptr);
+	}
+
+	//mCommandList->ClearDepthStencilView(DepthStencilView(), D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+
+
+
 	auto passCB = mCurrFrameResource->PassCB->Resource();
 	mCommandList->SetGraphicsRootConstantBufferView(2, passCB->GetGPUVirtualAddress());
-	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Opaque], "opaque");
+	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Opaque], "GBufferGeometryPass");
 
-	//// Mark the visible mirror pixels in the stencil buffer with the value 1
-	//mCommandList->OMSetStencilRef(1);
-	//mCommandList->SetPipelineState(mPSOs["markStencilMirrors"].Get());
-	//DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Mirrors]);
+	mGbuffer->TransitToLightsRenderingState(mCommandList);
+	//
+	// 2. Light: calculate light into G-buffer.
+	// 
+	
+		//Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList2> cmdList;
+	//mCommandList.As(&cmdList);
 
-	//// Draw the reflection into the mirror only (only for pixels where the stencil buffer is 1).
-	//// Note that we must supply a different per-pass constant buffer--one with the lights reflected.
-	//mCommandList->SetGraphicsRootConstantBufferView(2, passCB->GetGPUVirtualAddress() + 1 * passCBByteSize);
-	//mCommandList->SetPipelineState(mPSOs["drawStencilReflections"].Get());
-	//DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Reflected]);
+	// Устанавливаем PSO для deferred освещения
+	//cmdList->SetPipelineState(mPSOs["deferredLighting"].Get());
+	mCommandList->SetPipelineState(GlobalPSOs["DeferredLightPass"].Get());
+	// Устанавливаем корневую сигнатуру (можно использовать ту же, что и в BuildRootSignature или создать отдельную)
+	mCommandList->SetGraphicsRootSignature(mLightPassRootSignature.Get());
 
-	// Restore main pass constants and stencil ref.
+
+	// Устанавливаем несколько render target view из G-buffer.
+
+	//mCommandList->OMSetRenderTargets(3, rtvs, false, nullptr);
+	mCommandList->OMSetRenderTargets(1, &CurrentBackBufferView(), false, &DepthStencilView());
+
+	// Здесь необходимо установить дескрипторы SRV G-buffer.
+	// Например, если в корневой таблице у нас ожидается 3 SRV (t0..t2):
+	// Получаем дескриптор из SRV кучки (рассчитав смещение, если требуется)
+	// Для простоты полагаем, что G-buffer SRV уже находятся в нужном порядке.
+	// Также следует обновить константный буфер с данными источников света (mLights) – этот момент опущен для краткости.
+
+
+
+
+	//UINT lightCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(LightConstants));
+	//UINT passCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(PassConstants));
+
+	//auto lightCB = mCurrFrameResource->LightCB->Resource();
+	//auto passCB = mCurrFrameResource->PassCB->Resource();
+
+	ID3D12DescriptorHeap* descriptorHeaps[] = { mGbuffer->getSRVDescriptorHeap().Get() };
+	mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
+
+
+	CD3DX12_GPU_DESCRIPTOR_HANDLE tex(mGbuffer->getSRVDescriptorHeap()->GetGPUDescriptorHandleForHeapStart());
+
+	//D3D12_GPU_VIRTUAL_ADDRESS lightCBAddress = lightCB->GetGPUVirtualAddress();
+
+	mCommandList->SetGraphicsRootDescriptorTable(0, tex);
+	mCommandList->SetGraphicsRootConstantBufferView(1, passCB->GetGPUVirtualAddress());
+
+	mCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	mCommandList->DrawInstanced(6, 1, 0, 0);
+
+	//DrawLightItems(mCommandList.Get(), mAllLights);
+
+
+
+
+	mGbuffer->TransitFromShaderResourceToCommon(mCommandList);
+
+	//// Specify the buffers we are going to render to.
+	//mCommandList->OMSetRenderTargets(1, &CurrentBackBufferView(), true, &DepthStencilView());
+
+	//mCommandList->SetGraphicsRootSignature(mRootSignature.Get());
+
+	//auto passCB = mCurrFrameResource->PassCB->Resource();
 	//mCommandList->SetGraphicsRootConstantBufferView(2, passCB->GetGPUVirtualAddress());
-	//mCommandList->OMSetStencilRef(0);
+	//DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Opaque], "opaque");
 
-	//DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Transparent], "transparent");
-
-	//// Draw shadows
-	//mCommandList->SetPipelineState(mPSOs["shadow"].Get());
-	//DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Shadow], "shadow");
-
-	// Indicate a state transition on the resource usage.
-	//mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
-	//	D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
 	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
 		D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
 
@@ -535,17 +589,17 @@ void RenderingSystem::BuildRootSignature()
 	lightPassTexTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 5, 0);
 
 	// Root parameter can be a table, root descriptor or root constants.
-	CD3DX12_ROOT_PARAMETER lightPassSlotRootParameter[3];
+	CD3DX12_ROOT_PARAMETER lightPassSlotRootParameter[2];
 
 	// Perfomance TIP: Order from most frequent to least frequent.
 	lightPassSlotRootParameter[0].InitAsDescriptorTable(1, &lightPassTexTable, D3D12_SHADER_VISIBILITY_PIXEL);
-	lightPassSlotRootParameter[1].InitAsConstantBufferView(0);
-	lightPassSlotRootParameter[2].InitAsConstantBufferView(1);
+	//lightPassSlotRootParameter[1].InitAsConstantBufferView(0); //for LightItems
+	lightPassSlotRootParameter[1].InitAsConstantBufferView(0); //for MainPassCB
 
 	auto lightPassStaticSamplers = GetStaticSamplers();
 
 	// A root signature is an array of root parameters.
-	CD3DX12_ROOT_SIGNATURE_DESC lightPassRootSigDesc(3, lightPassSlotRootParameter,
+	CD3DX12_ROOT_SIGNATURE_DESC lightPassRootSigDesc(2, lightPassSlotRootParameter,
 		(UINT)lightPassStaticSamplers.size(), lightPassStaticSamplers.data(),
 		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
@@ -914,53 +968,6 @@ void RenderingSystem::BuildPSOs(MaterialDesc& MDesc, std::unordered_map<std::str
 	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&shadowPsoDesc, IID_PPV_ARGS(&mPSOs["shadow"])));
 
 	//
-	// PSO for GBuffer Light Pass
-	//
-
-	// Здесь можно создать дополнительные PSO для отложенного освещения и тонемаппинга.
-	// Например, PSO для расчёта освещения на основе G-buffer:
-	D3D12_GRAPHICS_PIPELINE_STATE_DESC deferredPsoDesc = {};
-	// Поскольку для полноэкранного квадрата не нужен входной layout, оставляем его пустым:
-	deferredPsoDesc.InputLayout = { nullptr, 0 };
-	deferredPsoDesc.pRootSignature = mLightPassRootSignature.Get(); // либо создайте отдельную корневую сигнатуру для deferred рендера
-
-	// Загрузка шейдеров deferred освещения (предварительно скомпилированных, например, "DeferredLightVS.cso" и "DeferredLightPS.cso")
-	deferredPsoDesc.VS =
-	{
-		reinterpret_cast<BYTE*>(mShaders["DeferredLightPassVS"]->GetBufferPointer()),
-		mShaders["DeferredLightPassVS"]->GetBufferSize()
-	};
-	deferredPsoDesc.PS =
-	{
-		reinterpret_cast<BYTE*>(mShaders["DeferredLightPassPS"]->GetBufferPointer()),
-		mShaders["DeferredLightPassPS"]->GetBufferSize()
-	};
-
-	deferredPsoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-
-
-	CD3DX12_BLEND_DESC blendDesc = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
-	/*blendDesc.RenderTarget[0].BlendEnable = true;
-	blendDesc.RenderTarget[0].LogicOpEnable = false;
-	blendDesc.RenderTarget[0].SrcBlend = D3D12_BLEND_ONE;
-	blendDesc.RenderTarget[0].DestBlend = D3D12_BLEND_ONE;
-	blendDesc.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
-	blendDesc.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;*/
-
-	deferredPsoDesc.BlendState = blendDesc;
-
-	deferredPsoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
-	deferredPsoDesc.DepthStencilState.DepthEnable = false;
-	deferredPsoDesc.DepthStencilState.StencilEnable = false;
-	deferredPsoDesc.SampleMask = UINT_MAX;
-	deferredPsoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-	deferredPsoDesc.NumRenderTargets = 1;
-	deferredPsoDesc.RTVFormats[0] = mBackBufferFormat;
-	deferredPsoDesc.SampleDesc.Count = 1;
-
-	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&deferredPsoDesc, IID_PPV_ARGS(&mPSOs["DeferredLightPass"])));
-
-	//
 	// PSO for GBuffer Geometry Pass
 	//
 
@@ -1009,6 +1016,56 @@ void RenderingSystem::BuildPSOs(MaterialDesc& MDesc, std::unordered_map<std::str
 	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&descPipelineState, IID_PPV_ARGS(&mPSOs["GBufferGeometryPass"])));
 }
 
+void RenderingSystem::BuildGlobalPSOs()
+{
+	//
+	// PSO for GBuffer Light Pass
+	//
+
+	// Здесь можно создать дополнительные PSO для отложенного освещения и тонемаппинга.
+	// Например, PSO для расчёта освещения на основе G-buffer:
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC deferredPsoDesc = {};
+	// Поскольку для полноэкранного квадрата не нужен входной layout, оставляем его пустым:
+	deferredPsoDesc.InputLayout = { nullptr, 0 };
+	deferredPsoDesc.pRootSignature = mLightPassRootSignature.Get(); // либо создайте отдельную корневую сигнатуру для deferred рендера
+
+	// Загрузка шейдеров deferred освещения (предварительно скомпилированных, например, "DeferredLightVS.cso" и "DeferredLightPS.cso")
+	deferredPsoDesc.VS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["DeferredLightPassVS"]->GetBufferPointer()),
+		mShaders["DeferredLightPassVS"]->GetBufferSize()
+	};
+	deferredPsoDesc.PS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["DeferredLightPassPS"]->GetBufferPointer()),
+		mShaders["DeferredLightPassPS"]->GetBufferSize()
+	};
+
+	deferredPsoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+
+
+	CD3DX12_BLEND_DESC blendDesc = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+	/*blendDesc.RenderTarget[0].BlendEnable = true;
+	blendDesc.RenderTarget[0].LogicOpEnable = false;
+	blendDesc.RenderTarget[0].SrcBlend = D3D12_BLEND_ONE;
+	blendDesc.RenderTarget[0].DestBlend = D3D12_BLEND_ONE;
+	blendDesc.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
+	blendDesc.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;*/
+
+	deferredPsoDesc.BlendState = blendDesc;
+
+	deferredPsoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+	deferredPsoDesc.DepthStencilState.DepthEnable = false;
+	deferredPsoDesc.DepthStencilState.StencilEnable = false;
+	deferredPsoDesc.SampleMask = UINT_MAX;
+	deferredPsoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	deferredPsoDesc.NumRenderTargets = 1;
+	deferredPsoDesc.RTVFormats[0] = mBackBufferFormat;
+	deferredPsoDesc.SampleDesc.Count = 1;
+
+	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&deferredPsoDesc, IID_PPV_ARGS(&GlobalPSOs["DeferredLightPass"])));
+}
+
 void RenderingSystem::BuildFrameResources()
 {
 	for (int i = 0; i < gNumFrameResources; ++i)
@@ -1038,6 +1095,7 @@ void RenderingSystem::BuildMaterials(std::vector<MaterialDesc>& MaterialDescs)
 
 		mMaterials[t->Name] = std::move(t);
 	}
+	BuildGlobalPSOs();
 }
 
 void RenderingSystem::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems, std::string RenderLayerName)
@@ -1293,8 +1351,9 @@ void RenderingSystem::UpdateMainPassCB(const GameTimer& gt)
 	//mMainPassCB.Lights[2].Direction = { 0.0f, -0.707f, -0.707f };
 	mMainPassCB.Lights[2].Strength = { 1.f, 1.f, 1.f };
 	mMainPassCB.Lights[2].FalloffStart = 0.f;
-	mMainPassCB.Lights[2].FalloffEnd = 100.f;
+	mMainPassCB.Lights[2].FalloffEnd = 10.f;
 	mMainPassCB.Lights[2].Position = { 1.f, 1.f, 1.f };
+	mMainPassCB.Lights[2].Color = { 1.f, 0.f, 0.92f };
 
 
 	// Main pass stored in index 2

@@ -6,7 +6,7 @@
 
 // Defaults for number of lights.
 #ifndef NUM_DIR_LIGHTS
-    #define NUM_DIR_LIGHTS 0
+    #define NUM_DIR_LIGHTS 2
 #endif
 
 #ifndef NUM_POINT_LIGHTS
@@ -35,28 +35,28 @@ SamplerState gsamAnisotropicWrap  : register(s4);
 SamplerState gsamAnisotropicClamp : register(s5);
 
 
-cbuffer cbPerLight : register(b0)
-{
-    float4x4 gWorld;
+//cbuffer cbPerLight : register(b0)
+//{
+//    float4x4 gWorld;
     
-    float4x4 direction; // используется для Spot Light
+//    float4x4 direction; // используется для Spot Light
 
-    float3 color; // Цвет света
-    float intensity; // Интенсивность света
+//    float3 color; // Цвет света
+//    float intensity; // Интенсивность света
 
-    // Параметры, специфичные для типа света
-    float range; // Радиус действия (для Point Light)
-    float spotAngle; // Угол для Spot Light (в радианах)
+//    // Параметры, специфичные для типа света
+//    float range; // Радиус действия (для Point Light)
+//    float spotAngle; // Угол для Spot Light (в радианах)
 
-    float padding1;
-    float padding2;
-}
+//    float padding1;
+//    float padding2;
+//}
 
 
 
 
 // Constant data that varies per material.
-cbuffer cbPass : register(b1)
+cbuffer cbPass : register(b0)
 {
     float4x4 gView;
     float4x4 gInvView;
@@ -199,12 +199,7 @@ float4 PS(VertexOut pin) : SV_Target
     float4 directLight = ComputeLighting(gLights, mat, posw,
         normal, toEyeW, shadowFactor);
 
-    float4 litColor = directLight;
-
-#ifdef FOG
-	float fogAmount = saturate((distToEye - gFogStart) / gFogRange);
-	litColor = lerp(litColor, gFogColor, fogAmount);
-#endif
+    float4 litColor = directLight + ambient;
 
     // Common convention to take alpha from diffuse albedo.
     litColor.a = diffuseAlbedo.a;
