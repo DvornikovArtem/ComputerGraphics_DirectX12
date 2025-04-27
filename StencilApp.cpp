@@ -175,7 +175,19 @@ void StencilApp::LoadShaders()
         ShaderDesc("standardHS", L"../Shaders/Default.hlsl", "HSMain", nullptr, "hs_5_0"),
         ShaderDesc("standardDS", L"../Shaders/Default.hlsl", "DSMain", nullptr, "ds_5_0"),
         ShaderDesc("HSForDecals", L"../Shaders/Default.hlsl", "HSForDecals", nullptr, "hs_5_0"),
-        ShaderDesc("DSForDecals", L"../Shaders/Default.hlsl", "DSForDecals", nullptr, "ds_5_0")
+        ShaderDesc("DSForDecals", L"../Shaders/Default.hlsl", "DSForDecals", nullptr, "ds_5_0"),
+
+        //deferred shaders
+        ShaderDesc("standardVS_deferred", L"../Shaders/DeferredGeometryPass.hlsl", "VS", nullptr, "vs_5_0"),
+        ShaderDesc("standardPS_deferred", L"../Shaders/DeferredGeometryPass.hlsl", "PS", nullptr, "ps_5_0"),
+        ShaderDesc("RotatingTilesPS_deferred", L"../Shaders/DeferredGeometryPass.hlsl", "PS", defines, "ps_5_0"),
+        ShaderDesc("standardHS_deferred", L"../Shaders/DeferredGeometryPass.hlsl", "HSMain", nullptr, "hs_5_0"),
+        ShaderDesc("standardDS_deferred", L"../Shaders/DeferredGeometryPass.hlsl", "DSMain", nullptr, "ds_5_0"),
+        ShaderDesc("HSForDecals_deferred", L"../Shaders/DeferredGeometryPass.hlsl", "HSForDecals", nullptr, "hs_5_0"),
+        ShaderDesc("DSForDecals_deferred", L"../Shaders/DeferredGeometryPass.hlsl", "DSForDecals", nullptr, "ds_5_0"),
+
+        ShaderDesc("DeferredLightPassVS", L"../Shaders/DeferredLightPass.hlsl", "VS", nullptr, "vs_5_0"),
+        ShaderDesc("DeferredLightPassPS", L"../Shaders/DeferredLightPass.hlsl", "PS", nullptr, "ps_5_0"),
     };
 
     mRenderingSystem->BuildShaders(ShaderDescs);

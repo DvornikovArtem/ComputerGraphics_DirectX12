@@ -69,6 +69,8 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 	CreateSwapChain();
 	CreateRtvAndDsvDescriptorHeaps();
 
+	mGbuffer = std::make_unique<Gbuffer>(mClientWidth, mClientHeight, md3dDevice);
+
 	OnResize();
 
 	// Reset the command list to prep for initialization commands.
@@ -525,6 +527,45 @@ void RenderingSystem::BuildRootSignature()
 		serializedRootSig->GetBufferPointer(),
 		serializedRootSig->GetBufferSize(),
 		IID_PPV_ARGS(mRootSignature.GetAddressOf())));
+
+
+
+
+	CD3DX12_DESCRIPTOR_RANGE lightPassTexTable;
+	lightPassTexTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 5, 0);
+
+	// Root parameter can be a table, root descriptor or root constants.
+	CD3DX12_ROOT_PARAMETER lightPassSlotRootParameter[3];
+
+	// Perfomance TIP: Order from most frequent to least frequent.
+	lightPassSlotRootParameter[0].InitAsDescriptorTable(1, &lightPassTexTable, D3D12_SHADER_VISIBILITY_PIXEL);
+	lightPassSlotRootParameter[1].InitAsConstantBufferView(0);
+	lightPassSlotRootParameter[2].InitAsConstantBufferView(1);
+
+	auto lightPassStaticSamplers = GetStaticSamplers();
+
+	// A root signature is an array of root parameters.
+	CD3DX12_ROOT_SIGNATURE_DESC lightPassRootSigDesc(3, lightPassSlotRootParameter,
+		(UINT)lightPassStaticSamplers.size(), lightPassStaticSamplers.data(),
+		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+
+	// create a root signature with a single slot which points to a descriptor range consisting of a single constant buffer
+	ComPtr<ID3DBlob> serializedLightPassRootSig = nullptr;
+	ComPtr<ID3DBlob> lightPassErrorBlob = nullptr;
+	HRESULT lightPassHr = D3D12SerializeRootSignature(&lightPassRootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1,
+		serializedLightPassRootSig.GetAddressOf(), lightPassErrorBlob.GetAddressOf());
+
+	if (lightPassErrorBlob != nullptr)
+	{
+		::OutputDebugStringA((char*)lightPassErrorBlob->GetBufferPointer());
+	}
+	ThrowIfFailed(lightPassHr);
+
+	ThrowIfFailed(md3dDevice->CreateRootSignature(
+		0,
+		serializedLightPassRootSig->GetBufferPointer(),
+		serializedLightPassRootSig->GetBufferSize(),
+		IID_PPV_ARGS(mLightPassRootSignature.GetAddressOf())));
 }
 
 void RenderingSystem::BuildDescriptorHeap(Material* t)
@@ -871,6 +912,101 @@ void RenderingSystem::BuildPSOs(MaterialDesc& MDesc, std::unordered_map<std::str
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC shadowPsoDesc = transparentPsoDesc;
 	shadowPsoDesc.DepthStencilState = shadowDSS;
 	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&shadowPsoDesc, IID_PPV_ARGS(&mPSOs["shadow"])));
+
+	//
+	// PSO for GBuffer Light Pass
+	//
+
+	// Здесь можно создать дополнительные PSO для отложенного освещения и тонемаппинга.
+	// Например, PSO для расчёта освещения на основе G-buffer:
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC deferredPsoDesc = {};
+	// Поскольку для полноэкранного квадрата не нужен входной layout, оставляем его пустым:
+	deferredPsoDesc.InputLayout = { nullptr, 0 };
+	deferredPsoDesc.pRootSignature = mLightPassRootSignature.Get(); // либо создайте отдельную корневую сигнатуру для deferred рендера
+
+	// Загрузка шейдеров deferred освещения (предварительно скомпилированных, например, "DeferredLightVS.cso" и "DeferredLightPS.cso")
+	deferredPsoDesc.VS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["DeferredLightPassVS"]->GetBufferPointer()),
+		mShaders["DeferredLightPassVS"]->GetBufferSize()
+	};
+	deferredPsoDesc.PS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["DeferredLightPassPS"]->GetBufferPointer()),
+		mShaders["DeferredLightPassPS"]->GetBufferSize()
+	};
+
+	deferredPsoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+
+
+	CD3DX12_BLEND_DESC blendDesc = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+	/*blendDesc.RenderTarget[0].BlendEnable = true;
+	blendDesc.RenderTarget[0].LogicOpEnable = false;
+	blendDesc.RenderTarget[0].SrcBlend = D3D12_BLEND_ONE;
+	blendDesc.RenderTarget[0].DestBlend = D3D12_BLEND_ONE;
+	blendDesc.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
+	blendDesc.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;*/
+
+	deferredPsoDesc.BlendState = blendDesc;
+
+	deferredPsoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+	deferredPsoDesc.DepthStencilState.DepthEnable = false;
+	deferredPsoDesc.DepthStencilState.StencilEnable = false;
+	deferredPsoDesc.SampleMask = UINT_MAX;
+	deferredPsoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	deferredPsoDesc.NumRenderTargets = 1;
+	deferredPsoDesc.RTVFormats[0] = mBackBufferFormat;
+	deferredPsoDesc.SampleDesc.Count = 1;
+
+	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&deferredPsoDesc, IID_PPV_ARGS(&mPSOs["DeferredLightPass"])));
+
+	//
+	// PSO for GBuffer Geometry Pass
+	//
+
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC descPipelineState;
+	ZeroMemory(&descPipelineState, sizeof(descPipelineState));
+	descPipelineState.VS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["standardVS_deferred"]->GetBufferPointer()),
+		mShaders["standardVS_deferred"]->GetBufferSize()
+	};
+	descPipelineState.PS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["standardPS_deferred"]->GetBufferPointer()),
+		mShaders["standardPS_deferred"]->GetBufferSize()
+	};
+	if (MDesc.UseTesselation)
+	{
+		descPipelineState.HS =
+		{
+			reinterpret_cast<BYTE*>(mShaders["standardHS_deferred"]->GetBufferPointer()),
+			mShaders["standardHS_deferred"]->GetBufferSize()
+		};
+		descPipelineState.DS =
+		{
+			reinterpret_cast<BYTE*>(mShaders["standardDS_deferred"]->GetBufferPointer()),
+			mShaders["standardDS_deferred"]->GetBufferSize()
+		};
+		descPipelineState.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_PATCH;
+	}
+	else descPipelineState.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	descPipelineState.InputLayout = { mInputLayout.data(), (UINT)mInputLayout.size() };
+	descPipelineState.pRootSignature = mRootSignature.Get();
+	descPipelineState.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+	descPipelineState.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+	descPipelineState.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+	descPipelineState.SampleMask = UINT_MAX;
+	descPipelineState.NumRenderTargets = 5;
+	descPipelineState.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+	descPipelineState.RTVFormats[1] = DXGI_FORMAT_R32G32B32A32_FLOAT;
+	descPipelineState.RTVFormats[2] = DXGI_FORMAT_R8G8B8A8_SNORM;
+	descPipelineState.RTVFormats[3] = DXGI_FORMAT_R8G8B8A8_UNORM;
+	descPipelineState.RTVFormats[4] = DXGI_FORMAT_R8G8B8A8_UNORM;
+	descPipelineState.DSVFormat = mDepthStencilFormat;
+	descPipelineState.SampleDesc.Count = 1;
+
+	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&descPipelineState, IID_PPV_ARGS(&mPSOs["GBufferGeometryPass"])));
 }
 
 void RenderingSystem::BuildFrameResources()

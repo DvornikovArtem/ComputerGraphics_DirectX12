@@ -16,6 +16,7 @@
 #include <wrl/client.h> 
 #include <unordered_map>
 #include <string>
+#include "Gbuffer.h"
 
 #pragma comment(lib,"d3dcompiler.lib")
 #pragma comment(lib, "D3D12.lib")
@@ -328,6 +329,9 @@ protected:
     XMFLOAT4X4 mProj = MathHelper::Identity4x4();
     
     GameTimer* gt = nullptr;
+
+    std::unique_ptr<Gbuffer> mGbuffer;
+    ComPtr<ID3D12RootSignature> mLightPassRootSignature = nullptr;
 };
 
 
