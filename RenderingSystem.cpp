@@ -192,7 +192,7 @@ void RenderingSystem::OnResize() {
 	
 
 	// FINISH ME
-	//mGbuffer->Resize(mClientWidth, mClientHeight, md3dDevice.Get());
+	mGbuffer->Resize(mClientWidth, mClientHeight, md3dDevice.Get());
 }
 
 void RenderingSystem::Render()
