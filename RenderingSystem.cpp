@@ -529,17 +529,17 @@ void RenderingSystem::BuildRootSignatures()
 	lightPassTexTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 5, 0);
 
 	// Root parameter can be a table, root descriptor or root constants.
-	CD3DX12_ROOT_PARAMETER lightPassSlotRootParameter[2];
+	CD3DX12_ROOT_PARAMETER lightPassSlotRootParameter[3];
 
 	// Perfomance TIP: Order from most frequent to least frequent.
 	lightPassSlotRootParameter[0].InitAsDescriptorTable(1, &lightPassTexTable, D3D12_SHADER_VISIBILITY_PIXEL);
-	//lightPassSlotRootParameter[1].InitAsConstantBufferView(0); //for LightItems
 	lightPassSlotRootParameter[1].InitAsConstantBufferView(0); //for MainPassCB
+	lightPassSlotRootParameter[2].InitAsConstantBufferView(1); //for LightItems
 
 	auto lightPassStaticSamplers = GetStaticSamplers();
 
 	// A root signature is an array of root parameters.
-	CD3DX12_ROOT_SIGNATURE_DESC lightPassRootSigDesc(2, lightPassSlotRootParameter,
+	CD3DX12_ROOT_SIGNATURE_DESC lightPassRootSigDesc(3, lightPassSlotRootParameter,
 		(UINT)lightPassStaticSamplers.size(), lightPassStaticSamplers.data(),
 		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
@@ -1208,24 +1208,35 @@ void RenderingSystem::GBufferLightPass()
 	mCommandList->SetPipelineState(GlobalPSOs["DeferredLightPass"].Get());
 	mCommandList->OMSetRenderTargets(1, &CurrentBackBufferView(), false, &DepthStencilView());
 
+	UINT lightCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(Light));
+	UINT passCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(PassConstants));
+
+	auto lightCB = mCurrFrameResource->LightCB->Resource();
+	auto passCB = mCurrFrameResource->PassCB->Resource();
+
 	ID3D12DescriptorHeap* descriptorHeaps[] = { mGbuffer->getSRVDescriptorHeap().Get() };
 	mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
-
-	auto passCB = mCurrFrameResource->PassCB->Resource();
-	//auto lightCB = mCurrFrameResource->LightCB->Resource();
-
-
 	CD3DX12_GPU_DESCRIPTOR_HANDLE tex(mGbuffer->getSRVDescriptorHeap()->GetGPUDescriptorHandleForHeapStart());
-
-	//D3D12_GPU_VIRTUAL_ADDRESS lightCBAddress = lightCB->GetGPUVirtualAddress();
-
 	mCommandList->SetGraphicsRootDescriptorTable(0, tex);
 	mCommandList->SetGraphicsRootConstantBufferView(1, passCB->GetGPUVirtualAddress());
-
 	mCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-	mCommandList->DrawInstanced(6, 1, 0, 0);
 
-	//DrawLightItems(mCommandList.Get(), mAllLights);
+	// For each light item...
+	for (size_t i = 0; i < mAllLights.size(); ++i)
+	{
+		auto li = mAllLights[i].get();
+
+		//mCommandList->IASetVertexBuffers(0, 1, &li->Geo->VertexBufferView());
+		//mCommandList->IASetIndexBuffer(&li->Geo->IndexBufferView());
+
+		D3D12_GPU_VIRTUAL_ADDRESS lightCBAddress = lightCB->GetGPUVirtualAddress() + li->LightCBIndex * lightCBByteSize;
+		mCommandList->SetGraphicsRootConstantBufferView(2, lightCBAddress);
+
+		//draw full-screen quad for now, replace with more precise forms
+		mCommandList->DrawInstanced(6, 1, 0, 0);
+	}
+
+
 }
 
 void RenderingSystem::DrawSkyBox()

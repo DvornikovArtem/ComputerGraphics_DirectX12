@@ -76,7 +76,7 @@ bool StencilApp::Initialize()
     mRenderingSystem->mCamera.RotateY(DirectX::XM_PI - 0.2f);
     mRenderingSystem->mCamera.Pitch(DirectX::XM_PI / 12.f);
 
-    //Called after all assets and render items are initialized
+    //Called after all assets, render items and lights are initialized
     mRenderingSystem->BuildFrameResources();
 
     return true;

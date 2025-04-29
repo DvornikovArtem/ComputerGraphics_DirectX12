@@ -34,28 +34,7 @@ SamplerState gsamLinearClamp      : register(s3);
 SamplerState gsamAnisotropicWrap  : register(s4);
 SamplerState gsamAnisotropicClamp : register(s5);
 
-
-//cbuffer cbPerLight : register(b0)
-//{
-//    float4x4 gWorld;
-    
-//    float4x4 direction; // используется для Spot Light
-
-//    float3 color; // Цвет света
-//    float intensity; // Интенсивность света
-
-//    // Параметры, специфичные для типа света
-//    float range; // Радиус действия (для Point Light)
-//    float spotAngle; // Угол для Spot Light (в радианах)
-
-//    float padding1;
-//    float padding2;
-//}
-
-
-
-
-// Constant data that varies per material.
+// Constant data that varies per frame.
 cbuffer cbPass : register(b0)
 {
     float4x4 gView;
@@ -87,6 +66,12 @@ cbuffer cbPass : register(b0)
     
     float4 Decals[3];
 };
+
+// Constant data that varies per light.
+cbuffer cbPerLight : register(b1)
+{
+    Light CurrentLight;
+}
 
 
 struct VertexIn
