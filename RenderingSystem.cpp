@@ -346,6 +346,9 @@ void RenderingSystem::BuildRenderItems(std::unordered_map<std::string, std::uniq
 		t->StartIndexLocation = t->Geo->DrawArgs[i->GeometryName].StartIndexLocation;
 		t->BaseVertexLocation = t->Geo->DrawArgs[i->GeometryName].BaseVertexLocation;
 
+		t->currentLOD = 0;
+		t->numLODs = t->Geo->DrawArgs.size() - 1;
+
 		mRitemLayer[i->RenderLayer].push_back(t.get());
 		mAllRitems.push_back(std::move(t));
 		
@@ -679,42 +682,41 @@ void RenderingSystem::UpdateLightCBs(const GameTimer& gt)
 	}
 }
 
-void RenderingSystem::BuildMeshGeometry(std::string Name, const std::string & filename) {
+void RenderingSystem::BuildMeshGeometry(std::string Name, const std::string& filename) {
 	Assimp::Importer importer;
 
-	// Загружаем сцену
 	const aiScene* scene = importer.ReadFile(filename,
 		aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_GenNormals | aiProcess_CalcTangentSpace);
 
 	if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
 		MessageBoxW(0, L"Model not found.", 0, 0);
-		//std::cerr << "Ошибка загрузки файла: " << importer.GetErrorString() << std::endl;
 		return;
 	}
 
 	std::vector<Vertex> vertices;
 	std::vector<std::int32_t> indices;
 
-	// Проходим по всем мешам сцены
+
+	auto geo = std::make_unique<MeshGeometry>();
+	geo->Name = Name;
+
 	for (unsigned int i = 0; i < scene->mNumMeshes; i++) {
 		aiMesh* mesh = scene->mMeshes[i];
+		UINT baseVertexLocation = (UINT)vertices.size();
+		UINT startIndexLocation = (UINT)indices.size();
 
 		for (unsigned int j = 0; j < mesh->mNumVertices; j++) {
 			Vertex vertex;
 
-			// Позиция вершины
 			vertex.Pos.x = mesh->mVertices[j].x;
 			vertex.Pos.y = mesh->mVertices[j].y;
 			vertex.Pos.z = mesh->mVertices[j].z;
 
-			// Нормали
 			if (mesh->HasNormals()) {
 				vertex.Normal.x = mesh->mNormals[j].x;
 				vertex.Normal.y = mesh->mNormals[j].y;
 				vertex.Normal.z = mesh->mNormals[j].z;
 			}
-
-			// Текстурные координаты (если есть)
 			if (mesh->HasTextureCoords(0)) {
 				vertex.TexC.x = mesh->mTextureCoords[0][j].x;
 				vertex.TexC.y = mesh->mTextureCoords[0][j].y;
@@ -723,8 +725,6 @@ void RenderingSystem::BuildMeshGeometry(std::string Name, const std::string & fi
 				vertex.TexC.x = 0.0f;
 				vertex.TexC.y = 0.0f;
 			}
-
-			// Тангенты
 			if (mesh->HasTangentsAndBitangents()) {
 				vertex.Tangent.x = mesh->mTangents[j].x;
 				vertex.Tangent.y = mesh->mTangents[j].y;
@@ -732,16 +732,28 @@ void RenderingSystem::BuildMeshGeometry(std::string Name, const std::string & fi
 			}
 
 			vertices.push_back(vertex);
-			indices.push_back(static_cast<std::int32_t>(vertices.size() - 1));
 		}
+
+		for (unsigned int f = 0; f < mesh->mNumFaces; ++f) {
+			const aiFace& face = mesh->mFaces[f];
+			for (unsigned int k = 0; k < face.mNumIndices; ++k) {
+				indices.push_back(static_cast<std::int32_t>(face.mIndices[k] + baseVertexLocation));
+			}
+		}
+
+		SubmeshGeometry submesh;
+		submesh.IndexCount = (UINT)indices.size();
+		submesh.StartIndexLocation = startIndexLocation;
+		submesh.BaseVertexLocation = 0;
+
+		std::string submeshName = Name + "_LOD" + std::to_string(i);
+
+		geo->DrawArgs[submeshName] = submesh;
+
 	}
 
 	const UINT vbByteSize = (UINT)vertices.size() * sizeof(Vertex);
-
 	const UINT ibByteSize = (UINT)indices.size() * sizeof(std::int32_t);
-
-	auto geo = std::make_unique<MeshGeometry>();
-	geo->Name = Name;
 
 	ThrowIfFailed(D3DCreateBlob(vbByteSize, &geo->VertexBufferCPU));
 	CopyMemory(geo->VertexBufferCPU->GetBufferPointer(), vertices.data(), vbByteSize);
@@ -760,15 +772,7 @@ void RenderingSystem::BuildMeshGeometry(std::string Name, const std::string & fi
 	geo->IndexFormat = DXGI_FORMAT_R32_UINT;
 	geo->IndexBufferByteSize = ibByteSize;
 
-	SubmeshGeometry submesh;
-	submesh.IndexCount = (UINT)indices.size();
-	submesh.StartIndexLocation = 0;
-	submesh.BaseVertexLocation = 0;
-
-	geo->DrawArgs[Name] = submesh;
-
 	mGeometries[geo->Name] = std::move(geo);
-
 }
 
 void RenderingSystem::LoadMeshes(std::vector<MeshDesc>& MeshDescs)
@@ -998,7 +1002,13 @@ void RenderingSystem::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const 
 		cmdList->SetGraphicsRootConstantBufferView(3, matCBAddress);
 
 
-		cmdList->DrawIndexedInstanced(ri->IndexCount, 1, ri->StartIndexLocation, ri->BaseVertexLocation, 0);
+		std::string subMeshName = ri->Geo->Name + "_LOD" + std::to_string(ri->currentLOD);
+
+		UINT IndexCount = ri->Geo->DrawArgs[subMeshName].IndexCount;
+		UINT StartIndexLocation = ri->Geo->DrawArgs[subMeshName].StartIndexLocation;
+		UINT BaseVertexLocation = ri->Geo->DrawArgs[subMeshName].BaseVertexLocation;
+
+		cmdList->DrawIndexedInstanced(IndexCount, 1, StartIndexLocation, BaseVertexLocation, 0);
 	}
 }
 
@@ -1106,7 +1116,13 @@ void RenderingSystem::DrawSkyBox()
 		mCommandList->SetGraphicsRootConstantBufferView(1, objCBAddress);
 		mCommandList->SetGraphicsRootConstantBufferView(3, matCBAddress);
 
-		mCommandList->DrawIndexedInstanced(ri->IndexCount, 1, ri->StartIndexLocation, ri->BaseVertexLocation, 0);
+		std::string subMeshName = ri->Geo->Name + "_LOD" + std::to_string(ri->currentLOD);
+
+		UINT IndexCount = ri->Geo->DrawArgs[subMeshName].IndexCount;
+		UINT StartIndexLocation = ri->Geo->DrawArgs[subMeshName].StartIndexLocation;
+		UINT BaseVertexLocation = ri->Geo->DrawArgs[subMeshName].BaseVertexLocation;
+
+		mCommandList->DrawIndexedInstanced(IndexCount, 1, StartIndexLocation, BaseVertexLocation, 0);
 	}
 }
 
@@ -1213,13 +1229,28 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 
 void RenderingSystem::UpdateRenderItems(std::unordered_map<std::string, std::unique_ptr<DrawableObject>>& mAllObjects)
 {
+	XMVECTOR cameraPos = mCamera.GetPosition();
+
 	int k = 0;
 	for (auto& pair : mAllObjects)
 	{
 		auto i = pair.second.get();
+
+		auto t = mAllRitems[k].get();
+
+		float dx = i->WorldLocation.x - XMVectorGetX(cameraPos);
+		float dy = i->WorldLocation.y - XMVectorGetY(cameraPos);
+		float dz = i->WorldLocation.z - XMVectorGetZ(cameraPos);
+		float DistanceToObject = sqrtf(dx * dx + dy * dy + dz * dz);
+
+		if (DistanceToObject < 10.f) t->currentLOD = 0;
+		else if (DistanceToObject < 20.f) t->currentLOD = std::min(t->numLODs - 1, (UINT)1);
+		else if (DistanceToObject < 30.f) t->currentLOD = std::min(t->numLODs - 1, (UINT)2);
+		else if (DistanceToObject < 40.f) t->currentLOD = std::min(t->numLODs - 1, (UINT)3);
+		else if (DistanceToObject < 50.f) t->currentLOD = std::min(t->numLODs - 1, (UINT)4);
+
 		if (i->NeedsUpdate)
 		{
-			auto t = mAllRitems[k].get();
 			XMStoreFloat4x4(&t->World, XMMatrixScaling(i->Scale.x, i->Scale.y, i->Scale.z)
 				* XMMatrixRotationRollPitchYaw(i->WorldRotation.z, i->WorldRotation.y, i->WorldRotation.x)
 				* XMMatrixTranslation(i->WorldLocation.x, i->WorldLocation.y, i->WorldLocation.z));
@@ -1312,7 +1343,7 @@ void RenderingSystem::BuildBasicGeometry()
 		geo->IndexFormat = DXGI_FORMAT_R16_UINT;
 		geo->IndexBufferByteSize = ibByteSize;
 
-		geo->DrawArgs[Names[k]] = *Submesh;
+		geo->DrawArgs[Names[k] + "_LOD0"] = *Submesh;
 
 		mGeometries[geo->Name] = std::move(geo);
 	}

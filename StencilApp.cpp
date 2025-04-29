@@ -241,7 +241,7 @@ void StencilApp::LoadMeshes()
     std::vector<MeshDesc> MeshDescs =
     {
         MeshDesc("Head", "../Models/african_head.obj"),
-        MeshDesc("PatrickStar", "../Models/patrickstar.obj")
+        MeshDesc("PatrickStar", "../Models/patrickstarWLODS.fbx")
     };
 
     mRenderingSystem->LoadMeshes(MeshDescs);
@@ -259,7 +259,6 @@ void StencilApp::MakeDrawableObjects()
     SkyBoxSphere->Scale = XMFLOAT3(5000.0f, 5000.0f, 5000.0f);
 
     mAllObjects[SkyBoxSphere->Name] = std::move(SkyBoxSphere);
-
 
     auto TesselationTestSphere = std::make_unique<DrawableObject>();
     TesselationTestSphere->Name = "TesselationTestSphere";

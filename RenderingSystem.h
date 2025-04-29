@@ -149,6 +149,9 @@ struct RenderItem
     UINT IndexCount = 0;
     UINT StartIndexLocation = 0;
     int BaseVertexLocation = 0;
+
+    UINT numLODs = 1;
+    UINT currentLOD = 0;
 };
 
 struct LightObject
