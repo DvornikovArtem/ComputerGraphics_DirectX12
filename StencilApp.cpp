@@ -33,6 +33,7 @@ private:
     void MakeMaterials();
     void LoadMeshes();
     void MakeDrawableObjects();
+    void MakeLights();
 
 };
 
@@ -69,6 +70,7 @@ bool StencilApp::Initialize()
     MakeMaterials();
     LoadMeshes();
     MakeDrawableObjects();
+    MakeLights();
 
     mRenderingSystem->mCamera.SetPosition(-1.0f, 3.0f, 5.0f);
     mRenderingSystem->mCamera.RotateY(DirectX::XM_PI - 0.2f);
@@ -89,7 +91,9 @@ void StencilApp::Update(const GameTimer& gt)
 {
     OnKeyboardInput(gt);
 
+    //Set NeedsUpdate for every object that changes its values at runtime
     mAllObjects["Head"]->WorldRotation.y = gt.TotalTime();
+    mAllObjects["Head"]->NeedsUpdate = true;
 
 	mRenderingSystem->Update(mAllObjects);
 }
@@ -326,6 +330,38 @@ void StencilApp::MakeDrawableObjects()
     mAllObjects[Patrick->Name] = std::move(Patrick);
 
     mRenderingSystem->BuildRenderItems(mAllObjects);
+}
+
+void StencilApp::MakeLights()
+{
+    auto Direct1 = std::make_unique<LightObject>();
+    Direct1->Name = "Direct1";
+    Direct1->LightType = LightType::Directional;
+    Direct1->WorldRotation = { 0.57735f, -0.57735f, 0.57735f };
+    Direct1->Strength = 0.6f;
+
+    mAllLights[Direct1->Name] = std::move(Direct1);
+
+    auto Direct2 = std::make_unique<LightObject>();
+    Direct2->Name = "Direct2";
+    Direct2->LightType = LightType::Directional;
+    Direct2->WorldRotation = { -0.57735f, -0.57735f, 0.57735f };
+    Direct2->Strength = 0.6f;
+
+    mAllLights[Direct2->Name] = std::move(Direct2);
+
+    auto Point1 = std::make_unique<LightObject>();
+    Point1->Name = "Point1";
+    Point1->LightType = LightType::Pointlight;
+    Point1->WorldLocation = { 1.f, 1.f, 1.f };
+    Point1->Strength = 1.f;
+    Point1->Color = { 1.f, 0.f, 0.92f };
+    Point1->FalloffStart = 1.f;
+    Point1->FalloffEnd = 10.f;
+
+    mAllLights[Point1->Name] = std::move(Point1);
+
+    mRenderingSystem->BuildLightItems(mAllLights);
 }
 
 

@@ -210,6 +210,13 @@ struct MeshGeometry
 	}
 };
 
+enum struct LightType
+{
+    Directional,
+    Pointlight,
+    Spotlight,
+};
+
 struct Light
 {
     DirectX::XMFLOAT3 Strength = { 0.5f, 0.5f, 0.5f };
@@ -219,8 +226,9 @@ struct Light
     DirectX::XMFLOAT3 Position = { 0.0f, 0.0f, 0.0f };  // point/spot light only
     float SpotPower = 64.0f;                            // spot light only
     DirectX::XMFLOAT3 Color = { 1.f, 1.f, 1.f };
-    float pad;
+    int LightType = 1; //0 - directional; 1 - point; 2 - spot
 };
+
 
 #define MaxLights 16
 

@@ -15,7 +15,7 @@ struct Light
     float3 Position;    // point light only
     float SpotPower;    // spot light only
     float3 Color;
-    float pad;
+    int LightType;
 };
 
 struct Material

@@ -151,6 +151,24 @@ struct RenderItem
     int BaseVertexLocation = 0;
 };
 
+struct LightObject
+{
+    LightObject() {}
+
+    float Strength = 0.5f;
+    float FalloffStart = 1.0f;                          // point/spot light only
+    XMFLOAT3 WorldRotation = { 0.0f, -1.0f, 0.0f };// directional/spot light only
+    float FalloffEnd = 10.0f;                           // point/spot light only
+    XMFLOAT3 WorldLocation = { 0.0f, 0.0f, 0.0f };  // point/spot light only
+    float SpotPower = 64.0f;                            // spot light only
+    XMFLOAT3 Color = { 1.f, 1.f, 1.f };
+    LightType LightType = LightType::Pointlight;
+    std::string Name = "";
+    int LightCBIndex = 0; // DONT CHANGE ME
+    bool NeedsUpdate = true;
+    int NumFramesDirty = gNumFrameResources;
+};
+
 struct DrawableObject
 {
     DrawableObject() {}
@@ -182,6 +200,7 @@ struct DrawableObject
     XMFLOAT3 WorldRotation = XMFLOAT3(0.f, 0.f, 0.f);
     XMFLOAT3 Scale = XMFLOAT3(1.f, 1.f, 1.f);
     XMMATRIX TexTransform = XMMatrixIdentity();
+    bool NeedsUpdate = true;
 };
 
 enum class RenderLayer : int
@@ -215,6 +234,7 @@ public:
     void MakeDecal() { XMStoreFloat4(&mMainPassCB.Decals[0], mCamera.GetPosition() + mCamera.GetLook() * 4); }
 
     void UpdateObjectCBs(const GameTimer& gt);
+    void UpdateLightCBs(const GameTimer& gt);
     void UpdateMaterialCBs(const GameTimer& gt);
     void UpdateMainPassCB(const GameTimer& gt);
     void UpdateReflectedPassCB(const GameTimer& gt);
@@ -232,8 +252,14 @@ public:
     void BuildFrameResources();
     void BuildMaterials(std::vector<MaterialDesc>& MaterialDescs);
     void BuildRenderItems(std::unordered_map<std::string, std::unique_ptr<DrawableObject>>& Objects);
+    void BuildLightItems(std::unordered_map<std::string, std::unique_ptr<LightObject>>& Objects);
 
-    void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems, std::string RenderLayerName);
+    void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems, std::string PSOName);
+
+    void GBufferGeometryPass();
+    void GBufferLightPass();
+    
+    void DrawSkyBox();
 
     void Render();
 
@@ -318,6 +344,7 @@ protected:
 
     std::vector<D3D12_INPUT_ELEMENT_DESC> mInputLayout;
     std::vector<std::unique_ptr<RenderItem>> mAllRitems;
+    std::vector<std::unique_ptr<LightObject>> mAllLights;
     std::vector<RenderItem*> mRitemLayer[(int)RenderLayer::Count];
 
     PassConstants mMainPassCB;
