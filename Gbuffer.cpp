@@ -36,12 +36,33 @@ Gbuffer::Gbuffer(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device> dev
 
     HRESULT hr = S_OK;
 
-    D3D12_CLEAR_VALUE clearValue = {};
-    clearValue.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-    clearValue.Color[0] = 0.0f;
-    clearValue.Color[1] = 0.0f;
-    clearValue.Color[2] = 0.0f;
-    clearValue.Color[3] = 1.0f;
+    D3D12_CLEAR_VALUE clearValue_UNORM = {};
+    clearValue_UNORM.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    clearValue_UNORM.Color[0] = 0.0f;
+    clearValue_UNORM.Color[1] = 0.0f;
+    clearValue_UNORM.Color[2] = 0.0f;
+    clearValue_UNORM.Color[3] = 1.0f;
+
+    D3D12_CLEAR_VALUE clearValue_SNORM = {};
+    clearValue_SNORM.Format = DXGI_FORMAT_R8G8B8A8_SNORM;
+    clearValue_SNORM.Color[0] = 0.0f;
+    clearValue_SNORM.Color[1] = 0.0f;
+    clearValue_SNORM.Color[2] = 0.0f;
+    clearValue_SNORM.Color[3] = 1.0f;
+
+    D3D12_CLEAR_VALUE clearValue_FLOAT = {};
+    clearValue_FLOAT.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+    clearValue_FLOAT.Color[0] = 0.0f;
+    clearValue_FLOAT.Color[1] = 0.0f;
+    clearValue_FLOAT.Color[2] = 0.0f;
+    clearValue_FLOAT.Color[3] = 1.0f;
+
+    D3D12_CLEAR_VALUE clearValue2 = {};
+    clearValue2.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+    clearValue2.Color[0] = 0.0f;
+    clearValue2.Color[1] = 0.0f;
+    clearValue2.Color[2] = 0.0f;
+    clearValue2.Color[3] = 1.0f;
 
     // —оздаем ресурс дл€ DiffuseTex (формат 8-битный UNORM)
     hr = device->CreateCommittedResource(
@@ -49,18 +70,11 @@ Gbuffer::Gbuffer(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device> dev
         D3D12_HEAP_FLAG_NONE,
         &CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R8G8B8A8_UNORM, width, height, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET),
         D3D12_RESOURCE_STATE_COMMON,
-        &clearValue,
+        &clearValue_UNORM,
         IID_PPV_ARGS(&DiffuseTex)
     );
     if (FAILED(hr))
         throw std::runtime_error("Failed to create DiffuseTex");
-
-    D3D12_CLEAR_VALUE clearValue8 = {};
-    clearValue.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
-    clearValue.Color[0] = 0.0f;
-    clearValue.Color[1] = 0.0f;
-    clearValue.Color[2] = 0.0f;
-    clearValue.Color[3] = 1.0f;
 
     // —оздаем ресурс дл€ EmissiveTex (формат 8-битный UNORM)
     hr = device->CreateCommittedResource(
@@ -68,7 +82,7 @@ Gbuffer::Gbuffer(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device> dev
         D3D12_HEAP_FLAG_NONE,
         &CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R32G32B32A32_FLOAT, width, height, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET),
         D3D12_RESOURCE_STATE_COMMON,
-        nullptr,
+        &clearValue_FLOAT,
         IID_PPV_ARGS(&EmissiveTex)
     );
     if (FAILED(hr))
@@ -80,7 +94,7 @@ Gbuffer::Gbuffer(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device> dev
         D3D12_HEAP_FLAG_NONE,
         &CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R8G8B8A8_SNORM, width, height, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET),
         D3D12_RESOURCE_STATE_COMMON,
-        nullptr,
+        &clearValue_SNORM,
         IID_PPV_ARGS(&NormalTex)
     );
     if (FAILED(hr))
@@ -92,7 +106,7 @@ Gbuffer::Gbuffer(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device> dev
         D3D12_HEAP_FLAG_NONE,
         &CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R8G8B8A8_UNORM, width, height, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET),
         D3D12_RESOURCE_STATE_COMMON,
-        nullptr,
+        &clearValue_UNORM,
         IID_PPV_ARGS(&MaterialAlbedoTex)
     );
     if (FAILED(hr))
@@ -104,18 +118,11 @@ Gbuffer::Gbuffer(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device> dev
         D3D12_HEAP_FLAG_NONE,
         &CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R8G8B8A8_UNORM, width, height, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET),
         D3D12_RESOURCE_STATE_COMMON,
-        nullptr,
+        &clearValue_UNORM,
         IID_PPV_ARGS(&MaterialFresnelRoughnessTex)
     );
     if (FAILED(hr))
         throw std::runtime_error("Failed to create MaterialFresnelRoughnessTex");
-
-    D3D12_CLEAR_VALUE clearValue2 = {};
-    clearValue2.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
-    clearValue2.Color[0] = 0.0f;
-    clearValue2.Color[1] = 0.0f;
-    clearValue2.Color[2] = 0.0f;
-    clearValue2.Color[3] = 1.0f;
 
     // —оздаем ресурс дл€ AccumulationBuf (формат 16-битный FLOAT)
     hr = device->CreateCommittedResource(
@@ -135,7 +142,7 @@ Gbuffer::Gbuffer(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device> dev
         D3D12_HEAP_FLAG_NONE,
         &CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R8G8B8A8_UNORM, width, height, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET),
         D3D12_RESOURCE_STATE_COMMON,
-        nullptr,
+        &clearValue_UNORM,
         IID_PPV_ARGS(&BloomTex)
     );
     if (FAILED(hr))
@@ -437,12 +444,40 @@ void Gbuffer::Resize(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device>
 
     // ¬оссоздаем ресурсы с новыми размерами аналогично конструктору
 
+    D3D12_CLEAR_VALUE clearValue_UNORM = {};
+    clearValue_UNORM.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    clearValue_UNORM.Color[0] = 0.0f;
+    clearValue_UNORM.Color[1] = 0.0f;
+    clearValue_UNORM.Color[2] = 0.0f;
+    clearValue_UNORM.Color[3] = 1.0f;
+
+    D3D12_CLEAR_VALUE clearValue_SNORM = {};
+    clearValue_SNORM.Format = DXGI_FORMAT_R8G8B8A8_SNORM;
+    clearValue_SNORM.Color[0] = 0.0f;
+    clearValue_SNORM.Color[1] = 0.0f;
+    clearValue_SNORM.Color[2] = 0.0f;
+    clearValue_SNORM.Color[3] = 1.0f;
+
+    D3D12_CLEAR_VALUE clearValue_FLOAT = {};
+    clearValue_FLOAT.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+    clearValue_FLOAT.Color[0] = 0.0f;
+    clearValue_FLOAT.Color[1] = 0.0f;
+    clearValue_FLOAT.Color[2] = 0.0f;
+    clearValue_FLOAT.Color[3] = 1.0f;
+
+    D3D12_CLEAR_VALUE clearValue2 = {};
+    clearValue2.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+    clearValue2.Color[0] = 0.0f;
+    clearValue2.Color[1] = 0.0f;
+    clearValue2.Color[2] = 0.0f;
+    clearValue2.Color[3] = 1.0f;
+
     hr = device->CreateCommittedResource(
         &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
         D3D12_HEAP_FLAG_NONE,
         &CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R8G8B8A8_UNORM, width, height, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET),
         D3D12_RESOURCE_STATE_COMMON,
-        nullptr,
+        &clearValue_UNORM,
         IID_PPV_ARGS(&DiffuseTex)
     );
     if (FAILED(hr))
@@ -453,7 +488,7 @@ void Gbuffer::Resize(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device>
         D3D12_HEAP_FLAG_NONE,
         &CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R32G32B32A32_FLOAT, width, height, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET),
         D3D12_RESOURCE_STATE_COMMON,
-        nullptr,
+        &clearValue_FLOAT,
         IID_PPV_ARGS(&EmissiveTex)
     );
     if (FAILED(hr))
@@ -464,7 +499,7 @@ void Gbuffer::Resize(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device>
         D3D12_HEAP_FLAG_NONE,
         &CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R8G8B8A8_SNORM, width, height, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET),
         D3D12_RESOURCE_STATE_COMMON,
-        nullptr,
+        &clearValue_SNORM,
         IID_PPV_ARGS(&NormalTex)
     );
     if (FAILED(hr))
@@ -475,7 +510,7 @@ void Gbuffer::Resize(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device>
         D3D12_HEAP_FLAG_NONE,
         &CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R8G8B8A8_UNORM, width, height, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET),
         D3D12_RESOURCE_STATE_COMMON,
-        nullptr,
+        &clearValue_UNORM,
         IID_PPV_ARGS(&MaterialAlbedoTex)
     );
     if (FAILED(hr))
@@ -486,7 +521,7 @@ void Gbuffer::Resize(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device>
         D3D12_HEAP_FLAG_NONE,
         &CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R8G8B8A8_UNORM, width, height, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET),
         D3D12_RESOURCE_STATE_COMMON,
-        nullptr,
+        &clearValue_UNORM,
         IID_PPV_ARGS(&MaterialFresnelRoughnessTex)
     );
     if (FAILED(hr))
@@ -497,7 +532,7 @@ void Gbuffer::Resize(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device>
         D3D12_HEAP_FLAG_NONE,
         &CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R16G16B16A16_FLOAT, width, height, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET),
         D3D12_RESOURCE_STATE_COMMON,
-        nullptr,
+        &clearValue2,
         IID_PPV_ARGS(&AccumulationBuf)
     );
     if (FAILED(hr))
@@ -508,7 +543,7 @@ void Gbuffer::Resize(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device>
         D3D12_HEAP_FLAG_NONE,
         &CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R8G8B8A8_UNORM, width, height, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET),
         D3D12_RESOURCE_STATE_COMMON,
-        nullptr,
+        &clearValue_UNORM,
         IID_PPV_ARGS(&BloomTex)
     );
     if (FAILED(hr))

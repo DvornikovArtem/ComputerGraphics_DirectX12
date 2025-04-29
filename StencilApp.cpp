@@ -95,8 +95,8 @@ void StencilApp::Update(const GameTimer& gt)
     mAllObjects["Head"]->WorldRotation.y = gt.TotalTime();
     mAllObjects["Head"]->NeedsUpdate = true;
 
-    //mAllLightObjects["Spot1"]->Color.y = gt.TotalTime();
-    //mAllLights["Spot1"]->NeedsUpdate = true;
+    mAllLightObjects["Spot1"]->Color = { 0.5f + 0.5f * cos(gt.TotalTime()) , 0.5f + 0.5f * cos(gt.TotalTime() + 1) , 0.5f + 0.5f * cos(gt.TotalTime() + 4) };
+    mAllLightObjects["Spot1"]->NeedsUpdate = true;
 
 	mRenderingSystem->Update(mAllObjects);
 }
@@ -327,42 +327,35 @@ void StencilApp::MakeDrawableObjects()
 
 void StencilApp::MakeLights()
 {
-    auto Direct1 = std::make_unique<LightObject>();
+    auto Direct1 = std::make_shared<LightObject>();
     Direct1->Name = "Direct1";
     Direct1->LightType = LightType::Directional;
     Direct1->WorldRotation = { 0.57735f, -0.57735f, 0.57735f };
-    Direct1->Strength = 0.6f;
+    Direct1->Strength = 1.f;
 
     mAllLightObjects[Direct1->Name] = std::move(Direct1);
 
-    auto Direct2 = std::make_unique<LightObject>();
-    Direct2->Name = "Direct2";
-    Direct2->LightType = LightType::Directional;
-    Direct2->WorldRotation = { -0.57735f, -0.57735f, 0.57735f };
-    Direct2->Strength = 0.6f;
-
-    mAllLightObjects[Direct2->Name] = std::move(Direct2);
-
-    auto Point1 = std::make_unique<LightObject>();
+    auto Point1 = std::make_shared<LightObject>();
     Point1->Name = "Point1";
     Point1->LightType = LightType::Pointlight;
     Point1->WorldLocation = { 1.f, 1.f, 1.f };
-    Point1->Strength = 1.f;
+    Point1->Strength = 2.f;
     Point1->Color = { 1.f, 0.f, 0.92f };
     Point1->FalloffStart = 1.f;
     Point1->FalloffEnd = 10.f;
 
     mAllLightObjects[Point1->Name] = std::move(Point1);
 
-    auto Spot1 = std::make_unique<LightObject>();
+    auto Spot1 = std::make_shared<LightObject>();
     Spot1->Name = "Spot1";
     Spot1->LightType = LightType::Spotlight;
     Spot1->WorldLocation = { 4.f, 20.f, 5.f };
-    Spot1->Strength = 3.f;
+    Spot1->Strength = 0.3f;
     Spot1->Color = { 0.f, 1.f, 0.f };
     Spot1->FalloffStart = 1.f;
     Spot1->FalloffEnd = 100.f;
-    Spot1->SpotPower = 200.f;
+    Spot1->SpotPower = 20.f;
+    Spot1->WorldRotation = { 0.5f, -1.f, 0.f };
 
     mAllLightObjects[Spot1->Name] = std::move(Spot1);
 

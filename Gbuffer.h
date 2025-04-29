@@ -48,19 +48,10 @@ public:
 public:
     Gbuffer(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device> device);
 
-    void setDevice(Microsoft::WRL::ComPtr<ID3D12Device> newDevice) { md3dDevice = newDevice; };
-
     ComPtr<ID3D12DescriptorHeap> getSRVDescriptorHeap() const { return m_SRVDescriptorHeap; }
-
-    DXGI_FORMAT getRTVFormat() {
-        return DXGI_FORMAT_R8G8B8A8_UNORM;
-    };
 
     void CopyDescriptors(D3D12_CPU_DESCRIPTOR_HANDLE otherStart);
 
-    /*void TransitToOpaqueRenderingState(ComPtr<ID3D12GraphicsCommandList2>& c);
-    void TransitToLightsRenderingState(ComPtr<ID3D12GraphicsCommandList2>& c);
-    void TransitToTonemappingState(ComPtr<ID3D12GraphicsCommandList2>& c);*/
     void TransitToOpaqueRenderingState(ComPtr<ID3D12GraphicsCommandList>& c);
     void TransitToLightsRenderingState(ComPtr<ID3D12GraphicsCommandList>& c);
     void TransitToTonemappingState(ComPtr<ID3D12GraphicsCommandList>& c);

@@ -251,7 +251,7 @@ public:
     void BuildFrameResources();
     void BuildMaterials(std::vector<MaterialDesc>& MaterialDescs);
     void BuildRenderItems(std::unordered_map<std::string, std::unique_ptr<DrawableObject>>& Objects);
-    void BuildLightItems(std::unordered_map<std::string, std::unique_ptr<LightObject>>& Objects);
+    void BuildLightItems(std::unordered_map<std::string, std::shared_ptr<LightObject>>& Objects);
 
     void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems, std::string PSOName);
 
@@ -343,7 +343,7 @@ protected:
 
     std::vector<D3D12_INPUT_ELEMENT_DESC> mInputLayout;
     std::vector<std::unique_ptr<RenderItem>> mAllRitems;
-    std::vector<std::unique_ptr<LightObject>> mAllLights;
+    std::vector<std::shared_ptr<LightObject>> mAllLights;
     std::vector<RenderItem*> mRitemLayer[(int)RenderLayer::Count];
 
     PassConstants mMainPassCB;

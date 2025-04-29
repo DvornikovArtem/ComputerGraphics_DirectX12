@@ -380,7 +380,7 @@ DS_VS_OUTPUT_PS_INPUT DSForDecals(HS_CONSTANT_DATA_OUTPUT input, float3 Barycent
 
 struct GBufferData
 {
-    float4 diffuse  : SV_TARGET0; // a - specular (т.к. альфа не нужна, туда можно записать specular)
+    float4 diffuse  : SV_TARGET0;
     float4 emissive : SV_TARGET1;
     float4 normal   : SV_TARGET2;
     float4 materialAlbedo : SV_TARGET3;
