@@ -22,8 +22,9 @@
     <VCProjectVersion>17.0</VCProjectVersion>
     <Keyword>Win32Proj</Keyword>
     <ProjectGuid>{7d09ded7-7069-44ac-8054-d05e707d2fdc}</ProjectGuid>
-    <RootNamespace>Dx12NaPrikole</RootNamespace>
+    <RootNamespace>Dx12_ComputerGraphics</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <ProjectName>Dx12_ComputerGraphics</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
@@ -207,7 +208,10 @@
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="..\Shaders\Default.hlsl" />
+    <FxCompile Include="..\Shaders\DeferredLightPass.hlsl" />
+    <FxCompile Include="..\Shaders\DeferredGeometryPass.hlsl" />
     <FxCompile Include="..\Shaders\LightingUtil.hlsl" />
+    <FxCompile Include="..\Shaders\SkyBox.hlsl" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\Camera.h" />
@@ -217,6 +221,7 @@
     <ClInclude Include="..\DDSTextureLoader.h" />
     <ClInclude Include="..\FrameResource.h" />
     <ClInclude Include="..\GameTimer.h" />
+    <ClInclude Include="..\Gbuffer.h" />
     <ClInclude Include="..\GeometryGenerator.h" />
     <ClInclude Include="..\MathHelper.h" />
     <ClInclude Include="..\RenderingSystem.h" />
@@ -229,6 +234,7 @@
     <ClCompile Include="..\DDSTextureLoader.cpp" />
     <ClCompile Include="..\FrameResource.cpp" />
     <ClCompile Include="..\GameTimer.cpp" />
+    <ClCompile Include="..\Gbuffer.cpp" />
     <ClCompile Include="..\GeometryGenerator.cpp" />
     <ClCompile Include="..\MathHelper.cpp" />
     <ClCompile Include="..\RenderingSystem.cpp" />

@@ -1,22 +1,6 @@
-// Defaults for number of lights.
-#ifndef NUM_DIR_LIGHTS
-    #define NUM_DIR_LIGHTS 2
-#endif
-
-#ifndef NUM_POINT_LIGHTS
-    #define NUM_POINT_LIGHTS 1
-#endif
-
-#ifndef NUM_SPOT_LIGHTS
-    #define NUM_SPOT_LIGHTS 0
-#endif
-
-#include "LightingUtil.hlsl"
-
 Texture2D gDiffuseMap : register(t0);
-Texture2D gNormalMap : register(t1);
-Texture2D gHeightMap : register(t2);
-
+Texture2D gNormalMap  : register(t1);
+Texture2D gHeightMap  : register(t2);
 
 SamplerState gsamPointWrap        : register(s0);
 SamplerState gsamPointClamp       : register(s1);
@@ -25,7 +9,7 @@ SamplerState gsamLinearClamp      : register(s3);
 SamplerState gsamAnisotropicWrap  : register(s4);
 SamplerState gsamAnisotropicClamp : register(s5);
 
-// Constant data that varies per object.
+// Constant data that varies per frame.
 cbuffer cbPerObject : register(b0)
 {
     float4x4 gWorld;
@@ -33,7 +17,7 @@ cbuffer cbPerObject : register(b0)
     float gTesselationFactor;
 };
 
-// Constant data that varies per frame.
+// Constant data that varies per material.
 cbuffer cbPass : register(b1)
 {
     float4x4 gView;
@@ -56,17 +40,10 @@ cbuffer cbPass : register(b1)
 	float gFogStart;
 	float gFogRange;
 	float2 cbPerObjectPad2;
-
-    // Indices [0, NUM_DIR_LIGHTS) are directional lights;
-    // indices [NUM_DIR_LIGHTS, NUM_DIR_LIGHTS+NUM_POINT_LIGHTS) are point lights;
-    // indices [NUM_DIR_LIGHTS+NUM_POINT_LIGHTS, NUM_DIR_LIGHTS+NUM_POINT_LIGHT+NUM_SPOT_LIGHTS)
-    // are spot lights for a maximum of MaxLights per object.
-    Light gLights[MaxLights];
     
     float4 Decals[3];
 };
 
-// Constant data that varies per material.
 cbuffer cbMaterial : register(b2)
 {
 	float4   gDiffuseAlbedo;
@@ -75,26 +52,20 @@ cbuffer cbMaterial : register(b2)
 	float4x4 gMatTransform;
 };
 
-// For random values
-float random(float2 uv)
-{
-    return frac(sin(dot(uv, float2(12.9898, 78.233))) * 43758.5453);
-}
-
 struct VS_INPUT
 {
-	float3 Pos      : POSITION;
-	float2 TexC     : TEXCOORD;
-    float3 Normal   : NORMAL;
-    float3 Tangent  : TANGENT;
+    float3 Pos : POSITION;
+    float2 TexC : TEXCOORD;
+    float3 Normal : NORMAL;
+    float3 Tangent : TANGENT;
 };
 
 struct DS_VS_OUTPUT_PS_INPUT
 {
-    float4 PosCS   : SV_POSITION;
-    float3 PosW    : POSITION;
-    float2 TexC    : TEXCOORD;
-    float3 Normal  : NORMAL;
+    float4 PosCS : SV_POSITION;
+    float3 PosW : POSITION;
+    float2 TexC : TEXCOORD;
+    float3 Normal : NORMAL;
     float3 Tangent : TANGENT;
 };
 
@@ -115,7 +86,7 @@ DS_VS_OUTPUT_PS_INPUT VS(VS_INPUT vin)
     vout.PosCS = mul(posW, gViewProj);
 	
 	// Output vertex attributes for interpolation across triangle.
-	float4 texC = mul(float4(vin.TexC, 0.0f, 1.0f), gTexTransform);
+    float4 texC = mul(float4(vin.TexC, 0.0f, 1.0f), gTexTransform);
     vout.TexC = mul(texC, gMatTransform).xy;
 
     return vout;
@@ -162,8 +133,8 @@ struct HS_CONTROL_POINT_OUTPUT
 {
     float3 vWorldPos : POSITION;
     float2 vTexCoord : TEXCOORD;
-    float3 vNormal   : NORMAL;
-    float3 vTangent  : TANGENT;
+    float3 vNormal : NORMAL;
+    float3 vTangent : TANGENT;
 };
 
 [domain("tri")] // indicates a triangle patch (3 verts)
@@ -197,7 +168,7 @@ DS_VS_OUTPUT_PS_INPUT DSMain(HS_CONSTANT_DATA_OUTPUT input, float3 BarycentricCo
     BarycentricCoordinates.z * TrianglePatch[2].vWorldPos;
     Out.PosW = vWorldPos;
     // Interpolate texture coordinates with barycentric coordinates
-    Out.TexC = 
+    Out.TexC =
     BarycentricCoordinates.x * TrianglePatch[0].vTexCoord +
     BarycentricCoordinates.y * TrianglePatch[1].vTexCoord +
     BarycentricCoordinates.z * TrianglePatch[2].vTexCoord;
@@ -226,7 +197,7 @@ DS_VS_OUTPUT_PS_INPUT DSMain(HS_CONSTANT_DATA_OUTPUT input, float3 BarycentricCo
     // transform to clip space
     Out.PosCS = mul(float4(vWorldPos.xyz, 1), gViewProj);
     return Out;
-} 
+}
 
 //For Decal objects
 
@@ -308,7 +279,7 @@ HS_CONSTANT_DATA_OUTPUT ConstantsHSForDecals(InputPatch<DS_VS_OUTPUT_PS_INPUT, 3
             Out.Edges[0] = Out.Edges[1] = Out.Edges[2] = Out.Inside = gTesselationFactor;
             break;
         }
-    }   
+    }
     return Out;
 }
 
@@ -407,9 +378,19 @@ DS_VS_OUTPUT_PS_INPUT DSForDecals(HS_CONSTANT_DATA_OUTPUT input, float3 Barycent
     return Out;
 }
 
-
-float4 PS(DS_VS_OUTPUT_PS_INPUT pin) : SV_Target
+struct GBufferData
 {
+    float4 diffuse  : SV_TARGET0;
+    float4 emissive : SV_TARGET1;
+    float4 normal   : SV_TARGET2;
+    float4 materialAlbedo : SV_TARGET3;
+    float4 MaterialFresnelRoughness : SV_TARGET4;
+};
+
+GBufferData PS(DS_VS_OUTPUT_PS_INPUT pin)
+{
+    
+    GBufferData pout;
     
     float2 uv = pin.TexC;
     
@@ -422,15 +403,6 @@ float4 PS(DS_VS_OUTPUT_PS_INPUT pin) : SV_Target
     rotateduv.y = localuv.x * sin(angle) + localuv.y * cos(angle);
     rotateduv += 0.5;
     uv = rotateduv;
-#endif
-    
-    float4 diffusealbedo = gDiffuseMap.Sample(gsamAnisotropicWrap, uv) * gDiffuseAlbedo;
-    
-#ifdef ALPHA_TEST
-	// discard pixel if texture alpha < 0.1.  we do this test as soon 
-	// as possible in the shader so that we can potentially exit the
-	// shader early, thereby skipping the rest of the shader code.
-	clip(diffusealbedo.a - 0.1f);
 #endif
     
     float3 NormalMapSample = gNormalMap.Sample(gsamAnisotropicWrap, uv).rgb;
@@ -450,31 +422,14 @@ float4 PS(DS_VS_OUTPUT_PS_INPUT pin) : SV_Target
     }
     else
         WorldNormal = normalize(pin.Normal);
-        
-    // vector from point being lit to eye. 
-    float3 ToEyeW = gEyePosW - pin.PosW;
-    float DistToEye = length(ToEyeW);
-    ToEyeW /= DistToEye; // normalize
-
-    // light terms.
-    float4 ambient = gAmbientLight * diffusealbedo;
-
-    const float Shininess = 1.0f - gRoughness;
-    Material mat = { diffusealbedo, gFresnelR0, Shininess };
-    float3 shadowFactor = float3(1.f, 1.f, 1.f);
-    float4 directlight = ComputeLighting(gLights, mat, pin.PosW, WorldNormal, ToEyeW, shadowFactor);
-
-    float4 litcolor = ambient + directlight;
-   
-#ifdef FOG
-    float FogAmount = saturate((DistToEye - gFogStart) / gFogRange);
-    litcolor = lerp(litcolor, gFogColor, FogAmount);
-#endif
     
-    // common convention to take alpha from diffuse albedo.
-    litcolor.a = diffusealbedo.a;
-    
-    return litcolor;
+    float4 diffuseAlbedo = gDiffuseMap.Sample(gsamAnisotropicWrap, uv);
+
+    pout.diffuse = diffuseAlbedo;
+    pout.emissive = float4(0.f, 0.f, 0.f, pin.PosCS.z); //xyz is free for now
+    pout.normal = float4(WorldNormal, 1.0f); //w is free for now
+    pout.materialAlbedo = gDiffuseAlbedo;
+    pout.MaterialFresnelRoughness = float4(gFresnelR0, gRoughness);
+
+    return pout;
 }
-
-

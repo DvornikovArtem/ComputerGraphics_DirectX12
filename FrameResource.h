@@ -8,6 +8,7 @@ struct ObjectConstants
 {
     DirectX::XMFLOAT4X4 World = MathHelper::Identity4x4();
 	DirectX::XMFLOAT4X4 TexTransform = MathHelper::Identity4x4();
+    float TesselationFactor = 1;
 };
 
 struct PassConstants
@@ -29,16 +30,12 @@ struct PassConstants
 
     DirectX::XMFLOAT4 AmbientLight = { 0.0f, 0.0f, 0.0f, 1.0f };
 
-	DirectX::XMFLOAT4 FogColor = { 0.7f, 0.7f, 0.7f, 1.0f };
+	DirectX::XMFLOAT4 FogColor = { 0.f, 0.f, 0.f, 1.0f };//{ 0.18f, 0.53f, 0.9f, 1.0f };
 	float gFogStart = 5.0f;
 	float gFogRange = 150.0f;
 	DirectX::XMFLOAT2 cbPerObjectPad2;
 
-    // Indices [0, NUM_DIR_LIGHTS) are directional lights;
-    // indices [NUM_DIR_LIGHTS, NUM_DIR_LIGHTS+NUM_POINT_LIGHTS) are point lights;
-    // indices [NUM_DIR_LIGHTS+NUM_POINT_LIGHTS, NUM_DIR_LIGHTS+NUM_POINT_LIGHT+NUM_SPOT_LIGHTS)
-    // are spot lights for a maximum of MaxLights per object.
-    Light Lights[MaxLights];
+    DirectX::XMFLOAT4 Decals[3] = { {9.242, 1.876, 6.691, 0.f}, {9.242, 1.876, 6.691, 0.f}, {8.511, 2.540, 4.177, 0.f} };
 };
 
 struct Vertex
@@ -52,6 +49,7 @@ struct Vertex
     DirectX::XMFLOAT3 Pos;
     DirectX::XMFLOAT3 Normal;
 	DirectX::XMFLOAT2 TexC;
+    DirectX::XMFLOAT3 Tangent;
 };
 
 // Stores the resources needed for the CPU to build the command lists
@@ -60,7 +58,7 @@ struct FrameResource
 {
 public:
     
-    FrameResource(ID3D12Device* device, UINT passCount, UINT objectCount, UINT materialCount);
+    FrameResource(ID3D12Device* device, UINT passCount, UINT objectCount, UINT materialCount, UINT LightCount);
     FrameResource(const FrameResource& rhs) = delete;
     FrameResource& operator=(const FrameResource& rhs) = delete;
     ~FrameResource();
@@ -75,6 +73,7 @@ public:
     std::unique_ptr<UploadBuffer<PassConstants>> PassCB = nullptr;
     std::unique_ptr<UploadBuffer<MaterialConstants>> MaterialCB = nullptr;
     std::unique_ptr<UploadBuffer<ObjectConstants>> ObjectCB = nullptr;
+    std::unique_ptr<UploadBuffer<Light>> LightCB = nullptr;
 
     // Fence value to mark commands up to this fence point.  This lets us
     // check if these frame resources are still in use by the GPU.

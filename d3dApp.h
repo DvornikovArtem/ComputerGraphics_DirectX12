@@ -53,6 +53,7 @@ protected:
 
     virtual void OnKeyboardPressed(WPARAM pressedButton, const GameTimer& gt) {}
 
+
 protected:
 
 	bool InitMainWindow();
@@ -76,7 +77,7 @@ protected:
 	GameTimer mTimer;
 
 	// Derived class should set these in derived constructor to customize starting values.
-	std::wstring mMainWndCaption = L"prikol";
+	std::wstring mMainWndCaption = L"Renderer";
 	D3D_DRIVER_TYPE md3dDriverType = D3D_DRIVER_TYPE_HARDWARE;
     DXGI_FORMAT mBackBufferFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
     DXGI_FORMAT mDepthStencilFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
@@ -85,4 +86,7 @@ protected:
 
     //std::unique_ptr<RenderingSystem> mRenderingSystem;
 	std::unique_ptr<RenderingSystem> mRenderingSystem = std::make_unique<RenderingSystem>();
+
+	std::unordered_map<std::string, std::unique_ptr<DrawableObject>> mAllObjects;
+	std::unordered_map<std::string, std::shared_ptr<LightObject>> mAllLightObjects;
 };
