@@ -1,6 +1,3 @@
-// Include structures and functions for lighting.
-#include "LightingUtil.hlsl"
-
 Texture2D gDiffuseMap : register(t0);
 Texture2D gNormalMap  : register(t1);
 Texture2D gHeightMap  : register(t2);
@@ -43,12 +40,6 @@ cbuffer cbPass : register(b1)
 	float gFogStart;
 	float gFogRange;
 	float2 cbPerObjectPad2;
-
-    // Indices [0, NUM_DIR_LIGHTS) are directional lights;
-    // indices [NUM_DIR_LIGHTS, NUM_DIR_LIGHTS+NUM_POINT_LIGHTS) are point lights;
-    // indices [NUM_DIR_LIGHTS+NUM_POINT_LIGHTS, NUM_DIR_LIGHTS+NUM_POINT_LIGHT+NUM_SPOT_LIGHTS)
-    // are spot lights for a maximum of MaxLights per object.
-    Light gLights[MaxLights];
     
     float4 Decals[3];
 };
@@ -434,11 +425,9 @@ GBufferData PS(DS_VS_OUTPUT_PS_INPUT pin)
     
     float4 diffuseAlbedo = gDiffuseMap.Sample(gsamAnisotropicWrap, uv);
 
-    
     pout.diffuse = diffuseAlbedo;
-    pout.emissive.xyz = pin.PosW;
-    pout.emissive.w = pin.PosCS.z;
-    pout.normal = float4(WorldNormal, 1.0f);
+    pout.emissive = float4(0.f, 0.f, 0.f, pin.PosCS.z); //xyz is free for now
+    pout.normal = float4(WorldNormal, 1.0f); //w is free for now
     pout.materialAlbedo = gDiffuseAlbedo;
     pout.MaterialFresnelRoughness = float4(gFresnelR0, gRoughness);
 

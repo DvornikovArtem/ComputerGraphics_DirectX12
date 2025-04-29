@@ -95,6 +95,9 @@ void StencilApp::Update(const GameTimer& gt)
     mAllObjects["Head"]->WorldRotation.y = gt.TotalTime();
     mAllObjects["Head"]->NeedsUpdate = true;
 
+    //mAllLightObjects["Spot1"]->Color.y = gt.TotalTime();
+    //mAllLights["Spot1"]->NeedsUpdate = true;
+
 	mRenderingSystem->Update(mAllObjects);
 }
 
@@ -172,15 +175,6 @@ void StencilApp::LoadShaders()
 
     std::vector<ShaderDesc> ShaderDescs = 
     {
-        ShaderDesc("standardVS", L"../Shaders/Default.hlsl", "VS", nullptr, "vs_5_0"),
-        ShaderDesc("standardPS", L"../Shaders/Default.hlsl", "PS", nullptr, "ps_5_0"),
-        ShaderDesc("alphaTestedPS", L"../Shaders/Default.hlsl", "PS", alphaTestDefines, "ps_5_0"),
-        ShaderDesc("RotatingTilesPS", L"../Shaders/Default.hlsl", "PS", defines, "ps_5_0"),
-        ShaderDesc("standardHS", L"../Shaders/Default.hlsl", "HSMain", nullptr, "hs_5_0"),
-        ShaderDesc("standardDS", L"../Shaders/Default.hlsl", "DSMain", nullptr, "ds_5_0"),
-        ShaderDesc("HSForDecals", L"../Shaders/Default.hlsl", "HSForDecals", nullptr, "hs_5_0"),
-        ShaderDesc("DSForDecals", L"../Shaders/Default.hlsl", "DSForDecals", nullptr, "ds_5_0"),
-
         //deferred shaders
         ShaderDesc("standardVS_deferred", L"../Shaders/DeferredGeometryPass.hlsl", "VS", nullptr, "vs_5_0"),
         ShaderDesc("standardPS_deferred", L"../Shaders/DeferredGeometryPass.hlsl", "PS", nullptr, "ps_5_0"),
@@ -189,7 +183,6 @@ void StencilApp::LoadShaders()
         ShaderDesc("standardDS_deferred", L"../Shaders/DeferredGeometryPass.hlsl", "DSMain", nullptr, "ds_5_0"),
         ShaderDesc("HSForDecals_deferred", L"../Shaders/DeferredGeometryPass.hlsl", "HSForDecals", nullptr, "hs_5_0"),
         ShaderDesc("DSForDecals_deferred", L"../Shaders/DeferredGeometryPass.hlsl", "DSForDecals", nullptr, "ds_5_0"),
-
     };
 
     mRenderingSystem->BuildShaders(ShaderDescs);
@@ -340,7 +333,7 @@ void StencilApp::MakeLights()
     Direct1->WorldRotation = { 0.57735f, -0.57735f, 0.57735f };
     Direct1->Strength = 0.6f;
 
-    mAllLights[Direct1->Name] = std::move(Direct1);
+    mAllLightObjects[Direct1->Name] = std::move(Direct1);
 
     auto Direct2 = std::make_unique<LightObject>();
     Direct2->Name = "Direct2";
@@ -348,7 +341,7 @@ void StencilApp::MakeLights()
     Direct2->WorldRotation = { -0.57735f, -0.57735f, 0.57735f };
     Direct2->Strength = 0.6f;
 
-    mAllLights[Direct2->Name] = std::move(Direct2);
+    mAllLightObjects[Direct2->Name] = std::move(Direct2);
 
     auto Point1 = std::make_unique<LightObject>();
     Point1->Name = "Point1";
@@ -359,9 +352,21 @@ void StencilApp::MakeLights()
     Point1->FalloffStart = 1.f;
     Point1->FalloffEnd = 10.f;
 
-    mAllLights[Point1->Name] = std::move(Point1);
+    mAllLightObjects[Point1->Name] = std::move(Point1);
 
-    mRenderingSystem->BuildLightItems(mAllLights);
+    auto Spot1 = std::make_unique<LightObject>();
+    Spot1->Name = "Spot1";
+    Spot1->LightType = LightType::Spotlight;
+    Spot1->WorldLocation = { 4.f, 20.f, 5.f };
+    Spot1->Strength = 3.f;
+    Spot1->Color = { 0.f, 1.f, 0.f };
+    Spot1->FalloffStart = 1.f;
+    Spot1->FalloffEnd = 100.f;
+    Spot1->SpotPower = 200.f;
+
+    mAllLightObjects[Spot1->Name] = std::move(Spot1);
+
+    mRenderingSystem->BuildLightItems(mAllLightObjects);
 }
 
 

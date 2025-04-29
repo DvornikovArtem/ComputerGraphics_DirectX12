@@ -1,5 +1,3 @@
-#include "LightingUtil.hlsl"
-
 TextureCube gDiffuseMap : register(t0);
 Texture2D gNormalMap : register(t1);
 Texture2D gHeightMap : register(t2);
@@ -42,12 +40,6 @@ cbuffer cbPass : register(b1)
     float gFogStart;
     float gFogRange;
     float2 cbPerObjectPad2;
-
-    // Indices [0, NUM_DIR_LIGHTS) are directional lights;
-    // indices [NUM_DIR_LIGHTS, NUM_DIR_LIGHTS+NUM_POINT_LIGHTS) are point lights;
-    // indices [NUM_DIR_LIGHTS+NUM_POINT_LIGHTS, NUM_DIR_LIGHTS+NUM_POINT_LIGHT+NUM_SPOT_LIGHTS)
-    // are spot lights for a maximum of MaxLights per object.
-    Light gLights[MaxLights];
     
     float4 Decals[3];
 };

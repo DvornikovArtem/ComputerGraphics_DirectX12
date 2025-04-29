@@ -229,9 +229,6 @@ struct Light
     int LightType = 1; //0 - directional; 1 - point; 2 - spot
 };
 
-
-#define MaxLights 16
-
 struct MaterialConstants
 {
 	DirectX::XMFLOAT4 DiffuseAlbedo = { 1.0f, 1.0f, 1.0f, 1.0f };

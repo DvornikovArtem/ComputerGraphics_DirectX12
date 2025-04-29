@@ -382,38 +382,12 @@ void RenderingSystem::LogAdapterOutputs(IDXGIAdapter* adapter)
 		text += L"\n";
 		OutputDebugString(text.c_str());
 
-		LogOutputDisplayModes(output, mBackBufferFormat);
-
 		ReleaseCom(output);
 
 		++i;
 	}
 }
 
-void RenderingSystem::LogOutputDisplayModes(IDXGIOutput* output, DXGI_FORMAT format)
-{
-	UINT count = 0;
-	UINT flags = 0;
-
-	// Call with nullptr to get list count.
-	output->GetDisplayModeList(format, flags, &count, nullptr);
-
-	std::vector<DXGI_MODE_DESC> modeList(count);
-	output->GetDisplayModeList(format, flags, &count, &modeList[0]);
-
-	for (auto& x : modeList)
-	{
-		UINT n = x.RefreshRate.Numerator;
-		UINT d = x.RefreshRate.Denominator;
-		std::wstring text =
-			L"Width = " + std::to_wstring(x.Width) + L" " +
-			L"Height = " + std::to_wstring(x.Height) + L" " +
-			L"Refresh = " + std::to_wstring(n) + L"/" + std::to_wstring(d) +
-			L"\n";
-
-		::OutputDebugString(text.c_str());
-	}
-}
 
 void RenderingSystem::CreateCommandObjects() {
 	D3D12_COMMAND_QUEUE_DESC queueDesc = {};
@@ -1045,12 +1019,12 @@ void RenderingSystem::BuildGlobalPSOs()
 
 
 	CD3DX12_BLEND_DESC blendDesc = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
-	/*blendDesc.RenderTarget[0].BlendEnable = true;
+	blendDesc.RenderTarget[0].BlendEnable = true;
 	blendDesc.RenderTarget[0].LogicOpEnable = false;
 	blendDesc.RenderTarget[0].SrcBlend = D3D12_BLEND_ONE;
 	blendDesc.RenderTarget[0].DestBlend = D3D12_BLEND_ONE;
 	blendDesc.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
-	blendDesc.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;*/
+	blendDesc.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
 
 	deferredPsoDesc.BlendState = blendDesc;
 
@@ -1064,6 +1038,14 @@ void RenderingSystem::BuildGlobalPSOs()
 	deferredPsoDesc.SampleDesc.Count = 1;
 
 	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&deferredPsoDesc, IID_PPV_ARGS(&GlobalPSOs["DeferredLightPass"])));
+
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC deferredAddAmbientPsoDesc = deferredPsoDesc;
+	deferredPsoDesc.PS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["DeferredLightPassPS_AddAmbient"]->GetBufferPointer()),
+		mShaders["DeferredLightPassPS_AddAmbient"]->GetBufferSize()
+	};
+	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&deferredPsoDesc, IID_PPV_ARGS(&GlobalPSOs["DeferredLightPass_AddAmbient"])));
 
 
 	//
@@ -1236,6 +1218,9 @@ void RenderingSystem::GBufferLightPass()
 		mCommandList->DrawInstanced(6, 1, 0, 0);
 	}
 
+	//Add ambient light on screen
+	mCommandList->SetPipelineState(GlobalPSOs["DeferredLightPass_AddAmbient"].Get());
+	mCommandList->DrawInstanced(6, 1, 0, 0);
 
 }
 
@@ -1419,6 +1404,7 @@ void RenderingSystem::BuildShaders(std::vector<ShaderDesc>& ShaderDescs)
 	//global shaders for deferred rendering
 	mShaders["DeferredLightPassVS"] = d3dUtil::CompileShader(L"../Shaders/DeferredLightPass.hlsl", nullptr, "VS", "vs_5_0");
 	mShaders["DeferredLightPassPS"] = d3dUtil::CompileShader(L"../Shaders/DeferredLightPass.hlsl", nullptr, "PS", "ps_5_0");
+	mShaders["DeferredLightPassPS_AddAmbient"] = d3dUtil::CompileShader(L"../Shaders/DeferredLightPass.hlsl", nullptr, "PS_AddAmbient", "ps_5_0");
 	//for skybox rendering
 	mShaders["SkyBoxVS"] = d3dUtil::CompileShader(L"../Shaders/SkyBox.hlsl", nullptr, "VS", "vs_5_0");
 	mShaders["SkyBoxPS"] = d3dUtil::CompileShader(L"../Shaders/SkyBox.hlsl", nullptr, "PS", "ps_5_0");
@@ -1490,9 +1476,9 @@ void RenderingSystem::UpdateMainPassCB(const GameTimer& gt)
 	XMMATRIX proj = mCamera.GetProj();
 
 	XMMATRIX viewProj = XMMatrixMultiply(view, proj);
-	XMMATRIX invView = XMMatrixInverse(&XMMatrixDeterminant(view), view);
-	XMMATRIX invProj = XMMatrixInverse(&XMMatrixDeterminant(proj), proj);
-	XMMATRIX invViewProj = XMMatrixInverse(&XMMatrixDeterminant(viewProj), viewProj);
+	XMMATRIX invView = XMMatrixInverse(nullptr, view);
+	XMMATRIX invProj = XMMatrixInverse(nullptr, proj);
+	XMMATRIX invViewProj = XMMatrixInverse(nullptr, viewProj);
 
 	XMStoreFloat4x4(&mMainPassCB.View, XMMatrixTranspose(view));
 	XMStoreFloat4x4(&mMainPassCB.InvView, XMMatrixTranspose(invView));
@@ -1507,20 +1493,7 @@ void RenderingSystem::UpdateMainPassCB(const GameTimer& gt)
 	mMainPassCB.FarZ = 1000.0f;
 	mMainPassCB.TotalTime = gt.TotalTime();
 	mMainPassCB.DeltaTime = gt.DeltaTime();
-	mMainPassCB.AmbientLight = { 0.55f, 0.55f, 0.55f, 1.0f };
-	mMainPassCB.Lights[0].Direction = { 0.57735f, -0.57735f, 0.57735f };
-	mMainPassCB.Lights[0].Strength = { 0.6f, 0.6f, 0.6f };
-	mMainPassCB.Lights[1].Direction = { -0.57735f, -0.57735f, 0.57735f };
-	mMainPassCB.Lights[1].Strength = { 0.3f, 0.3f, 0.3f };
-
-
-	//mMainPassCB.Lights[2].Direction = { 0.0f, -0.707f, -0.707f };
-	mMainPassCB.Lights[2].Strength = { 1.f, 1.f, 1.f };
-	mMainPassCB.Lights[2].FalloffStart = 0.f;
-	mMainPassCB.Lights[2].FalloffEnd = 10.f;
-	mMainPassCB.Lights[2].Position = { 1.f, 1.f, 1.f };
-	mMainPassCB.Lights[2].Color = { 1.f, 0.f, 0.92f };
-
+	mMainPassCB.AmbientLight = { 0.3f, 0.3f, 0.3f, 1.0f };
 
 	// Main pass stored in index 2
 	auto currPassCB = mCurrFrameResource->PassCB.get();
@@ -1535,12 +1508,12 @@ void RenderingSystem::UpdateReflectedPassCB(const GameTimer& gt)
 	XMMATRIX R = XMMatrixReflect(mirrorPlane);
 
 	// Reflect the lighting.
-	for (int i = 0; i < 3; ++i)
-	{
-		XMVECTOR lightDir = XMLoadFloat3(&mMainPassCB.Lights[i].Direction);
-		XMVECTOR reflectedLightDir = XMVector3TransformNormal(lightDir, R);
-		XMStoreFloat3(&mReflectedPassCB.Lights[i].Direction, reflectedLightDir);
-	}
+	//for (int i = 0; i < 3; ++i)
+	//{
+	//	XMVECTOR lightDir = XMLoadFloat3(&mMainPassCB.Lights[i].Direction);
+	//	XMVECTOR reflectedLightDir = XMVector3TransformNormal(lightDir, R);
+	//	XMStoreFloat3(&mReflectedPassCB.Lights[i].Direction, reflectedLightDir);
+	//}
 
 	// Reflected pass stored in index 1
 	auto currPassCB = mCurrFrameResource->PassCB.get();
