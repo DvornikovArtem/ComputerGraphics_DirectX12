@@ -762,7 +762,7 @@ void RenderingSystem::BuildMeshGeometry(std::string Name, const std::string& fil
 		}
 
 		SubmeshGeometry submesh;
-		submesh.IndexCount = (UINT)indices.size();
+		submesh.IndexCount = (UINT)indices.size() - startIndexLocation;
 		submesh.StartIndexLocation = startIndexLocation;
 		submesh.BaseVertexLocation = 0;
 
