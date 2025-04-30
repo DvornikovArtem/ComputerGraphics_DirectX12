@@ -621,6 +621,7 @@ void RenderingSystem::Update(std::unordered_map<std::string, std::unique_ptr<Dra
 	UpdateMainPassCB(*gt);
 	UpdateReflectedPassCB(*gt);
 	UpdateLightCBs(*gt);
+
 }
 
 void RenderingSystem::UpdateObjectCBs(const GameTimer& gt)
@@ -700,10 +701,15 @@ void RenderingSystem::BuildMeshGeometry(std::string Name, const std::string& fil
 	auto geo = std::make_unique<MeshGeometry>();
 	geo->Name = Name;
 
-	for (unsigned int i = 0; i < scene->mNumMeshes; i++) {
+	for (unsigned int i = 0; i < scene->mNumMeshes; i++) 
+	{
 		aiMesh* mesh = scene->mMeshes[i];
 		UINT baseVertexLocation = (UINT)vertices.size();
 		UINT startIndexLocation = (UINT)indices.size();
+
+		XMFLOAT3 vMin = { FLT_MAX, FLT_MAX, FLT_MAX };
+		XMFLOAT3 vMax = { -FLT_MAX, -FLT_MAX, -FLT_MAX };
+
 
 		for (unsigned int j = 0; j < mesh->mNumVertices; j++) {
 			Vertex vertex;
@@ -712,11 +718,24 @@ void RenderingSystem::BuildMeshGeometry(std::string Name, const std::string& fil
 			vertex.Pos.y = mesh->mVertices[j].y;
 			vertex.Pos.z = mesh->mVertices[j].z;
 
+
+
+			vMin.x = std::min(vMin.x, vertex.Pos.x);
+			vMin.y = std::min(vMin.y, vertex.Pos.y);
+			vMin.z = std::min(vMin.z, vertex.Pos.z);
+
+			vMax.x = (((vMax.x) > (vertex.Pos.x)) ? (vMax.x) : (vertex.Pos.x));
+			vMax.y = (((vMax.y) > (vertex.Pos.y)) ? (vMax.y) : (vertex.Pos.y));
+			vMax.z = (((vMax.z) > (vertex.Pos.z)) ? (vMax.z) : (vertex.Pos.z));
+
+
+
 			if (mesh->HasNormals()) {
 				vertex.Normal.x = mesh->mNormals[j].x;
 				vertex.Normal.y = mesh->mNormals[j].y;
 				vertex.Normal.z = mesh->mNormals[j].z;
 			}
+
 			if (mesh->HasTextureCoords(0)) {
 				vertex.TexC.x = mesh->mTextureCoords[0][j].x;
 				vertex.TexC.y = mesh->mTextureCoords[0][j].y;
@@ -725,6 +744,7 @@ void RenderingSystem::BuildMeshGeometry(std::string Name, const std::string& fil
 				vertex.TexC.x = 0.0f;
 				vertex.TexC.y = 0.0f;
 			}
+
 			if (mesh->HasTangentsAndBitangents()) {
 				vertex.Tangent.x = mesh->mTangents[j].x;
 				vertex.Tangent.y = mesh->mTangents[j].y;
@@ -746,6 +766,21 @@ void RenderingSystem::BuildMeshGeometry(std::string Name, const std::string& fil
 		submesh.StartIndexLocation = startIndexLocation;
 		submesh.BaseVertexLocation = 0;
 
+		// create bounding box
+		XMFLOAT3 center = {
+		  0.5f * (vMin.x + vMax.x),
+		  0.5f * (vMin.y + vMax.y),
+		  0.5f * (vMin.z + vMax.z)
+		};
+		XMFLOAT3 extents = {
+		  0.5f * (vMax.x - vMin.x),
+		  0.5f * (vMax.y - vMin.y),
+		  0.5f * (vMax.z - vMin.z)
+		};
+
+		BoundingBox box(center, extents);
+		submesh.Bounds = box;
+
 		std::string submeshName = Name + "_LOD" + std::to_string(i);
 
 		geo->DrawArgs[submeshName] = submesh;
@@ -766,6 +801,7 @@ void RenderingSystem::BuildMeshGeometry(std::string Name, const std::string& fil
 
 	geo->IndexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(),
 		mCommandList.Get(), indices.data(), ibByteSize, geo->IndexBufferUploader);
+
 
 	geo->VertexByteStride = sizeof(Vertex);
 	geo->VertexBufferByteSize = vbByteSize;
@@ -984,6 +1020,7 @@ void RenderingSystem::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const 
 	for (size_t i = 0; i < ritems.size(); ++i)
 	{
 		auto ri = ritems[i];
+		if (!ri->IsInViewFrustum) continue;
 		cmdList->IASetVertexBuffers(0, 1, &ri->Geo->VertexBufferView());
 		cmdList->IASetIndexBuffer(&ri->Geo->IndexBufferView());
 		cmdList->IASetPrimitiveTopology(ri->Mat->UseTesselation ? D3D_PRIMITIVE_TOPOLOGY_3_CONTROL_POINT_PATCHLIST : D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -1238,6 +1275,8 @@ void RenderingSystem::UpdateRenderItems(std::unordered_map<std::string, std::uni
 
 		auto t = mAllRitems[k].get();
 
+
+		//calculate LODs
 		float dx = i->WorldLocation.x - XMVectorGetX(cameraPos);
 		float dy = i->WorldLocation.y - XMVectorGetY(cameraPos);
 		float dz = i->WorldLocation.z - XMVectorGetZ(cameraPos);
@@ -1249,12 +1288,21 @@ void RenderingSystem::UpdateRenderItems(std::unordered_map<std::string, std::uni
 		else if (DistanceToObject < 40.f) t->currentLOD = std::min(t->numLODs - 1, (UINT)3);
 		else if (DistanceToObject < 50.f) t->currentLOD = std::min(t->numLODs - 1, (UINT)4);
 
+		//Calculate bounding box
+		DirectX::BoundingBox worldBounds;
+		XMMATRIX worldMatrix = XMLoadFloat4x4(&t->World);
+		t->Geo->DrawArgs[t->Geo->Name + "_LOD" + std::to_string(t->currentLOD)].Bounds.Transform(worldBounds, XMMatrixScaling(0.7f, 0.7f, 0.7f) * worldMatrix); //0.8 for perfect culling
+
+		// Check view frustum visibility
+		t->IsInViewFrustum = ViewFrustum.Intersects(worldBounds);
+
 		if (i->NeedsUpdate)
 		{
 			XMStoreFloat4x4(&t->World, XMMatrixScaling(i->Scale.x, i->Scale.y, i->Scale.z)
 				* XMMatrixRotationRollPitchYaw(i->WorldRotation.z, i->WorldRotation.y, i->WorldRotation.x)
 				* XMMatrixTranslation(i->WorldLocation.x, i->WorldLocation.y, i->WorldLocation.z));
 			XMStoreFloat4x4(&t->TexTransform, i->TexTransform);
+
 			t->NumFramesDirty = gNumFrameResources;
 			i->NeedsUpdate = false;
 		}
@@ -1317,6 +1365,10 @@ void RenderingSystem::BuildBasicGeometry()
 			vertices[i].Tangent = Objects[k]->Vertices[i].TangentU;
 		}
 
+		std::vector<DirectX::XMFLOAT3> positions;
+		for (size_t i = 0; i < vertices.size(); ++i)
+			positions.push_back(vertices[i].Pos);
+
 		std::vector<std::uint16_t> indices;
 		indices.insert(indices.end(), std::begin(Objects[k]->GetIndices16()), std::end(Objects[k]->GetIndices16()));
 
@@ -1342,6 +1394,9 @@ void RenderingSystem::BuildBasicGeometry()
 		geo->VertexBufferByteSize = vbByteSize;
 		geo->IndexFormat = DXGI_FORMAT_R16_UINT;
 		geo->IndexBufferByteSize = ibByteSize;
+
+		// Create bounding box
+		BoundingBox::CreateFromPoints(Submesh->Bounds, positions.size(), positions.data(), sizeof(XMFLOAT3));
 
 		geo->DrawArgs[Names[k] + "_LOD0"] = *Submesh;
 
@@ -1401,18 +1456,10 @@ void RenderingSystem::UpdateReflectedPassCB(const GameTimer& gt)
 
 void RenderingSystem::UpdateCamera(const GameTimer& gt)
 {
-	// Convert Spherical to Cartesian coordinates.
-	mEyePos.x = mRadius * sinf(mPhi) * cosf(mTheta);
-	mEyePos.z = mRadius * sinf(mPhi) * sinf(mTheta);
-	mEyePos.y = mRadius * cosf(mPhi);
-
-	// Build the view matrix.
-	XMVECTOR pos = XMVectorSet(mEyePos.x, mEyePos.y, mEyePos.z, 1.0f);
-	XMVECTOR target = XMVectorZero();
-	XMVECTOR up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
-
-	XMMATRIX view = XMMatrixLookAtLH(pos, target, up);
-	XMStoreFloat4x4(&mView, view);
+	//Update ViewFrustum
+	BoundingFrustum::CreateFromMatrix(ViewFrustum, mCamera.GetProj());
+	XMMATRIX invView = XMMatrixInverse(nullptr, mCamera.GetView());
+	ViewFrustum.Transform(ViewFrustum, invView);
 }
 
 std::array<const CD3DX12_STATIC_SAMPLER_DESC, 6> RenderingSystem::GetStaticSamplers()

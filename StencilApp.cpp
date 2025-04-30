@@ -241,7 +241,7 @@ void StencilApp::LoadMeshes()
     std::vector<MeshDesc> MeshDescs =
     {
         MeshDesc("Head", "../Models/african_head.obj"),
-        MeshDesc("PatrickStar", "../Models/patrickstarWLODS.fbx")
+        MeshDesc("PatrickStar", "../Models/patrickstarW3LODs.fbx")
     };
 
     mRenderingSystem->LoadMeshes(MeshDescs);

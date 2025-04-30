@@ -17,6 +17,7 @@
 #include <unordered_map>
 #include <string>
 #include "Gbuffer.h"
+#include "DirectXCollision.h"
 
 #pragma comment(lib,"d3dcompiler.lib")
 #pragma comment(lib, "D3D12.lib")
@@ -152,6 +153,8 @@ struct RenderItem
 
     UINT numLODs = 1;
     UINT currentLOD = 0;
+
+    bool IsInViewFrustum = false;
 };
 
 struct LightObject
@@ -366,6 +369,8 @@ protected:
 
     std::unordered_map<std::string, Microsoft::WRL::ComPtr<ID3D12PipelineState>> GlobalPSOs;
     std::unordered_map<std::string, Microsoft::WRL::ComPtr<ID3D12RootSignature>> RootSignatures;
+
+    BoundingFrustum ViewFrustum;
 };
 
 
