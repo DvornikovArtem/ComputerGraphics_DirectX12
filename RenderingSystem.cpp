@@ -354,6 +354,8 @@ void RenderingSystem::BuildRenderItems(std::unordered_map<std::string, std::uniq
 		
 		k++;
 	}
+
+	mOctree = new Octree({ 0.f, 0.f, 0.f }, 50.f, 5, mRitemLayer[(int)RenderLayer::Opaque]);
 }
 
 void RenderingSystem::BuildLightItems(std::unordered_map<std::string, std::shared_ptr<LightObject>>& Objects)
@@ -829,7 +831,7 @@ void RenderingSystem::LoadMeshes(std::vector<MeshDesc>& MeshDescs)
 	ID3D12CommandList* cmdsLists[] = { mCommandList.Get() };
 	mCommandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
 
-	GenerateOctTree(mRitemLayer[(int)RenderLayer::Opaque]);
+	//GenerateOctTree(mRitemLayer[(int)RenderLayer::Opaque]);
 }
 
 void RenderingSystem::BuildPSOs(MaterialDesc& MDesc, std::unordered_map<std::string, ComPtr<ID3D12PipelineState>>& mPSOs)
@@ -1053,6 +1055,8 @@ void RenderingSystem::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const 
 		UINT BaseVertexLocation = ri->Geo->DrawArgs[subMeshName].BaseVertexLocation;
 
 		cmdList->DrawIndexedInstanced(IndexCount, 1, StartIndexLocation, BaseVertexLocation, 0);
+
+		ri->IsInViewFrustum = false;
 	}
 }
 
@@ -1272,74 +1276,54 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 }
 
 
-struct OctreeNode
+
+void RenderingSystem::CollectVisibleRenderItems(
+	OctreeNode* node,
+	const BoundingFrustum& frustum,
+	std::unordered_set<RenderItem*>& visibleItems)
 {
-	DirectX::BoundingBox bounds;
-	std::vector<int> objectIDs;
-	OctreeNode* children[8] = { nullptr };
-	bool isLeaf = false;
-};
+	if (!node) return;
 
-void Subdivide(const DirectX::BoundingBox& parent, DirectX::BoundingBox children[8])
-{
-	using namespace DirectX;
-	XMFLOAT3 c = parent.Center;
-	XMFLOAT3 e = parent.Extents;
-	XMFLOAT3 childExt = { e.x / 2, e.y / 2, e.z / 2 };
+	auto ct = frustum.Contains(node->bounds);
+	if (ct == DirectX::ContainmentType::DISJOINT)
+		return;
 
-	const int dx[8] = { -1, +1, +1, -1, -1, +1, +1, -1 };
-	const int dy[8] = { -1, -1, +1, +1, -1, -1, +1, +1 };
-	const int dz[8] = { -1, -1, -1, -1, +1, +1, +1, +1 };
+	if (node->isLeaf) {
+		for (RenderItem* ri : node->OverlappedItems) {
 
-	for (int i = 0; i < 8; ++i) {
-		children[i].Extents = childExt;
-		children[i].Center = XMFLOAT3(
-			c.x + dx[i] * childExt.x,
-			c.y + dy[i] * childExt.y,
-			c.z + dz[i] * childExt.z
-		);
-	}
-}
-
-void RenderingSystem::GenerateOctTree(const std::vector<RenderItem*>& ritems)
-{
-	DirectX::BoundingBox parentBBox = ritems[0]->Geo->DrawArgs[ritems[0]->Geo->Name + "_LOD" + std::to_string(ritems[0]->currentLOD)].Bounds;
-
-	for (size_t i = 1; i < ritems.size(); ++i)
-	{
-		DirectX::BoundingBox::CreateMerged(parentBBox, parentBBox, ritems[i]->Geo->DrawArgs[ritems[i]->Geo->Name + "_LOD" + std::to_string(ritems[i]->currentLOD)].Bounds);
-	}
-
-	auto node = std::make_unique<OctreeNode>();
-
-	node->bounds = nodeBounds;
-
-	if (maxDepth == 0) {
-		node->isLeaf = true;
-		node->objectIDs = objectIDs;
-		return node;
-	}
-
-	BoundingBox childrenBounds[8];
-	Subdivide(nodeBounds, childrenBounds);
-
-	for (int i = 0; i < 8; ++i) {
-		std::vector<int> childIDs;
-		for (int id : objectIDs) {
-			if (childrenBounds[i].Intersects(objects[id]))
-				childIDs.push_back(id);
+			DirectX::BoundingBox worldBounds;
+			XMMATRIX worldMatrix = XMLoadFloat4x4(&ri->World);
+			ri->Geo->DrawArgs[ri->Geo->Name + "_LOD" + std::to_string(ri->currentLOD)].Bounds.Transform(worldBounds, XMMatrixScaling(1.f, 1.f, 1.f) * worldMatrix); //0.8 for perfect culling
+			ri->IsInViewFrustum = ViewFrustum.Intersects(worldBounds);
+			//if (ri->IsInViewFrustum)
+			//visibleItems.insert(ri);
+			if (ri->Geo->Name == "PatrickStar") {
+				std::string s = std::string("\n") + ri->Geo->Name + "\n";
+				OutputDebugStringA(s.c_str());
+			}
 		}
-		if (!childIDs.empty())
-			node->children[i] = BuildOctree(objects, childrenBounds[i], childIDs, maxDepth - 1, maxObjectsPerLeaf);
+		return;
 	}
-	return node;
-}
 
+	for (int i = 0; i < 8; ++i)
+		if (node->children[i])
+			CollectVisibleRenderItems(node->children[i].get(), frustum, visibleItems);
+}
 
 
 void RenderingSystem::UpdateRenderItems(std::unordered_map<std::string, std::unique_ptr<DrawableObject>>& mAllObjects)
 {
 	XMVECTOR cameraPos = mCamera.GetPosition();
+
+	
+	BoundingFrustum frustum = ViewFrustum;
+
+	std::unordered_set<RenderItem*> visibleItems;
+	CollectVisibleRenderItems(mOctree->root.get(), frustum, visibleItems);
+
+	/*for (RenderItem* ri : visibleItems) {
+		ri->IsInViewFrustum = true;
+	}*/
 
 	int k = 0;
 	for (auto& pair : mAllObjects)
@@ -1367,7 +1351,7 @@ void RenderingSystem::UpdateRenderItems(std::unordered_map<std::string, std::uni
 		t->Geo->DrawArgs[t->Geo->Name + "_LOD" + std::to_string(t->currentLOD)].Bounds.Transform(worldBounds, XMMatrixScaling(0.7f, 0.7f, 0.7f) * worldMatrix); //0.8 for perfect culling
 
 		// Check view frustum visibility
-		t->IsInViewFrustum = ViewFrustum.Intersects(worldBounds);
+		//t->IsInViewFrustum = ViewFrustum.Intersects(worldBounds);
 
 		if (i->NeedsUpdate)
 		{

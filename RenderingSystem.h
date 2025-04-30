@@ -220,6 +220,106 @@ enum class RenderLayer : int
     Count,
 };
 
+struct OctreeNode {
+    BoundingBox bounds;
+    std::array<std::unique_ptr<OctreeNode>, 8> children;
+    std::vector<RenderItem*> OverlappedItems;
+    bool isLeaf = false;
+};
+
+class Octree {
+public:
+    Octree(const XMFLOAT3& center, float cubeSize, size_t numDivisions, const std::vector<RenderItem*>& ritems)
+    {
+        this->numDivisions = numDivisions;
+
+        // create parent cube
+        XMFLOAT3 extents(cubeSize / 2.0f, cubeSize / 2.0f, cubeSize / 2.0f);
+        root = std::make_unique<OctreeNode>();
+        root->bounds = BoundingBox(center, extents);
+
+        // recurrent tree creation
+        BuildTree(root.get(), numDivisions);
+
+        for (int i = 0; i < ritems.size(); i++) {
+            auto ri = ritems[i];
+
+            DirectX::BoundingBox worldBounds;
+            XMMATRIX worldMatrix = XMLoadFloat4x4(&ri->World);
+            ri->Geo->DrawArgs[ri->Geo->Name + "_LOD" + std::to_string(ri->currentLOD)].Bounds.Transform(worldBounds, XMMatrixScaling(0.8f, 0.8f, 0.8f) * worldMatrix); //0.8 for perfect culling
+
+            std::vector<OctreeNode*> intersectingLeaves;
+            FindIntersectingLeaves(root.get(), 0, numDivisions, worldBounds, intersectingLeaves);
+            
+            for (auto leaf : intersectingLeaves) {
+                leaf->isLeaf = true;
+                leaf->OverlappedItems.push_back(ri);
+            }
+        }
+    }
+
+    std::unique_ptr<OctreeNode> root;
+
+private:
+    size_t numDivisions;
+
+    void FindIntersectingLeaves(
+        OctreeNode* node,
+        int currentLevel,
+        int targetLevel,
+        const BoundingBox& itemBounds,
+        std::vector<OctreeNode*>& result
+    )
+    {
+        if (!node) return;
+
+        if (!node->bounds.Intersects(itemBounds))
+            return;
+
+        if (currentLevel == targetLevel && node->isLeaf)
+        {
+            result.push_back(node);
+            return;
+        }
+
+        for (int i = 0; i < 8; ++i)
+            if (node->children[i])
+                FindIntersectingLeaves(node->children[i].get(), currentLevel + 1, targetLevel, itemBounds, result);
+    }
+
+    void BuildTree(OctreeNode* node, size_t divisionsLeft) {
+        if (divisionsLeft == 0) {
+            return;
+        }
+
+        const XMFLOAT3& parentCenter = node->bounds.Center;
+        const XMFLOAT3 parentExtents = node->bounds.Extents;
+        XMFLOAT3 childExtents = {
+            parentExtents.x / 2.0f,
+            parentExtents.y / 2.0f,
+            parentExtents.z / 2.0f
+        };
+
+        for (int i = 0; i < 8; ++i) {
+            XMFLOAT3 childCenter = parentCenter;
+
+            // calculate child center
+            childCenter.x += (i & 1) ? childExtents.x : -childExtents.x;
+            childCenter.y += (i & 2) ? childExtents.y : -childExtents.y;
+            childCenter.z += (i & 4) ? childExtents.z : -childExtents.z;
+
+            node->children[i] = std::make_unique<OctreeNode>();
+            node->children[i]->bounds = BoundingBox(childCenter, childExtents);
+            node->children[i]->isLeaf = (divisionsLeft == 1);
+
+            // repeat for more children
+            BuildTree(node->children[i].get(), divisionsLeft - 1);
+        }
+
+        node->isLeaf = false;
+    }
+};
+
 class RenderingSystem {
 public:
     RenderingSystem();
@@ -249,7 +349,7 @@ public:
     void BuildBasicGeometry();
     void LoadTextures(std::vector<TextureDesc>& TexDescs);
 
-    void GenerateOctTree(const std::vector<RenderItem*>& ritems);
+    void CollectVisibleRenderItems(OctreeNode* node, const BoundingFrustum& frustum, std::unordered_set<RenderItem*>& visibleItems);
 
     void UpdateRenderItems(std::unordered_map<std::string, std::unique_ptr<DrawableObject>>& mAllObjects);
 
@@ -374,6 +474,8 @@ protected:
     std::unordered_map<std::string, Microsoft::WRL::ComPtr<ID3D12RootSignature>> RootSignatures;
 
     BoundingFrustum ViewFrustum;
+
+    Octree* mOctree;
 };
 
 
