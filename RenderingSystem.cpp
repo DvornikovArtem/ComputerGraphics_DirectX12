@@ -659,6 +659,11 @@ void RenderingSystem::UpdateLightCBs(const GameTimer& gt)
 	auto currObjectCB = mCurrFrameResource->LightCB.get();
 	for (auto& e : mAllLights)
 	{
+
+		if (e->LightType == LightType::Spotlight) {
+			// TODO spot to mouse click intersect y=0
+		}
+
 		if (e->NeedsUpdate)
 		{
 			e->NumFramesDirty = gNumFrameResources;
@@ -823,6 +828,8 @@ void RenderingSystem::LoadMeshes(std::vector<MeshDesc>& MeshDescs)
 	ThrowIfFailed(mCommandList->Close());
 	ID3D12CommandList* cmdsLists[] = { mCommandList.Get() };
 	mCommandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
+
+	GenerateOctTree(mRitemLayer[(int)RenderLayer::Opaque]);
 }
 
 void RenderingSystem::BuildPSOs(MaterialDesc& MDesc, std::unordered_map<std::string, ComPtr<ID3D12PipelineState>>& mPSOs)
@@ -1263,6 +1270,72 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 	ID3D12CommandList* cmdsLists[] = { mCommandList.Get() };
 	mCommandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
 }
+
+
+struct OctreeNode
+{
+	DirectX::BoundingBox bounds;
+	std::vector<int> objectIDs;
+	OctreeNode* children[8] = { nullptr };
+	bool isLeaf = false;
+};
+
+void Subdivide(const DirectX::BoundingBox& parent, DirectX::BoundingBox children[8])
+{
+	using namespace DirectX;
+	XMFLOAT3 c = parent.Center;
+	XMFLOAT3 e = parent.Extents;
+	XMFLOAT3 childExt = { e.x / 2, e.y / 2, e.z / 2 };
+
+	const int dx[8] = { -1, +1, +1, -1, -1, +1, +1, -1 };
+	const int dy[8] = { -1, -1, +1, +1, -1, -1, +1, +1 };
+	const int dz[8] = { -1, -1, -1, -1, +1, +1, +1, +1 };
+
+	for (int i = 0; i < 8; ++i) {
+		children[i].Extents = childExt;
+		children[i].Center = XMFLOAT3(
+			c.x + dx[i] * childExt.x,
+			c.y + dy[i] * childExt.y,
+			c.z + dz[i] * childExt.z
+		);
+	}
+}
+
+void RenderingSystem::GenerateOctTree(const std::vector<RenderItem*>& ritems)
+{
+	DirectX::BoundingBox parentBBox = ritems[0]->Geo->DrawArgs[ritems[0]->Geo->Name + "_LOD" + std::to_string(ritems[0]->currentLOD)].Bounds;
+
+	for (size_t i = 1; i < ritems.size(); ++i)
+	{
+		DirectX::BoundingBox::CreateMerged(parentBBox, parentBBox, ritems[i]->Geo->DrawArgs[ritems[i]->Geo->Name + "_LOD" + std::to_string(ritems[i]->currentLOD)].Bounds);
+	}
+
+	auto node = std::make_unique<OctreeNode>();
+
+	node->bounds = nodeBounds;
+
+	if (maxDepth == 0) {
+		node->isLeaf = true;
+		node->objectIDs = objectIDs;
+		return node;
+	}
+
+	BoundingBox childrenBounds[8];
+	Subdivide(nodeBounds, childrenBounds);
+
+	for (int i = 0; i < 8; ++i) {
+		std::vector<int> childIDs;
+		for (int id : objectIDs) {
+			if (childrenBounds[i].Intersects(objects[id]))
+				childIDs.push_back(id);
+		}
+		if (!childIDs.empty())
+			node->children[i] = BuildOctree(objects, childrenBounds[i], childIDs, maxDepth - 1, maxObjectsPerLeaf);
+	}
+	return node;
+}
+
+
 
 void RenderingSystem::UpdateRenderItems(std::unordered_map<std::string, std::unique_ptr<DrawableObject>>& mAllObjects)
 {

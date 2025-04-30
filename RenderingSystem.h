@@ -248,6 +248,9 @@ public:
     void BuildShaders(std::vector<ShaderDesc>& ShaderDescs);
     void BuildBasicGeometry();
     void LoadTextures(std::vector<TextureDesc>& TexDescs);
+
+    void GenerateOctTree(const std::vector<RenderItem*>& ritems);
+
     void UpdateRenderItems(std::unordered_map<std::string, std::unique_ptr<DrawableObject>>& mAllObjects);
 
     void BuildMeshGeometry(std::string Name, const std::string& filename);
