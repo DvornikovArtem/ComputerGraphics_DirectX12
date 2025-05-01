@@ -232,6 +232,18 @@
     <ClInclude Include="..\directx\d3d12.h">
       <Filter>Файлы заголовков</Filter>
     </ClInclude>
+    <ClInclude Include="..\old\DebugRenderSysImpl.h">
+      <Filter>Файлы заголовков</Filter>
+    </ClInclude>
+    <ClInclude Include="..\MISC\simplemath\SimpleMath.h">
+      <Filter>Файлы заголовков</Filter>
+    </ClInclude>
+    <ClInclude Include="..\OctTree.h">
+      <Filter>Файлы заголовков</Filter>
+    </ClInclude>
+    <ClInclude Include="..\RenderItem.h">
+      <Filter>Файлы заголовков</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\Camera.cpp">
@@ -282,10 +294,19 @@
     <ClCompile Include="..\directx\LinearAllocator.cpp">
       <Filter>Исходные файлы</Filter>
     </ClCompile>
+    <ClCompile Include="..\old\DebugRenderSysImpl.cpp">
+      <Filter>Исходные файлы</Filter>
+    </ClCompile>
+    <ClCompile Include="..\MISC\simplemath\SimpleMath.cpp">
+      <Filter>Исходные файлы</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\directx\GenerateMips_main.inc">
       <Filter>Shaders</Filter>
+    </None>
+    <None Include="..\MISC\simplemath\SimpleMath.inl">
+      <Filter>Файлы заголовков</Filter>
     </None>
   </ItemGroup>
 </Project>

@@ -231,7 +231,7 @@ HS_CONSTANT_DATA_OUTPUT ConstantsHSForDecals(InputPatch<DS_VS_OUTPUT_PS_INPUT, 3
     // For each Decal
     for (int i = 0; i < 3; i++)
     {
-        float3 decalPos = Decals[i];
+        float3 decalPos = Decals[i].xyz;
         bool shouldTessellate = false;
         
         // Vertices Check
@@ -253,7 +253,7 @@ HS_CONSTANT_DATA_OUTPUT ConstantsHSForDecals(InputPatch<DS_VS_OUTPUT_PS_INPUT, 3
             for (int edge = 0; edge < 3; edge++)
             {
                 int v0 = edge;
-                int v1 = (edge + 1) % 3;
+                int v1 = (uint)(edge + 1) % 3;
                 
                 float3 edgeVec = Patch[v1].PosW - Patch[v0].PosW;
                 float3 toDecal = decalPos - Patch[v0].PosW;
@@ -370,7 +370,7 @@ DS_VS_OUTPUT_PS_INPUT DSForDecals(HS_CONSTANT_DATA_OUTPUT input, float3 Barycent
             vWorldPos += vDirection * fDisplacement;
 
             // Use the displacement map coord for the normal map coord
-            Out.TexC = vDMTexCoord;
+            Out.TexC = vDMTexCoord.xy;
             break;
         }
     }
@@ -397,7 +397,8 @@ GBufferData PS(DS_VS_OUTPUT_PS_INPUT pin)
 #ifdef ROTATINGTILES 
     float2 tileid = floor(pin.TexC);
     float2 localuv = frac(pin.TexC) - 0.5;
-    float angle = tileid % 2 ? gTotalTime : -gTotalTime;
+    float parity = fmod(tileid.x + tileid.y, 2.0);
+    float angle = (parity == 0) ? -gTotalTime : gTotalTime;
     float2 rotateduv;
     rotateduv.x = localuv.x * cos(angle) - localuv.y * sin(angle);
     rotateduv.y = localuv.x * sin(angle) + localuv.y * cos(angle);

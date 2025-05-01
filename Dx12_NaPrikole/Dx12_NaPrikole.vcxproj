@@ -235,7 +235,11 @@
     <ClInclude Include="..\Gbuffer.h" />
     <ClInclude Include="..\GeometryGenerator.h" />
     <ClInclude Include="..\MathHelper.h" />
+    <ClInclude Include="..\MISC\simplemath\SimpleMath.h" />
+    <ClInclude Include="..\OctTree.h" />
+    <ClInclude Include="..\old\DebugRenderSysImpl.h" />
     <ClInclude Include="..\RenderingSystem.h" />
+    <ClInclude Include="..\RenderItem.h" />
     <ClInclude Include="..\UploadBuffer.h" />
   </ItemGroup>
   <ItemGroup>
@@ -253,11 +257,14 @@
     <ClCompile Include="..\Gbuffer.cpp" />
     <ClCompile Include="..\GeometryGenerator.cpp" />
     <ClCompile Include="..\MathHelper.cpp" />
+    <ClCompile Include="..\MISC\simplemath\SimpleMath.cpp" />
+    <ClCompile Include="..\old\DebugRenderSysImpl.cpp" />
     <ClCompile Include="..\RenderingSystem.cpp" />
     <ClCompile Include="..\StencilApp.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\directx\GenerateMips_main.inc" />
+    <None Include="..\MISC\simplemath\SimpleMath.inl" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

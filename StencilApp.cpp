@@ -14,7 +14,10 @@ public:
     StencilApp(HINSTANCE hInstance) : D3DApp(hInstance) {}
     StencilApp(const StencilApp& rhs) = delete;
     StencilApp& operator=(const StencilApp& rhs) = delete;
-    ~StencilApp() {};
+    ~StencilApp() {
+        for (auto& pair : mAllObjects)
+            delete pair.second;
+    };
 
     virtual bool Initialize()override;
 
@@ -254,7 +257,7 @@ void StencilApp::MakeDrawableObjects()
     SkyBoxSphere->Name = "SkyBoxSphere";
     SkyBoxSphere->GeometryName = "Sphere";
     SkyBoxSphere->MaterialName = "SkyBox";
-    SkyBoxSphere->RenderLayer = (int)RenderLayer::Sky;
+    SkyBoxSphere->renderLayer = RenderLayer::Sky;
     SkyBoxSphere->Scale = XMFLOAT3(5000.0f, 5000.0f, 5000.0f);
 
     mAllObjects[SkyBoxSphere->Name] = SkyBoxSphere;
@@ -263,7 +266,7 @@ void StencilApp::MakeDrawableObjects()
     TesselationTestSphere->Name = "TesselationTestSphere";
     TesselationTestSphere->GeometryName = "Sphere";
     TesselationTestSphere->MaterialName = "Semechki";
-    TesselationTestSphere->RenderLayer = (int)RenderLayer::Opaque;
+    TesselationTestSphere->renderLayer = RenderLayer::Opaque;
     TesselationTestSphere->WorldLocation = XMFLOAT3(5.f, 3.f, -1.f);
     TesselationTestSphere->WorldRotation = XMFLOAT3(0.f, 0.f, 0.f);
     TesselationTestSphere->Scale = XMFLOAT3(5.0f, 5.0f, 5.0f);
@@ -275,7 +278,7 @@ void StencilApp::MakeDrawableObjects()
     DecalTestCube->Name = "DecalTestCube";
     DecalTestCube->GeometryName = "Cylinder";
     DecalTestCube->MaterialName = "skullMat";
-    DecalTestCube->RenderLayer = (int)RenderLayer::Opaque;
+    DecalTestCube->renderLayer = RenderLayer::Opaque;
     DecalTestCube->WorldLocation = XMFLOAT3(10.f, 3.f, 5.f);
     DecalTestCube->WorldRotation = XMFLOAT3(0.f, 0.f, 0.f);
     DecalTestCube->Scale = XMFLOAT3(5.0f, 5.0f, 5.0f);
@@ -288,8 +291,8 @@ void StencilApp::MakeDrawableObjects()
     Floor->Name = "Floor";
     Floor->GeometryName = "Grid";
     Floor->MaterialName = "grass";
-    Floor->RenderLayer = (int)RenderLayer::Opaque;
-    Floor->WorldLocation = XMFLOAT3(0.f, 0.f, 0.f);
+    Floor->renderLayer = RenderLayer::Opaque;
+    Floor->WorldLocation = XMFLOAT3(0.f, 2.f, 0.f);
     Floor->WorldRotation = XMFLOAT3(0.f, 0.f, 0.f);
     Floor->Scale = XMFLOAT3(5.0f, 1.0f, 5.0f);
     Floor->TexTransform = XMMatrixScaling(50.0f, 50.0f, 1.0f);
@@ -300,7 +303,7 @@ void StencilApp::MakeDrawableObjects()
     Head->Name = "Head";
     Head->GeometryName = "Head";
     Head->MaterialName = "mesh";
-    Head->RenderLayer = (int)RenderLayer::Opaque;
+    Head->renderLayer = RenderLayer::Opaque;
     Head->WorldLocation = XMFLOAT3(0.f, 2.f, 0.f);
     Head->WorldRotation = XMFLOAT3(0.f, 0.f, 0.f);
     Head->Scale = XMFLOAT3(1.0f, 1.0f, 1.0f);
@@ -313,8 +316,9 @@ void StencilApp::MakeDrawableObjects()
         Patrick->Name = "Patrick" + std::to_string(i);
         Patrick->GeometryName = "PatrickStar";
         Patrick->MaterialName = "PatrickMat";
-        Patrick->RenderLayer = (int)RenderLayer::Opaque;
-        Patrick->WorldLocation = XMFLOAT3(-50 + i%90, 2.f, -50+(int)(i / 30));
+        Patrick->renderLayer = RenderLayer::Opaque;
+        //Patrick->WorldLocation = XMFLOAT3(2.0f, 2.0f, 0.0f);
+        Patrick->WorldLocation = XMFLOAT3(-50 + i%90, 2.f, -50+(int)(i / 90));
         Patrick->WorldRotation = XMFLOAT3(0.f, 0.f, 0.f);
         Patrick->Scale = XMFLOAT3(1.0f, 1.0f, 1.0f);
         Patrick->TexTransform = XMMatrixScaling(1.f, 1.f, 1.f);
@@ -327,15 +331,15 @@ void StencilApp::MakeDrawableObjects()
 
 void StencilApp::MakeLights()
 {
-    auto Direct1 = std::make_shared<LightObject>();
+    auto Direct1 = new LightObject;
     Direct1->Name = "Direct1";
     Direct1->LightType = LightType::Directional;
     Direct1->WorldRotation = { 0.57735f, -0.57735f, 0.57735f };
     Direct1->Strength = 1.f;
 
-    mAllLightObjects[Direct1->Name] = std::move(Direct1);
+    mAllLightObjects[Direct1->Name] = Direct1;
 
-    auto Point1 = std::make_shared<LightObject>();
+    auto Point1 = new LightObject;
     Point1->Name = "Point1";
     Point1->LightType = LightType::Pointlight;
     Point1->WorldLocation = { 1.f, 1.f, 1.f };
@@ -344,9 +348,9 @@ void StencilApp::MakeLights()
     Point1->FalloffStart = 1.f;
     Point1->FalloffEnd = 10.f;
 
-    mAllLightObjects[Point1->Name] = std::move(Point1);
+    mAllLightObjects[Point1->Name] = Point1;
 
-    auto Spot1 = std::make_shared<LightObject>();
+    auto Spot1 = new LightObject;
     Spot1->Name = "Spot1";
     Spot1->LightType = LightType::Spotlight;
     Spot1->WorldLocation = { 4.f, 20.f, 5.f };
@@ -357,11 +361,7 @@ void StencilApp::MakeLights()
     Spot1->SpotPower = 20.f;
     Spot1->WorldRotation = { 0.5f, -1.f, 0.f };
 
-    mAllLightObjects[Spot1->Name] = std::move(Spot1);
+    mAllLightObjects[Spot1->Name] = Spot1;
 
     mRenderingSystem->BuildLightItems(mAllLightObjects);
 }
-
-
-
-

@@ -71,6 +71,12 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 
 	mGbuffer = std::make_unique<Gbuffer>(mClientWidth, mClientHeight, md3dDevice);
 
+	// For Debug System =========================================================
+	mDebugDrawer = std::make_unique<gfw::DebugRenderSysImpl>(md3dDevice);
+
+	mDebugDrawer->SetCamera(&mCamera);
+	// ==========================================================================
+
 	OnResize();
 
 	// Reset the command list to prep for initialization commands.
@@ -214,6 +220,7 @@ void RenderingSystem::Render()
 	mCommandList->ClearRenderTargetView(CurrentBackBufferView(), (float*)&mMainPassCB.FogColor, 0, nullptr);
 	mCommandList->ClearDepthStencilView(DepthStencilView(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
 
+
 	// Deferred Passes:
 	
 	//
@@ -234,6 +241,22 @@ void RenderingSystem::Render()
 	//Draw SkyBox
 	//
 	DrawSkyBox();
+
+	// Draw debug primitives (lines, boxes, etc.)
+	mDebugDrawer->Draw(
+		0.0f,
+		mCommandQueue,
+		mCommandList,
+		&mScreenViewport,
+		&mScissorRect,
+		this,
+		mCurrFrameResourceIndex
+	);
+
+
+	// Clear
+	mDebugDrawer->Clear();
+
 
 	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
 		D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
@@ -331,7 +354,7 @@ void RenderingSystem::BuildRenderItems(std::unordered_map<std::string, DrawableO
 	{
 		auto i = pair.second;
 
-		auto t = std::make_unique<RenderItem>();
+		auto t = new RenderItem;
 		t->World = MathHelper::Identity4x4();
 		XMStoreFloat4x4(&t->World, XMMatrixScaling(i->Scale.x, i->Scale.y, i->Scale.z) 
 			* XMMatrixRotationRollPitchYaw(i->WorldRotation.z, i->WorldRotation.y, i->WorldRotation.x) 
@@ -339,8 +362,8 @@ void RenderingSystem::BuildRenderItems(std::unordered_map<std::string, DrawableO
 		t->TexTransform = MathHelper::Identity4x4();
 		XMStoreFloat4x4(&t->TexTransform, i->TexTransform);
 		t->ObjCBIndex = k;
-		t->Mat = mMaterials[i->MaterialName].get();
-		t->Geo = mGeometries[i->GeometryName].get();
+		t->Mat = mMaterials[i->MaterialName];
+		t->Geo = mGeometries[i->GeometryName];
 		t->PrimitiveType = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 		t->IndexCount = t->Geo->DrawArgs[i->GeometryName].IndexCount;
 		t->StartIndexLocation = t->Geo->DrawArgs[i->GeometryName].StartIndexLocation;
@@ -348,17 +371,21 @@ void RenderingSystem::BuildRenderItems(std::unordered_map<std::string, DrawableO
 
 		t->currentLOD = 0;
 		t->numLODs = t->Geo->DrawArgs.size() - 1;
+		t->Geo->DrawArgs[t->Geo->Name + "_LOD0"].Bounds.Transform(t->bounds, XMMatrixScaling(1.0f, 1.0f, 1.0f) * XMLoadFloat4x4(&t->World));
 
-		mRitemLayer[i->RenderLayer].push_back(t.get());
-		mAllRitems.push_back(std::move(t));
+		t->renderLayer = i->renderLayer;
+		t->drawableObject = i;
+
+		mRitemLayer[(int)i->renderLayer].push_back(t);
+		mAllRitems.push_back(t);
 		
 		k++;
 	}
 
-	mOctree = new Octree({ 0.f, 0.f, 0.f }, 1000.f, 5, mRitemLayer[(int)RenderLayer::Opaque]);
+	mOctTree = new OctTree({ 0.f, 0.f, 0.f }, 150.f, 4, mAllRitems);
 }
 
-void RenderingSystem::BuildLightItems(std::unordered_map<std::string, std::shared_ptr<LightObject>>& Objects)
+void RenderingSystem::BuildLightItems(std::unordered_map<std::string, LightObject*>& Objects)
 {
 	int k = 0;
 	for (auto& pair : Objects)
@@ -674,14 +701,14 @@ void RenderingSystem::UpdateLightCBs(const GameTimer& gt)
 		if (e->NumFramesDirty > 0)
 		{
 			Light LightConstants;
-			LightConstants.Position = e.get()->WorldLocation;
-			LightConstants.Direction = e.get()->WorldRotation;
-			LightConstants.Color = e.get()->Color;
-			LightConstants.FalloffStart = e.get()->FalloffStart;
-			LightConstants.FalloffEnd = e.get()->FalloffEnd;
-			LightConstants.LightType = (int)e.get()->LightType;
-			LightConstants.SpotPower = e.get()->SpotPower;
-			LightConstants.Strength = XMFLOAT3(e.get()->Strength, e.get()->Strength, e.get()->Strength);
+			LightConstants.Position = e->WorldLocation;
+			LightConstants.Direction = e->WorldRotation;
+			LightConstants.Color = e->Color;
+			LightConstants.FalloffStart = e->FalloffStart;
+			LightConstants.FalloffEnd = e->FalloffEnd;
+			LightConstants.LightType = (int)e->LightType;
+			LightConstants.SpotPower = e->SpotPower;
+			LightConstants.Strength = XMFLOAT3(e->Strength, e->Strength, e->Strength);
 
 			currObjectCB->CopyData(e->LightCBIndex, LightConstants);
 
@@ -705,7 +732,7 @@ void RenderingSystem::BuildMeshGeometry(std::string Name, const std::string& fil
 	std::vector<std::int32_t> indices;
 
 
-	auto geo = std::make_unique<MeshGeometry>();
+	auto geo = new MeshGeometry;
 	geo->Name = Name;
 
 	for (unsigned int i = 0; i < scene->mNumMeshes; i++) 
@@ -815,7 +842,7 @@ void RenderingSystem::BuildMeshGeometry(std::string Name, const std::string& fil
 	geo->IndexFormat = DXGI_FORMAT_R32_UINT;
 	geo->IndexBufferByteSize = ibByteSize;
 
-	mGeometries[geo->Name] = std::move(geo);
+	mGeometries[geo->Name] = geo;
 }
 
 void RenderingSystem::LoadMeshes(std::vector<MeshDesc>& MeshDescs)
@@ -830,8 +857,6 @@ void RenderingSystem::LoadMeshes(std::vector<MeshDesc>& MeshDescs)
 	ThrowIfFailed(mCommandList->Close());
 	ID3D12CommandList* cmdsLists[] = { mCommandList.Get() };
 	mCommandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
-
-	//GenerateOctTree(mRitemLayer[(int)RenderLayer::Opaque]);
 }
 
 void RenderingSystem::BuildPSOs(MaterialDesc& MDesc, std::unordered_map<std::string, ComPtr<ID3D12PipelineState>>& mPSOs)
@@ -998,21 +1023,21 @@ void RenderingSystem::BuildMaterials(std::vector<MaterialDesc>& MaterialDescs)
 {
 	for (int i = 0; i < MaterialDescs.size(); i++)
 	{
-		auto t = std::make_unique<Material>();
+		auto t = new Material;
 		t->Name = MaterialDescs[i].Name;
 		t->MatCBIndex = i;
-		t->DiffuseSrvHeapIndex = ((mTextures.find(MaterialDescs[i].DiffuseTexName) == mTextures.end())) ? 0 : mTextures[MaterialDescs[i].DiffuseTexName].get()->srvHeapIndex;
-		t->NormalSrvHeapIndex = ((mTextures.find(MaterialDescs[i].NormalMapName) == mTextures.end())) ? 0 : mTextures[MaterialDescs[i].NormalMapName].get()->srvHeapIndex;
-		t->HeightSrvHeapIndex = ((mTextures.find(MaterialDescs[i].HeightMapName) == mTextures.end())) ? 0 : mTextures[MaterialDescs[i].HeightMapName].get()->srvHeapIndex;
+		t->DiffuseSrvHeapIndex = ((mTextures.find(MaterialDescs[i].DiffuseTexName) == mTextures.end())) ? 0 : mTextures[MaterialDescs[i].DiffuseTexName]->srvHeapIndex;
+		t->NormalSrvHeapIndex = ((mTextures.find(MaterialDescs[i].NormalMapName) == mTextures.end())) ? 0 : mTextures[MaterialDescs[i].NormalMapName]->srvHeapIndex;
+		t->HeightSrvHeapIndex = ((mTextures.find(MaterialDescs[i].HeightMapName) == mTextures.end())) ? 0 : mTextures[MaterialDescs[i].HeightMapName]->srvHeapIndex;
 		t->DiffuseAlbedo = MaterialDescs[i].DiffuseAlbedo;
 		t->FresnelR0 = MaterialDescs[i].FresnelR0;
 		t->Roughness = MaterialDescs[i].Roughness;
 		t->UseTesselation = MaterialDescs[i].UseTesselation;
 
 		BuildPSOs(MaterialDescs[i], t->PSOs);
-		BuildDescriptorHeap(t.get());
+		BuildDescriptorHeap(t);
 
-		mMaterials[t->Name] = std::move(t);
+		mMaterials[t->Name] = t;
 	}
 	BuildGlobalPSOs();
 }
@@ -1112,7 +1137,7 @@ void RenderingSystem::GBufferLightPass()
 	// For each light item...
 	for (size_t i = 0; i < mAllLights.size(); ++i)
 	{
-		auto li = mAllLights[i].get();
+		auto li = mAllLights[i];
 
 		//mCommandList->IASetVertexBuffers(0, 1, &li->Geo->VertexBufferView());
 		//mCommandList->IASetIndexBuffer(&li->Geo->IndexBufferView());
@@ -1181,7 +1206,7 @@ void RenderingSystem::UpdateMaterialCBs(const GameTimer& gt)
 	{
 		// Only update the cbuffer data if the constants have changed.  If the cbuffer
 		// data changes, it needs to be updated for each FrameResource.
-		Material* mat = e.second.get();
+		Material* mat = e.second;
 		if (mat->NumFramesDirty > 0)
 		{
 			XMMATRIX matTransform = XMLoadFloat4x4(&mat->MatTransform);
@@ -1226,7 +1251,7 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 
 	for (int i = 0; i < TexDescs.size(); i++)
 	{
-		auto t = std::make_unique<Texture>();
+		auto t = new Texture;
 		t->srvHeapIndex = i;
 		t->Name = TexDescs[i].Name;
 		t->Filename = TexDescs[i].Path;
@@ -1237,7 +1262,7 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 			t->Filename.c_str(),
 			t->Resource.GetAddressOf()));
 
-		mTextures[t->Name] = std::move(t);
+		mTextures[t->Name] = t;
 	}
 
 	auto finish = upload.End(mCommandQueue.Get());
@@ -1302,12 +1327,11 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 	mCommandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
 }
 
-
+std::vector<RenderItem*> alreadyCheckedRitems;
 
 void RenderingSystem::CollectVisibleRenderItems(
-	OctreeNode* node,
-	const BoundingFrustum& frustum,
-	std::unordered_set<RenderItem*>& visibleItems)
+	OctTreeNode* node,
+	const BoundingFrustum& frustum)
 {
 	if (!node) return;
 
@@ -1316,23 +1340,19 @@ void RenderingSystem::CollectVisibleRenderItems(
 		return;
 
 	if (node->isLeaf) {
-		std::vector<RenderItem*> alreadyDrawed;
 		for (RenderItem* ri : node->OverlappedItems) {
-			if (std::find(alreadyDrawed.begin(), alreadyDrawed.end(), ri) != alreadyDrawed.end()) continue;
-			alreadyDrawed.push_back(ri);
-			DirectX::BoundingBox worldBounds;
-			XMMATRIX worldMatrix = XMLoadFloat4x4(&ri->World);
-			ri->Geo->DrawArgs[ri->Geo->Name + "_LOD" + std::to_string(ri->currentLOD)].Bounds.Transform(worldBounds, XMMatrixScaling(0.8f, 0.8f, 0.8f) * worldMatrix); //0.8 for perfect culling
-			ri->IsInViewFrustum = ViewFrustum.Intersects(worldBounds);
-			//if (ri->IsInViewFrustum)
-			//visibleItems.insert(ri);
+			if (std::find(alreadyCheckedRitems.begin(), alreadyCheckedRitems.end(), ri) != alreadyCheckedRitems.end()) continue;
+			alreadyCheckedRitems.push_back(ri);
+			ri->IsInViewFrustum = ViewFrustum.Intersects(ri->bounds);
+			if (ri->IsInViewFrustum)
+				mAllVisibleRitems.push_back(ri);
 		}
 		return;
 	}
 
 	for (int i = 0; i < 8; ++i)
 		if (node->children[i])
-			CollectVisibleRenderItems(node->children[i], frustum, visibleItems);
+			CollectVisibleRenderItems(node->children[i], frustum);
 }
 
 
@@ -1340,55 +1360,121 @@ void RenderingSystem::UpdateRenderItems(std::unordered_map<std::string, Drawable
 {
 	XMVECTOR cameraPos = mCamera.GetPosition();
 
+
+	// Draw OctTree ===============================================
+	for (auto bbox : mOctTree->GetNodesAtLevel(3)) {
+		if (bbox->OverlappedItems.size() > 0)
+			mDebugDrawer->DrawBoundingBox(bbox->bounds);
+	}
+	// ============================================================
 	
-	BoundingFrustum frustum = ViewFrustum;
+	mAllVisibleRitems.clear();
+	alreadyCheckedRitems.clear();
+	CollectVisibleRenderItems(mOctTree->root.get(), ViewFrustum);
 
-	std::unordered_set<RenderItem*> visibleItems;
-	CollectVisibleRenderItems(mOctree->root.get(), frustum, visibleItems);
+	
+	for (int k = 0; k < mAllVisibleRitems.size(); k++) {
+		auto& ri = mAllVisibleRitems[k];
+		auto& i = ri->drawableObject;
 
-	/*for (RenderItem* ri : visibleItems) {
-		ri->IsInViewFrustum = true;
-	}*/
+		
+		// Draw Line ================================================================================================================================================
+		//mDebugDrawer->DrawLine(
+		//	DirectX::SimpleMath::Vector3(XMVectorGetX(cameraPos), XMVectorGetY(cameraPos), XMVectorGetZ(cameraPos)),
+		//	i->WorldLocation,
+		//	DirectX::SimpleMath::Color(Colors::Red));
+		// ==========================================================================================================================================================
 
-	int k = 0;
-	for (auto& pair : mAllObjects)
-	{
-		auto& i = pair.second;
 
-		auto t = mAllRitems[k].get();
-		if (t->IsInViewFrustum) {
-			//calculate LODs
-			float dx = i->WorldLocation.x - XMVectorGetX(cameraPos);
-			float dy = i->WorldLocation.y - XMVectorGetY(cameraPos);
-			float dz = i->WorldLocation.z - XMVectorGetZ(cameraPos);
-			float DistanceToObject = sqrtf(dx * dx + dy * dy + dz * dz);
 
-			if (DistanceToObject < 10.f) t->currentLOD = 0;
-			else if (DistanceToObject < 20.f) t->currentLOD = std::min(t->numLODs - 1, (UINT)1);
-			else if (DistanceToObject < 30.f) t->currentLOD = std::min(t->numLODs - 1, (UINT)2);
-			else if (DistanceToObject < 40.f) t->currentLOD = std::min(t->numLODs - 1, (UINT)3);
-			else if (DistanceToObject < 50.f) t->currentLOD = std::min(t->numLODs - 1, (UINT)4);
-		}
-		//Calculate bounding box
-		//DirectX::BoundingBox worldBounds;
-		//XMMATRIX worldMatrix = XMLoadFloat4x4(&t->World);
-		//t->Geo->DrawArgs[t->Geo->Name + "_LOD" + std::to_string(t->currentLOD)].Bounds.Transform(worldBounds, XMMatrixScaling(0.7f, 0.7f, 0.7f) * worldMatrix); //0.8 for perfect culling
+		// Draw All Objects Bounding Boxes ==========================================================================================================================
+		//mDebugDrawer->DrawBoundingBox(ri->bounds);
+		// ==========================================================================================================================================================
 
-		// Check view frustum visibility
-		//t->IsInViewFrustum = ViewFrustum.Intersects(worldBounds);
+
+
+		// Calculate LODs ===========================================================================================================================================
+		float dx = i->WorldLocation.x - XMVectorGetX(cameraPos);
+		float dy = i->WorldLocation.y - XMVectorGetY(cameraPos);
+		float dz = i->WorldLocation.z - XMVectorGetZ(cameraPos);
+		float DistanceToObject = sqrtf(dx * dx + dy * dy + dz * dz);
+
+		if (DistanceToObject < 10.f) ri->currentLOD = 0;
+		else if (DistanceToObject < 20.f) ri->currentLOD = std::min(ri->numLODs - 1, (UINT)1);
+		else if (DistanceToObject < 30.f) ri->currentLOD = std::min(ri->numLODs - 1, (UINT)2);
+		else if (DistanceToObject < 40.f) ri->currentLOD = std::min(ri->numLODs - 1, (UINT)3);
+		else ri->currentLOD = std::min(ri->numLODs - 1, (UINT)4);
+		// ==========================================================================================================================================================
 
 		if (i->NeedsUpdate)
 		{
-			XMStoreFloat4x4(&t->World, XMMatrixScaling(i->Scale.x, i->Scale.y, i->Scale.z)
-				* XMMatrixRotationRollPitchYaw(i->WorldRotation.z, i->WorldRotation.y, i->WorldRotation.x)
-				* XMMatrixTranslation(i->WorldLocation.x, i->WorldLocation.y, i->WorldLocation.z));
-			XMStoreFloat4x4(&t->TexTransform, i->TexTransform);
+			XMStoreFloat4x4(&ri->World, XMMatrixScaling(i->Scale.x, i->Scale.y, i->Scale.z)
+			* XMMatrixRotationRollPitchYaw(i->WorldRotation.z, i->WorldRotation.y, i->WorldRotation.x)
+			* XMMatrixTranslation(i->WorldLocation.x, i->WorldLocation.y, i->WorldLocation.z));
+			XMStoreFloat4x4(&ri->TexTransform, i->TexTransform);
 
-			t->NumFramesDirty = gNumFrameResources;
+			ri->NumFramesDirty = gNumFrameResources;
 			i->NeedsUpdate = false;
 		}
-		k++;
 	}
+
+	//int k = 0;
+	//for (auto& pair : mAllObjects)
+	//{
+	//	auto& i = pair.second;
+
+	//	auto t = mAllRitems[k];
+	//	if (t->IsInViewFrustum) {
+
+	//		/*mDebugDrawer->DrawLine(
+	//			DirectX::SimpleMath::Vector3(XMVectorGetX(cameraPos), XMVectorGetY(cameraPos), XMVectorGetZ(cameraPos)),
+	//			i->WorldLocation,
+	//			DirectX::SimpleMath::Color(Colors::Red)
+	//		);*/
+
+
+	//		// Draw All Objects Bounding Boxes ==========================================================================================================================
+	//		/*DirectX::BoundingBox worldBounds;
+	//		XMMATRIX worldMatrix = XMLoadFloat4x4(&t->World);
+	//		t->Geo->DrawArgs[t->Geo->Name + "_LOD" + std::to_string(t->currentLOD)].Bounds.Transform(worldBounds, XMMatrixScaling(1.0f, 1.0f, 1.0f) * worldMatrix);*/
+
+	//		//mDebugDrawer->DrawBoundingBox(t->bounds);
+	//		// ==========================================================================================================================================================
+
+
+	//		//calculate LODs
+	//		/*float dx = i->WorldLocation.x - XMVectorGetX(cameraPos);
+	//		float dy = i->WorldLocation.y - XMVectorGetY(cameraPos);
+	//		float dz = i->WorldLocation.z - XMVectorGetZ(cameraPos);
+	//		float DistanceToObject = sqrtf(dx * dx + dy * dy + dz * dz);
+
+	//		if (DistanceToObject < 10.f) t->currentLOD = 0;
+	//		else if (DistanceToObject < 20.f) t->currentLOD = std::min(t->numLODs - 1, (UINT)1);
+	//		else if (DistanceToObject < 30.f) t->currentLOD = std::min(t->numLODs - 1, (UINT)2);
+	//		else if (DistanceToObject < 40.f) t->currentLOD = std::min(t->numLODs - 1, (UINT)3);
+	//		else t->currentLOD = std::min(t->numLODs - 1, (UINT)4);*/
+	//	}
+
+	//	//Calculate bounding box
+	//	//DirectX::BoundingBox worldBounds;
+	//	//XMMATRIX worldMatrix = XMLoadFloat4x4(&t->World);
+	//	//t->Geo->DrawArgs[t->Geo->Name + "_LOD" + std::to_string(t->currentLOD)].Bounds.Transform(worldBounds, XMMatrixScaling(0.7f, 0.7f, 0.7f) * worldMatrix); //0.8 for perfect culling
+
+	//	// Check view frustum visibility
+	//	//t->IsInViewFrustum = ViewFrustum.Intersects(worldBounds);
+
+	//	if (i->NeedsUpdate)
+	//	{
+	//		XMStoreFloat4x4(&t->World, XMMatrixScaling(i->Scale.x, i->Scale.y, i->Scale.z)
+	//			* XMMatrixRotationRollPitchYaw(i->WorldRotation.z, i->WorldRotation.y, i->WorldRotation.x)
+	//			* XMMatrixTranslation(i->WorldLocation.x, i->WorldLocation.y, i->WorldLocation.z));
+	//		XMStoreFloat4x4(&t->TexTransform, i->TexTransform);
+
+	//		t->NumFramesDirty = gNumFrameResources;
+	//		i->NeedsUpdate = false;
+	//	}
+	//	k++;
+	//}
 }
 
 void RenderingSystem::BuildInputLayout()
@@ -1456,7 +1542,7 @@ void RenderingSystem::BuildBasicGeometry()
 		const UINT vbByteSize = (UINT)vertices.size() * sizeof(Vertex);
 		const UINT ibByteSize = (UINT)indices.size() * sizeof(std::uint16_t);
 
-		auto geo = std::make_unique<MeshGeometry>();
+		auto geo =  new MeshGeometry;
 		geo->Name = Names[k];
 
 		ThrowIfFailed(D3DCreateBlob(vbByteSize, &geo->VertexBufferCPU));
@@ -1481,7 +1567,7 @@ void RenderingSystem::BuildBasicGeometry()
 
 		geo->DrawArgs[Names[k] + "_LOD0"] = *Submesh;
 
-		mGeometries[geo->Name] = std::move(geo);
+		mGeometries[geo->Name] = geo;
 	}
 }
 

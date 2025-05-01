@@ -19,8 +19,11 @@
 #include "Gbuffer.h"
 #include "DirectXCollision.h"
 #include "directx/ResourceUploadBatch.h"
+#include "RenderItem.h"
 
-//#include "IRenderTargetProvider.h"
+#include "IRenderTargetProvider.h"
+#include "old/DebugRenderSysImpl.h"
+#include "OctTree.h"
 
 #pragma comment(lib,"d3dcompiler.lib")
 #pragma comment(lib, "D3D12.lib")
@@ -30,7 +33,9 @@ using Microsoft::WRL::ComPtr;
 using namespace DirectX;
 using namespace DirectX::PackedVector;
 
-const int gNumFrameResources = 3;
+// Already Initialized In RenderItem.h =========
+//const int gNumFrameResources = 3;
+// =============================================
 
 struct ShaderDesc
 {
@@ -44,6 +49,8 @@ struct ShaderDesc
         this->ShaderDefines = ShaderDefines;
         this->ShaderProfile = ShaderProfile;
     }
+
+    ~ShaderDesc() = default;
 
     std::string Name;
     std::wstring Path;
@@ -63,6 +70,9 @@ struct TextureDesc
         this->Path = Path;
         this->TexType = TexType;
     }
+
+    ~TextureDesc() = default;
+
     std::string Name;
     std::wstring Path;
     TextureType TexType;
@@ -87,6 +97,9 @@ struct MaterialDesc
         this->Roughness = Roughness;
         this->UseTesselation = UseTesselation;
     }
+
+    ~MaterialDesc() = default;
+
     std::string Name = "";
     std::string DiffuseTexName = "";
     std::string NormalMapName = "";
@@ -116,53 +129,21 @@ struct MeshDesc
         this->Path = Path;
         this->TextureName = TextureName;
     }
+
+    ~MeshDesc() = default;
+
     std::string Name;
     std::string Path;
     std::string TextureName = "";
 };
 
-// Lightweight structure stores parameters to draw a shape.
-struct RenderItem
-{
-    RenderItem() = default;
 
-    // World matrix of the shape that describes the object's local space
-    // relative to the world space, which defines the position, orientation,
-    // and scale of the object in the world.
-    XMFLOAT4X4 World = MathHelper::Identity4x4();
-
-    XMFLOAT4X4 TexTransform = MathHelper::Identity4x4();
-
-    // Dirty flag indicating the object data has changed and we need to update the constant buffer.
-    // Because we have an object cbuffer for each FrameResource, we have to apply the
-    // update to each FrameResource.  Thus, when we modify obect data we should set 
-    // NumFramesDirty = gNumFrameResources so that each frame resource gets the update.
-    int NumFramesDirty = gNumFrameResources;
-
-    // Index into GPU constant buffer corresponding to the ObjectCB for this render item.
-    UINT ObjCBIndex = -1;
-
-    Material* Mat = nullptr;
-    MeshGeometry* Geo = nullptr;
-
-
-    // Primitive topology.
-    D3D12_PRIMITIVE_TOPOLOGY PrimitiveType = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
-
-    // DrawIndexedInstanced parameters.
-    UINT IndexCount = 0;
-    UINT StartIndexLocation = 0;
-    int BaseVertexLocation = 0;
-
-    UINT numLODs = 1;
-    UINT currentLOD = 0;
-
-    bool IsInViewFrustum = false;
-};
 
 struct LightObject
 {
     LightObject() {}
+
+    ~LightObject() = default;
 
     float Strength = 0.5f;
     float FalloffStart = 1.0f;                          // point/spot light only
@@ -178,155 +159,38 @@ struct LightObject
     int NumFramesDirty = gNumFrameResources;
 };
 
-struct DrawableObject
-{
-    DrawableObject() {}
-
-    DrawableObject(std::string Name, std::string GeometryName, std::string MaterialName, int RenderLayer)
-    {
-        this->Name = Name;
-        this->GeometryName = GeometryName;
-        this->MaterialName = MaterialName;
-        this->RenderLayer = RenderLayer;
-    }
-    DrawableObject(std::string Name, std::string GeometryName, std::string MaterialName, int RenderLayer, XMFLOAT3 WorldLocation, XMFLOAT3 WorldRotation, XMFLOAT3 Scale)
-    {
-        this->Name = Name;
-        this->GeometryName = GeometryName;
-        this->MaterialName = MaterialName;
-        this->RenderLayer = RenderLayer;
-        this->WorldLocation = WorldLocation;
-        this->WorldRotation = WorldRotation;
-        this->Scale = Scale;
-    }
-
-    std::string Name;
-    std::string GeometryName;
-    std::string MaterialName;
-    int RenderLayer = 0;
-
-    XMFLOAT3 WorldLocation = XMFLOAT3(0.f, 0.f, 0.f);
-    XMFLOAT3 WorldRotation = XMFLOAT3(0.f, 0.f, 0.f);
-    XMFLOAT3 Scale = XMFLOAT3(1.f, 1.f, 1.f);
-    XMMATRIX TexTransform = XMMatrixIdentity();
-    bool NeedsUpdate = true;
-};
-
-enum class RenderLayer : int
-{
-    Opaque = 0,
-    Mirrors,
-    Reflected,
-    Transparent,
-    Shadow,
-    Sky,
-    Count,
-};
-
-struct OctreeNode {
-    BoundingBox bounds;
-    std::array<OctreeNode*, 8> children;
-    std::vector<RenderItem*> OverlappedItems;
-    bool isLeaf = false;
-};
-
-class Octree {
-public:
-    Octree(const XMFLOAT3& center, float cubeSize, size_t numDivisions, const std::vector<RenderItem*>& ritems)
-    {
-        this->numDivisions = numDivisions;
-
-        // create parent cube
-        XMFLOAT3 extents(cubeSize / 2.0f, cubeSize / 2.0f, cubeSize / 2.0f);
-        root = std::make_unique<OctreeNode>();
-        root->bounds = BoundingBox(center, extents);
-
-        // recurrent tree creation
-        BuildTree(root.get(), numDivisions);
-
-        for (int i = 0; i < ritems.size(); i++) {
-            auto ri = ritems[i];
-
-            DirectX::BoundingBox worldBounds;
-            XMMATRIX worldMatrix = XMLoadFloat4x4(&ri->World);
-            ri->Geo->DrawArgs[ri->Geo->Name + "_LOD" + std::to_string(ri->currentLOD)].Bounds.Transform(worldBounds, XMMatrixScaling(0.8f, 0.8f, 0.8f) * worldMatrix); //0.8 for perfect culling
-
-            std::vector<OctreeNode*> intersectingLeaves;
-            FindIntersectingLeaves(root.get(), 0, numDivisions, worldBounds, intersectingLeaves);
-            
-            for (auto leaf : intersectingLeaves) {
-                leaf->isLeaf = true;
-                leaf->OverlappedItems.push_back(ri);
-            }
-        }
-    }
-
-    std::unique_ptr<OctreeNode> root;
-
-private:
-    size_t numDivisions;
-
-    void FindIntersectingLeaves(
-        OctreeNode* node,
-        int currentLevel,
-        int targetLevel,
-        const BoundingBox& itemBounds,
-        std::vector<OctreeNode*>& result
-    )
-    {
-        if (!node) return;
-
-        if (!node->bounds.Intersects(itemBounds))
-            return;
-
-        if (currentLevel == targetLevel && node->isLeaf)
-        {
-            result.push_back(node);
-            return;
-        }
-
-        for (int i = 0; i < 8; ++i)
-            if (node->children[i])
-                FindIntersectingLeaves(node->children[i], currentLevel + 1, targetLevel, itemBounds, result);
-    }
-
-    void BuildTree(OctreeNode* node, size_t divisionsLeft) {
-        if (divisionsLeft == 0) {
-            return;
-        }
-
-        const XMFLOAT3& parentCenter = node->bounds.Center;
-        const XMFLOAT3 parentExtents = node->bounds.Extents;
-        XMFLOAT3 childExtents = {
-            parentExtents.x / 2.0f,
-            parentExtents.y / 2.0f,
-            parentExtents.z / 2.0f
-        };
-
-        for (int i = 0; i < 8; ++i) {
-            XMFLOAT3 childCenter = parentCenter;
-
-            // calculate child center
-            childCenter.x += (i & 1) ? childExtents.x : -childExtents.x;
-            childCenter.y += (i & 2) ? childExtents.y : -childExtents.y;
-            childCenter.z += (i & 4) ? childExtents.z : -childExtents.z;
-
-            node->children[i] = new OctreeNode();
-            node->children[i]->bounds = BoundingBox(childCenter, childExtents);
-            node->children[i]->isLeaf = (divisionsLeft == 1);
-
-            // repeat for more children
-            BuildTree(node->children[i], divisionsLeft - 1);
-        }
-
-        node->isLeaf = false;
-    }
-};
-
-//class RenderingSystem : public IRenderTargetProvider {
-class RenderingSystem {
+class RenderingSystem : public IRenderTargetProvider {
+//class RenderingSystem {
 public:
     RenderingSystem();
+
+    ~RenderingSystem()
+    {
+        delete mOctTree;
+
+        for (auto& pair : mGeometries)
+            delete pair.second;
+
+        for (auto& pair : mMaterials)
+            delete pair.second;
+
+        for (auto& pair : mTextures)
+            delete pair.second;
+
+        for (auto& light : mAllLights)
+            delete light;
+
+        for (auto& ri : mAllRitems)
+            delete ri;
+
+        for (auto& layer : mRitemLayer)
+        {
+            layer.clear();
+        }
+
+        mFrameResources.clear();
+    }
+
 
     void Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer* gt);
     void OnResize();
@@ -353,7 +217,7 @@ public:
     void BuildBasicGeometry();
     void LoadTextures(std::vector<TextureDesc>& TexDescs);
 
-    void CollectVisibleRenderItems(OctreeNode* node, const BoundingFrustum& frustum, std::unordered_set<RenderItem*>& visibleItems);
+    void CollectVisibleRenderItems(OctTreeNode* node, const BoundingFrustum& frustum);
 
     void UpdateRenderItems(std::unordered_map<std::string, DrawableObject*>& mAllObjects);
 
@@ -364,16 +228,20 @@ public:
     void BuildFrameResources();
     void BuildMaterials(std::vector<MaterialDesc>& MaterialDescs);
     void BuildRenderItems(std::unordered_map<std::string, DrawableObject*>& Objects);
-    void BuildLightItems(std::unordered_map<std::string, std::shared_ptr<LightObject>>& Objects);
+    void BuildLightItems(std::unordered_map<std::string, LightObject*>& Objects);
 
     void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems, std::string PSOName);
 
     void GBufferGeometryPass();
     void GBufferLightPass();
 
-    //D3D12_CPU_DESCRIPTOR_HANDLE GetCurrentRTV() const override { return CurrentBackBufferView(); }
-    //D3D12_CPU_DESCRIPTOR_HANDLE GetDSV() const override { return DepthStencilView(); }
-    
+    // For Debug System ===============================================================================
+    D3D12_CPU_DESCRIPTOR_HANDLE GetCurrentRTV() const override { return CurrentBackBufferView(); }
+    D3D12_CPU_DESCRIPTOR_HANDLE GetDSV() const override { return DepthStencilView(); }
+
+    std::unique_ptr<gfw::DebugRenderSysImpl> mDebugDrawer;
+    // =================================================================================================
+
     void DrawSkyBox();
 
     void Render();
@@ -452,14 +320,15 @@ protected:
 
     ComPtr<ID3D12DescriptorHeap> mSrvDescriptorHeap = nullptr;
 
-    std::unordered_map<std::string, std::unique_ptr<MeshGeometry>> mGeometries;
-    std::unordered_map<std::string, std::unique_ptr<Material>> mMaterials;
-    std::unordered_map<std::string, std::unique_ptr<Texture>> mTextures;
+    std::unordered_map<std::string, MeshGeometry*> mGeometries;
+    std::unordered_map<std::string, Material*> mMaterials;
+    std::unordered_map<std::string, Texture*> mTextures;
     std::unordered_map<std::string, ComPtr<ID3DBlob>> mShaders;
 
     std::vector<D3D12_INPUT_ELEMENT_DESC> mInputLayout;
-    std::vector<std::unique_ptr<RenderItem>> mAllRitems;
-    std::vector<std::shared_ptr<LightObject>> mAllLights;
+    std::vector<RenderItem*> mAllRitems;
+    std::vector<RenderItem*> mAllVisibleRitems;
+    std::vector<LightObject*> mAllLights;
     std::vector<RenderItem*> mRitemLayer[(int)RenderLayer::Count];
 
     PassConstants mMainPassCB;
@@ -482,7 +351,7 @@ protected:
 
     BoundingFrustum ViewFrustum;
 
-    Octree* mOctree;
+    OctTree* mOctTree;
 };
 
 
