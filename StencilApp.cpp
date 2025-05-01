@@ -34,7 +34,6 @@ private:
     void LoadMeshes();
     void MakeDrawableObjects();
     void MakeLights();
-
 };
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prevInstance,

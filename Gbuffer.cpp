@@ -2,7 +2,7 @@
 
 #include "Gbuffer.h"
 #include "d3dUtil.h"    // Предполагается, что здесь есть функция d3dUtil::GetDevice()
-#include "d3dx12.h"     // Для использования обёрток CD3DX12_*
+#include "directx/d3dx12.h"     // Для использования обёрток CD3DX12_*
 #include <stdexcept>
 
 // Конструктор создает ресурсы (текстуры) и дескрипторные кучи для RTV и SRV.

@@ -18,8 +18,9 @@
 #include <string>
 #include "Gbuffer.h"
 #include "DirectXCollision.h"
+#include "directx/ResourceUploadBatch.h"
 
-#include "IRenderTargetProvider.h"
+//#include "IRenderTargetProvider.h"
 
 #pragma comment(lib,"d3dcompiler.lib")
 #pragma comment(lib, "D3D12.lib")
@@ -322,7 +323,8 @@ private:
     }
 };
 
-class RenderingSystem : public IRenderTargetProvider {
+//class RenderingSystem : public IRenderTargetProvider {
+class RenderingSystem {
 public:
     RenderingSystem();
 
@@ -369,8 +371,8 @@ public:
     void GBufferGeometryPass();
     void GBufferLightPass();
 
-    D3D12_CPU_DESCRIPTOR_HANDLE GetCurrentRTV() const override { return CurrentBackBufferView(); }
-    D3D12_CPU_DESCRIPTOR_HANDLE GetDSV() const override { return DepthStencilView(); }
+    //D3D12_CPU_DESCRIPTOR_HANDLE GetCurrentRTV() const override { return CurrentBackBufferView(); }
+    //D3D12_CPU_DESCRIPTOR_HANDLE GetDSV() const override { return DepthStencilView(); }
     
     void DrawSkyBox();
 

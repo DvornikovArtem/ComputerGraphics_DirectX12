@@ -1205,18 +1205,45 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 
 	ThrowIfFailed(mCommandList->Reset(mDirectCmdListAlloc.Get(), nullptr));
 
-	for (int i = 0; i < TexDescs.size() ; i++)
+	// OLD REALIZATION =========================================================
+	//for (int i = 0; i < TexDescs.size() ; i++)
+	//{
+	//	auto t = std::make_unique<Texture>();
+	//	t->srvHeapIndex = i;
+	//	t->Name = TexDescs[i].Name;
+	//	t->Filename = TexDescs[i].Path;
+	//	ThrowIfFailed(DirectX::CreateDDSTextureFromFile12(md3dDevice.Get(),
+	//		mCommandList.Get(), t->Filename.c_str(),
+	//		t->Resource, t->UploadHeap));
+	//	
+	//	mTextures[t->Name] = std::move(t);
+	//}
+	// =========================================================================
+
+
+	DirectX::ResourceUploadBatch upload(md3dDevice.Get());
+	upload.Begin();
+
+	for (int i = 0; i < TexDescs.size(); i++)
 	{
 		auto t = std::make_unique<Texture>();
 		t->srvHeapIndex = i;
 		t->Name = TexDescs[i].Name;
 		t->Filename = TexDescs[i].Path;
-		ThrowIfFailed(DirectX::CreateDDSTextureFromFile12(md3dDevice.Get(),
-			mCommandList.Get(), t->Filename.c_str(),
-			t->Resource, t->UploadHeap));
+
+		ThrowIfFailed(DirectX::CreateDDSTextureFromFile(
+			md3dDevice.Get(),
+			upload,
+			t->Filename.c_str(),
+			t->Resource.GetAddressOf()));
 
 		mTextures[t->Name] = std::move(t);
 	}
+
+	auto finish = upload.End(mCommandQueue.Get());
+	finish.get();
+
+
 	
 	//
 	// Create the SRV heap.

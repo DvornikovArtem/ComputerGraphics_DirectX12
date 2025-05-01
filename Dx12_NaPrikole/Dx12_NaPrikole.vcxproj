@@ -125,8 +125,9 @@
       </SDLCheck>
       <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>Default</ConformanceMode>
-      <LanguageStandard>Default</LanguageStandard>
+      <LanguageStandard>stdcpp14</LanguageStandard>
       <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <CompileAs>Default</CompileAs>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -207,6 +208,7 @@
     <Image Include="..\Textures\WoodCrate02.dds" />
   </ItemGroup>
   <ItemGroup>
+    <FxCompile Include="..\Shaders\Debug.hlsl" />
     <FxCompile Include="..\Shaders\Default.hlsl" />
     <FxCompile Include="..\Shaders\DeferredLightPass.hlsl" />
     <FxCompile Include="..\Shaders\DeferredGeometryPass.hlsl" />
@@ -217,8 +219,17 @@
     <ClInclude Include="..\Camera.h" />
     <ClInclude Include="..\d3dApp.h" />
     <ClInclude Include="..\d3dUtil.h" />
-    <ClInclude Include="..\d3dx12.h" />
-    <ClInclude Include="..\DDSTextureLoader.h" />
+    <ClInclude Include="..\directx\d3d12.h" />
+    <ClInclude Include="..\directx\d3dx12.h" />
+    <ClInclude Include="..\directx\DDS.h" />
+    <ClInclude Include="..\directx\DDSTextureLoader.h" />
+    <ClInclude Include="..\directx\DirectXHelpers.h" />
+    <ClInclude Include="..\directx\GraphicsMemory.h" />
+    <ClInclude Include="..\directx\LinearAllocator.h" />
+    <ClInclude Include="..\directx\LoaderHelpers.h" />
+    <ClInclude Include="..\directx\pch.h" />
+    <ClInclude Include="..\directx\PlatformHelpers.h" />
+    <ClInclude Include="..\directx\ResourceUploadBatch.h" />
     <ClInclude Include="..\FrameResource.h" />
     <ClInclude Include="..\GameTimer.h" />
     <ClInclude Include="..\Gbuffer.h" />
@@ -231,7 +242,12 @@
     <ClCompile Include="..\Camera.cpp" />
     <ClCompile Include="..\d3dApp.cpp" />
     <ClCompile Include="..\d3dUtil.cpp" />
-    <ClCompile Include="..\DDSTextureLoader.cpp" />
+    <ClCompile Include="..\directx\DDSTextureLoader.cpp" />
+    <ClCompile Include="..\directx\DirectXHelpers.cpp" />
+    <ClCompile Include="..\directx\GraphicsMemory.cpp" />
+    <ClCompile Include="..\directx\LinearAllocator.cpp" />
+    <ClCompile Include="..\directx\pch.cpp" />
+    <ClCompile Include="..\directx\ResourceUploadBatch.cpp" />
     <ClCompile Include="..\FrameResource.cpp" />
     <ClCompile Include="..\GameTimer.cpp" />
     <ClCompile Include="..\Gbuffer.cpp" />
@@ -239,6 +255,9 @@
     <ClCompile Include="..\MathHelper.cpp" />
     <ClCompile Include="..\RenderingSystem.cpp" />
     <ClCompile Include="..\StencilApp.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\directx\GenerateMips_main.inc" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

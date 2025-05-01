@@ -25,8 +25,8 @@
 #include <fstream>
 #include <sstream>
 #include <cassert>
-#include "d3dx12.h"
-#include "DDSTextureLoader.h"
+#include "directx/d3dx12.h"
+#include "directx/DDSTextureLoader.h"
 #include "MathHelper.h"
 
 inline void d3dSetDebugName(IDXGIObject* obj, const char* name)
