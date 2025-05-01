@@ -19,6 +19,8 @@
 #include "Gbuffer.h"
 #include "DirectXCollision.h"
 
+#include "IRenderTargetProvider.h"
+
 #pragma comment(lib,"d3dcompiler.lib")
 #pragma comment(lib, "D3D12.lib")
 #pragma comment(lib, "dxgi.lib")
@@ -222,7 +224,7 @@ enum class RenderLayer : int
 
 struct OctreeNode {
     BoundingBox bounds;
-    std::array<std::unique_ptr<OctreeNode>, 8> children;
+    std::array<OctreeNode*, 8> children;
     std::vector<RenderItem*> OverlappedItems;
     bool isLeaf = false;
 };
@@ -284,7 +286,7 @@ private:
 
         for (int i = 0; i < 8; ++i)
             if (node->children[i])
-                FindIntersectingLeaves(node->children[i].get(), currentLevel + 1, targetLevel, itemBounds, result);
+                FindIntersectingLeaves(node->children[i], currentLevel + 1, targetLevel, itemBounds, result);
     }
 
     void BuildTree(OctreeNode* node, size_t divisionsLeft) {
@@ -308,19 +310,19 @@ private:
             childCenter.y += (i & 2) ? childExtents.y : -childExtents.y;
             childCenter.z += (i & 4) ? childExtents.z : -childExtents.z;
 
-            node->children[i] = std::make_unique<OctreeNode>();
+            node->children[i] = new OctreeNode();
             node->children[i]->bounds = BoundingBox(childCenter, childExtents);
             node->children[i]->isLeaf = (divisionsLeft == 1);
 
             // repeat for more children
-            BuildTree(node->children[i].get(), divisionsLeft - 1);
+            BuildTree(node->children[i], divisionsLeft - 1);
         }
 
         node->isLeaf = false;
     }
 };
 
-class RenderingSystem {
+class RenderingSystem : public IRenderTargetProvider {
 public:
     RenderingSystem();
 
@@ -351,7 +353,7 @@ public:
 
     void CollectVisibleRenderItems(OctreeNode* node, const BoundingFrustum& frustum, std::unordered_set<RenderItem*>& visibleItems);
 
-    void UpdateRenderItems(std::unordered_map<std::string, std::unique_ptr<DrawableObject>>& mAllObjects);
+    void UpdateRenderItems(std::unordered_map<std::string, DrawableObject*>& mAllObjects);
 
     void BuildMeshGeometry(std::string Name, const std::string& filename);
     void LoadMeshes(std::vector<MeshDesc>& MeshDescs);
@@ -359,19 +361,22 @@ public:
     void BuildGlobalPSOs();
     void BuildFrameResources();
     void BuildMaterials(std::vector<MaterialDesc>& MaterialDescs);
-    void BuildRenderItems(std::unordered_map<std::string, std::unique_ptr<DrawableObject>>& Objects);
+    void BuildRenderItems(std::unordered_map<std::string, DrawableObject*>& Objects);
     void BuildLightItems(std::unordered_map<std::string, std::shared_ptr<LightObject>>& Objects);
 
     void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems, std::string PSOName);
 
     void GBufferGeometryPass();
     void GBufferLightPass();
+
+    D3D12_CPU_DESCRIPTOR_HANDLE GetCurrentRTV() const override { return CurrentBackBufferView(); }
+    D3D12_CPU_DESCRIPTOR_HANDLE GetDSV() const override { return DepthStencilView(); }
     
     void DrawSkyBox();
 
     void Render();
 
-    void Update(std::unordered_map<std::string, std::unique_ptr<DrawableObject>>& mAllObjects);
+    void Update(std::unordered_map<std::string, DrawableObject*>& mAllObjects);
 
     std::array<const CD3DX12_STATIC_SAMPLER_DESC, 6> GetStaticSamplers();
 

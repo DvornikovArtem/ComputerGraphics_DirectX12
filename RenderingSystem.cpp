@@ -324,12 +324,12 @@ void RenderingSystem::LogAdapters()
 	}
 }
 
-void RenderingSystem::BuildRenderItems(std::unordered_map<std::string, std::unique_ptr<DrawableObject>>& Objects)
+void RenderingSystem::BuildRenderItems(std::unordered_map<std::string, DrawableObject*>& Objects)
 {
 	int k = 0;
 	for (auto& pair : Objects)
 	{
-		auto i = pair.second.get();
+		auto i = pair.second;
 
 		auto t = std::make_unique<RenderItem>();
 		t->World = MathHelper::Identity4x4();
@@ -355,7 +355,7 @@ void RenderingSystem::BuildRenderItems(std::unordered_map<std::string, std::uniq
 		k++;
 	}
 
-	mOctree = new Octree({ 0.f, 0.f, 0.f }, 50.f, 5, mRitemLayer[(int)RenderLayer::Opaque]);
+	mOctree = new Octree({ 0.f, 0.f, 0.f }, 1000.f, 5, mRitemLayer[(int)RenderLayer::Opaque]);
 }
 
 void RenderingSystem::BuildLightItems(std::unordered_map<std::string, std::shared_ptr<LightObject>>& Objects)
@@ -600,7 +600,7 @@ void RenderingSystem::BuildDescriptorHeap(Material* t)
 
 }
 
-void RenderingSystem::Update(std::unordered_map<std::string, std::unique_ptr<DrawableObject>>& mAllObjects)
+void RenderingSystem::Update(std::unordered_map<std::string, DrawableObject*>& mAllObjects)
 {
 	// Cycle through the circular frame resource array.
 	mCurrFrameResourceIndex = (mCurrFrameResourceIndex + 1) % gNumFrameResources;
@@ -1289,29 +1289,27 @@ void RenderingSystem::CollectVisibleRenderItems(
 		return;
 
 	if (node->isLeaf) {
+		std::vector<RenderItem*> alreadyDrawed;
 		for (RenderItem* ri : node->OverlappedItems) {
-
+			if (std::find(alreadyDrawed.begin(), alreadyDrawed.end(), ri) != alreadyDrawed.end()) continue;
+			alreadyDrawed.push_back(ri);
 			DirectX::BoundingBox worldBounds;
 			XMMATRIX worldMatrix = XMLoadFloat4x4(&ri->World);
-			ri->Geo->DrawArgs[ri->Geo->Name + "_LOD" + std::to_string(ri->currentLOD)].Bounds.Transform(worldBounds, XMMatrixScaling(1.f, 1.f, 1.f) * worldMatrix); //0.8 for perfect culling
+			ri->Geo->DrawArgs[ri->Geo->Name + "_LOD" + std::to_string(ri->currentLOD)].Bounds.Transform(worldBounds, XMMatrixScaling(0.8f, 0.8f, 0.8f) * worldMatrix); //0.8 for perfect culling
 			ri->IsInViewFrustum = ViewFrustum.Intersects(worldBounds);
 			//if (ri->IsInViewFrustum)
 			//visibleItems.insert(ri);
-			if (ri->Geo->Name == "PatrickStar") {
-				std::string s = std::string("\n") + ri->Geo->Name + "\n";
-				OutputDebugStringA(s.c_str());
-			}
 		}
 		return;
 	}
 
 	for (int i = 0; i < 8; ++i)
 		if (node->children[i])
-			CollectVisibleRenderItems(node->children[i].get(), frustum, visibleItems);
+			CollectVisibleRenderItems(node->children[i], frustum, visibleItems);
 }
 
 
-void RenderingSystem::UpdateRenderItems(std::unordered_map<std::string, std::unique_ptr<DrawableObject>>& mAllObjects)
+void RenderingSystem::UpdateRenderItems(std::unordered_map<std::string, DrawableObject*>& mAllObjects)
 {
 	XMVECTOR cameraPos = mCamera.GetPosition();
 
@@ -1328,27 +1326,26 @@ void RenderingSystem::UpdateRenderItems(std::unordered_map<std::string, std::uni
 	int k = 0;
 	for (auto& pair : mAllObjects)
 	{
-		auto i = pair.second.get();
+		auto& i = pair.second;
 
 		auto t = mAllRitems[k].get();
+		if (t->IsInViewFrustum) {
+			//calculate LODs
+			float dx = i->WorldLocation.x - XMVectorGetX(cameraPos);
+			float dy = i->WorldLocation.y - XMVectorGetY(cameraPos);
+			float dz = i->WorldLocation.z - XMVectorGetZ(cameraPos);
+			float DistanceToObject = sqrtf(dx * dx + dy * dy + dz * dz);
 
-
-		//calculate LODs
-		float dx = i->WorldLocation.x - XMVectorGetX(cameraPos);
-		float dy = i->WorldLocation.y - XMVectorGetY(cameraPos);
-		float dz = i->WorldLocation.z - XMVectorGetZ(cameraPos);
-		float DistanceToObject = sqrtf(dx * dx + dy * dy + dz * dz);
-
-		if (DistanceToObject < 10.f) t->currentLOD = 0;
-		else if (DistanceToObject < 20.f) t->currentLOD = std::min(t->numLODs - 1, (UINT)1);
-		else if (DistanceToObject < 30.f) t->currentLOD = std::min(t->numLODs - 1, (UINT)2);
-		else if (DistanceToObject < 40.f) t->currentLOD = std::min(t->numLODs - 1, (UINT)3);
-		else if (DistanceToObject < 50.f) t->currentLOD = std::min(t->numLODs - 1, (UINT)4);
-
+			if (DistanceToObject < 10.f) t->currentLOD = 0;
+			else if (DistanceToObject < 20.f) t->currentLOD = std::min(t->numLODs - 1, (UINT)1);
+			else if (DistanceToObject < 30.f) t->currentLOD = std::min(t->numLODs - 1, (UINT)2);
+			else if (DistanceToObject < 40.f) t->currentLOD = std::min(t->numLODs - 1, (UINT)3);
+			else if (DistanceToObject < 50.f) t->currentLOD = std::min(t->numLODs - 1, (UINT)4);
+		}
 		//Calculate bounding box
-		DirectX::BoundingBox worldBounds;
-		XMMATRIX worldMatrix = XMLoadFloat4x4(&t->World);
-		t->Geo->DrawArgs[t->Geo->Name + "_LOD" + std::to_string(t->currentLOD)].Bounds.Transform(worldBounds, XMMatrixScaling(0.7f, 0.7f, 0.7f) * worldMatrix); //0.8 for perfect culling
+		//DirectX::BoundingBox worldBounds;
+		//XMMATRIX worldMatrix = XMLoadFloat4x4(&t->World);
+		//t->Geo->DrawArgs[t->Geo->Name + "_LOD" + std::to_string(t->currentLOD)].Bounds.Transform(worldBounds, XMMatrixScaling(0.7f, 0.7f, 0.7f) * worldMatrix); //0.8 for perfect culling
 
 		// Check view frustum visibility
 		//t->IsInViewFrustum = ViewFrustum.Intersects(worldBounds);

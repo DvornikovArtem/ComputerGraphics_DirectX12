@@ -251,16 +251,16 @@ void StencilApp::MakeDrawableObjects()
 {
     //Has prebuilt geometries: "Box", "Grid", "Sphere", "Cylinder"
 
-    auto SkyBoxSphere = std::make_unique<DrawableObject>();
+    DrawableObject* SkyBoxSphere = new DrawableObject();
     SkyBoxSphere->Name = "SkyBoxSphere";
     SkyBoxSphere->GeometryName = "Sphere";
     SkyBoxSphere->MaterialName = "SkyBox";
     SkyBoxSphere->RenderLayer = (int)RenderLayer::Sky;
     SkyBoxSphere->Scale = XMFLOAT3(5000.0f, 5000.0f, 5000.0f);
 
-    mAllObjects[SkyBoxSphere->Name] = std::move(SkyBoxSphere);
+    mAllObjects[SkyBoxSphere->Name] = SkyBoxSphere;
 
-    auto TesselationTestSphere = std::make_unique<DrawableObject>();
+    DrawableObject* TesselationTestSphere = new DrawableObject();
     TesselationTestSphere->Name = "TesselationTestSphere";
     TesselationTestSphere->GeometryName = "Sphere";
     TesselationTestSphere->MaterialName = "Semechki";
@@ -270,9 +270,9 @@ void StencilApp::MakeDrawableObjects()
     TesselationTestSphere->Scale = XMFLOAT3(5.0f, 5.0f, 5.0f);
     TesselationTestSphere->TexTransform = XMMatrixScaling(5.0f, 5.0f, 1.0f);
 
-    mAllObjects[TesselationTestSphere->Name] = std::move(TesselationTestSphere);
+    mAllObjects[TesselationTestSphere->Name] = TesselationTestSphere;
 
-    auto DecalTestCube = std::make_unique<DrawableObject>();
+    DrawableObject* DecalTestCube = new DrawableObject();
     DecalTestCube->Name = "DecalTestCube";
     DecalTestCube->GeometryName = "Cylinder";
     DecalTestCube->MaterialName = "skullMat";
@@ -282,10 +282,10 @@ void StencilApp::MakeDrawableObjects()
     DecalTestCube->Scale = XMFLOAT3(5.0f, 5.0f, 5.0f);
     DecalTestCube->TexTransform = XMMatrixScaling(5.0f, 5.0f, 1.0f);
 
-    mAllObjects[DecalTestCube->Name] = std::move(DecalTestCube);
+    mAllObjects[DecalTestCube->Name] = DecalTestCube;
 
 
-    auto Floor = std::make_unique<DrawableObject>();
+    DrawableObject* Floor = new DrawableObject();
     Floor->Name = "Floor";
     Floor->GeometryName = "Grid";
     Floor->MaterialName = "grass";
@@ -295,9 +295,9 @@ void StencilApp::MakeDrawableObjects()
     Floor->Scale = XMFLOAT3(5.0f, 1.0f, 5.0f);
     Floor->TexTransform = XMMatrixScaling(50.0f, 50.0f, 1.0f);
 
-    mAllObjects[Floor->Name] = std::move(Floor);
+    mAllObjects[Floor->Name] = Floor;
 
-    auto Head = std::make_unique<DrawableObject>();
+    DrawableObject* Head = new DrawableObject();
     Head->Name = "Head";
     Head->GeometryName = "Head";
     Head->MaterialName = "mesh";
@@ -307,19 +307,21 @@ void StencilApp::MakeDrawableObjects()
     Head->Scale = XMFLOAT3(1.0f, 1.0f, 1.0f);
     Head->TexTransform = XMMatrixScaling(1.f, 1.f, 1.f);
 
-    mAllObjects[Head->Name] = std::move(Head);
+    mAllObjects[Head->Name] = Head;
 
-    auto Patrick = std::make_unique<DrawableObject>();
-    Patrick->Name = "Patrick";
-    Patrick->GeometryName = "PatrickStar";
-    Patrick->MaterialName = "PatrickMat";
-    Patrick->RenderLayer = (int)RenderLayer::Opaque;
-    Patrick->WorldLocation = XMFLOAT3(-3.f, 2.f, 0.f);
-    Patrick->WorldRotation = XMFLOAT3(0.f, 0.f, 0.f);
-    Patrick->Scale = XMFLOAT3(1.0f, 1.0f, 1.0f);
-    Patrick->TexTransform = XMMatrixScaling(1.f, 1.f, 1.f);
+    for (int i = 0; i < 100000; i++) {
+        DrawableObject* Patrick = new DrawableObject();
+        Patrick->Name = "Patrick" + std::to_string(i);
+        Patrick->GeometryName = "PatrickStar";
+        Patrick->MaterialName = "PatrickMat";
+        Patrick->RenderLayer = (int)RenderLayer::Opaque;
+        Patrick->WorldLocation = XMFLOAT3(-50 + i%90, 2.f, -50+(int)(i / 30));
+        Patrick->WorldRotation = XMFLOAT3(0.f, 0.f, 0.f);
+        Patrick->Scale = XMFLOAT3(1.0f, 1.0f, 1.0f);
+        Patrick->TexTransform = XMMatrixScaling(1.f, 1.f, 1.f);
 
-    mAllObjects[Patrick->Name] = std::move(Patrick);
+        mAllObjects[Patrick->Name] = Patrick;
+    }
 
     mRenderingSystem->BuildRenderItems(mAllObjects);
 }
