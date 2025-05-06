@@ -29,6 +29,7 @@ private:
     virtual void OnMouseDown(WPARAM btnState, int x, int y)override;
     virtual void OnMouseUp(WPARAM btnState, int x, int y)override;
     virtual void OnMouseMove(WPARAM btnState, int x, int y)override;
+    virtual void OnMouseWheelMove(WPARAM rotation) override;
     void OnKeyboardInput(const GameTimer& gt);
 
     void LoadShaders();
@@ -37,6 +38,8 @@ private:
     void LoadMeshes();
     void MakeDrawableObjects();
     void MakeLights();
+
+    float mCameraMoveSpeed = 10.0f;
 };
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prevInstance,
@@ -136,22 +139,33 @@ void StencilApp::OnMouseMove(WPARAM btnState, int x, int y)
     mRenderingSystem->mLastMousePos.x = x;
     mRenderingSystem->mLastMousePos.y = y;
 }
+
+void StencilApp::OnMouseWheelMove(WPARAM btnState)
+{
+    short wheelDelta = GET_WHEEL_DELTA_WPARAM(btnState);
+
+    float& speed = mCameraMoveSpeed;
+    if (wheelDelta > 0)
+        speed = std::min(speed + 4.0f, 200.0f);
+    else if (wheelDelta < 0)
+        speed = (speed - 4.0f) > 1.0f ? (speed - 1.0f) : 1.0f;
+}
  
 void StencilApp::OnKeyboardInput(const GameTimer& gt)
 {
     const float dt = gt.DeltaTime();
 
     if (GetAsyncKeyState('W') & 0x8000)
-        mRenderingSystem->mCamera.Walk(10.0f * dt);
+        mRenderingSystem->mCamera.Walk(mCameraMoveSpeed * dt);
 
     if (GetAsyncKeyState('S') & 0x8000)
-        mRenderingSystem->mCamera.Walk(-10.0f * dt);
+        mRenderingSystem->mCamera.Walk(-mCameraMoveSpeed * dt);
 
     if (GetAsyncKeyState('A') & 0x8000)
-        mRenderingSystem->mCamera.Strafe(-10.0f * dt);
+        mRenderingSystem->mCamera.Strafe(-mCameraMoveSpeed * dt);
 
     if (GetAsyncKeyState('D') & 0x8000)
-        mRenderingSystem->mCamera.Strafe(10.0f * dt);
+        mRenderingSystem->mCamera.Strafe(mCameraMoveSpeed * dt);
 
     if(GetAsyncKeyState(VK_SPACE) & 0x8000)
         mRenderingSystem->MakeDecal();

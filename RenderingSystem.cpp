@@ -72,7 +72,7 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 	mGbuffer = std::make_unique<Gbuffer>(mClientWidth, mClientHeight, md3dDevice);
 
 	// For Debug System =========================================================
-	mDebugDrawer = std::make_unique<gfw::DebugRenderSysImpl>(md3dDevice);
+	mDebugDrawer = new gfw::DebugRenderSysImpl(md3dDevice);
 
 	mDebugDrawer->SetCamera(&mCamera);
 	// ==========================================================================
@@ -382,7 +382,13 @@ void RenderingSystem::BuildRenderItems(std::unordered_map<std::string, DrawableO
 		k++;
 	}
 
-	mOctTree = new OctTree({ 0.f, 0.f, 0.f }, 150.f, 4, mAllRitems);
+	//generate OctTree
+	OctTreeDesc octTreeDesc;
+	octTreeDesc.ritems = &mAllRitems;
+	octTreeDesc.numDivisions = 4;
+	octTreeDesc.autoFitBox = true;
+
+	mOctTree = new OctTree(octTreeDesc);
 }
 
 void RenderingSystem::BuildLightItems(std::unordered_map<std::string, LightObject*>& Objects)
@@ -1327,32 +1333,27 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 	mCommandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
 }
 
-std::vector<RenderItem*> alreadyCheckedRitems;
+std::unordered_set<RenderItem*> alreadyCheckedRitems;
 
-void RenderingSystem::CollectVisibleRenderItems(
-	OctTreeNode* node,
-	const BoundingFrustum& frustum)
+void RenderingSystem::CollectVisibleRenderItems(OctTreeNode* node)
 {
-	if (!node) return;
+	//if (!node) return;
 
-	auto ct = frustum.Contains(node->bounds);
-	if (ct == DirectX::ContainmentType::DISJOINT)
-		return;
+	std::vector<OctTreeNode*> leafes = mOctTree->GetAllNodesAtLevel(3);
 
-	if (node->isLeaf) {
-		for (RenderItem* ri : node->OverlappedItems) {
-			if (std::find(alreadyCheckedRitems.begin(), alreadyCheckedRitems.end(), ri) != alreadyCheckedRitems.end()) continue;
-			alreadyCheckedRitems.push_back(ri);
-			ri->IsInViewFrustum = ViewFrustum.Intersects(ri->bounds);
-			if (ri->IsInViewFrustum)
-				mAllVisibleRitems.push_back(ri);
+	for (auto& leaf : leafes) {
+		if (ViewFrustum.Contains(leaf->bounds) != DirectX::ContainmentType::DISJOINT) {
+			for (RenderItem* ri : leaf->OverlappedItems) {
+				if (alreadyCheckedRitems.find(ri) != alreadyCheckedRitems.end()) continue;
+				alreadyCheckedRitems.insert(ri);
+				ri->IsInViewFrustum = ViewFrustum.Intersects(ri->bounds);
+				if (ri->IsInViewFrustum) {
+					//if (ri->Name.rfind("Patrick", 0) == std::string::npos) {
+					mAllVisibleRitems.push_back(ri);
+				}
+			}
 		}
-		return;
 	}
-
-	for (int i = 0; i < 8; ++i)
-		if (node->children[i])
-			CollectVisibleRenderItems(node->children[i], frustum);
 }
 
 
@@ -1362,35 +1363,19 @@ void RenderingSystem::UpdateRenderItems(std::unordered_map<std::string, Drawable
 
 
 	// Draw OctTree ===============================================
-	for (auto bbox : mOctTree->GetNodesAtLevel(3)) {
-		if (bbox->OverlappedItems.size() > 0)
-			mDebugDrawer->DrawBoundingBox(bbox->bounds);
-	}
+	mOctTree->Draw(mDebugDrawer);
 	// ============================================================
 	
 	mAllVisibleRitems.clear();
 	alreadyCheckedRitems.clear();
-	CollectVisibleRenderItems(mOctTree->root.get(), ViewFrustum);
+	CollectVisibleRenderItems(mOctTree->getRoot());
 
 	
 	for (int k = 0; k < mAllVisibleRitems.size(); k++) {
 		auto& ri = mAllVisibleRitems[k];
 		auto& i = ri->drawableObject;
 
-		
-		// Draw Line ================================================================================================================================================
-		//mDebugDrawer->DrawLine(
-		//	DirectX::SimpleMath::Vector3(XMVectorGetX(cameraPos), XMVectorGetY(cameraPos), XMVectorGetZ(cameraPos)),
-		//	i->WorldLocation,
-		//	DirectX::SimpleMath::Color(Colors::Red));
-		// ==========================================================================================================================================================
-
-
-
-		// Draw All Objects Bounding Boxes ==========================================================================================================================
 		//mDebugDrawer->DrawBoundingBox(ri->bounds);
-		// ==========================================================================================================================================================
-
 
 
 		// Calculate LODs ===========================================================================================================================================
@@ -1417,64 +1402,6 @@ void RenderingSystem::UpdateRenderItems(std::unordered_map<std::string, Drawable
 			i->NeedsUpdate = false;
 		}
 	}
-
-	//int k = 0;
-	//for (auto& pair : mAllObjects)
-	//{
-	//	auto& i = pair.second;
-
-	//	auto t = mAllRitems[k];
-	//	if (t->IsInViewFrustum) {
-
-	//		/*mDebugDrawer->DrawLine(
-	//			DirectX::SimpleMath::Vector3(XMVectorGetX(cameraPos), XMVectorGetY(cameraPos), XMVectorGetZ(cameraPos)),
-	//			i->WorldLocation,
-	//			DirectX::SimpleMath::Color(Colors::Red)
-	//		);*/
-
-
-	//		// Draw All Objects Bounding Boxes ==========================================================================================================================
-	//		/*DirectX::BoundingBox worldBounds;
-	//		XMMATRIX worldMatrix = XMLoadFloat4x4(&t->World);
-	//		t->Geo->DrawArgs[t->Geo->Name + "_LOD" + std::to_string(t->currentLOD)].Bounds.Transform(worldBounds, XMMatrixScaling(1.0f, 1.0f, 1.0f) * worldMatrix);*/
-
-	//		//mDebugDrawer->DrawBoundingBox(t->bounds);
-	//		// ==========================================================================================================================================================
-
-
-	//		//calculate LODs
-	//		/*float dx = i->WorldLocation.x - XMVectorGetX(cameraPos);
-	//		float dy = i->WorldLocation.y - XMVectorGetY(cameraPos);
-	//		float dz = i->WorldLocation.z - XMVectorGetZ(cameraPos);
-	//		float DistanceToObject = sqrtf(dx * dx + dy * dy + dz * dz);
-
-	//		if (DistanceToObject < 10.f) t->currentLOD = 0;
-	//		else if (DistanceToObject < 20.f) t->currentLOD = std::min(t->numLODs - 1, (UINT)1);
-	//		else if (DistanceToObject < 30.f) t->currentLOD = std::min(t->numLODs - 1, (UINT)2);
-	//		else if (DistanceToObject < 40.f) t->currentLOD = std::min(t->numLODs - 1, (UINT)3);
-	//		else t->currentLOD = std::min(t->numLODs - 1, (UINT)4);*/
-	//	}
-
-	//	//Calculate bounding box
-	//	//DirectX::BoundingBox worldBounds;
-	//	//XMMATRIX worldMatrix = XMLoadFloat4x4(&t->World);
-	//	//t->Geo->DrawArgs[t->Geo->Name + "_LOD" + std::to_string(t->currentLOD)].Bounds.Transform(worldBounds, XMMatrixScaling(0.7f, 0.7f, 0.7f) * worldMatrix); //0.8 for perfect culling
-
-	//	// Check view frustum visibility
-	//	//t->IsInViewFrustum = ViewFrustum.Intersects(worldBounds);
-
-	//	if (i->NeedsUpdate)
-	//	{
-	//		XMStoreFloat4x4(&t->World, XMMatrixScaling(i->Scale.x, i->Scale.y, i->Scale.z)
-	//			* XMMatrixRotationRollPitchYaw(i->WorldRotation.z, i->WorldRotation.y, i->WorldRotation.x)
-	//			* XMMatrixTranslation(i->WorldLocation.x, i->WorldLocation.y, i->WorldLocation.z));
-	//		XMStoreFloat4x4(&t->TexTransform, i->TexTransform);
-
-	//		t->NumFramesDirty = gNumFrameResources;
-	//		i->NeedsUpdate = false;
-	//	}
-	//	k++;
-	//}
 }
 
 void RenderingSystem::BuildInputLayout()

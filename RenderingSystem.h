@@ -189,6 +189,8 @@ public:
         }
 
         mFrameResources.clear();
+
+        delete mDebugDrawer;
     }
 
 
@@ -217,7 +219,7 @@ public:
     void BuildBasicGeometry();
     void LoadTextures(std::vector<TextureDesc>& TexDescs);
 
-    void CollectVisibleRenderItems(OctTreeNode* node, const BoundingFrustum& frustum);
+    void CollectVisibleRenderItems(OctTreeNode* node);
 
     void UpdateRenderItems(std::unordered_map<std::string, DrawableObject*>& mAllObjects);
 
@@ -239,7 +241,7 @@ public:
     D3D12_CPU_DESCRIPTOR_HANDLE GetCurrentRTV() const override { return CurrentBackBufferView(); }
     D3D12_CPU_DESCRIPTOR_HANDLE GetDSV() const override { return DepthStencilView(); }
 
-    std::unique_ptr<gfw::DebugRenderSysImpl> mDebugDrawer;
+    gfw::DebugRenderSysImpl* mDebugDrawer;
     // =================================================================================================
 
     void DrawSkyBox();
