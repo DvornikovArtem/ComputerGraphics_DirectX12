@@ -227,6 +227,7 @@ struct Light
     float SpotPower = 64.0f;                            // spot light only
     DirectX::XMFLOAT3 Color = { 1.f, 1.f, 1.f };
     int LightType = 1; //0 - directional; 1 - point; 2 - spot
+    DirectX::XMFLOAT4X4 World = MathHelper::Identity4x4();
 };
 
 struct MaterialConstants

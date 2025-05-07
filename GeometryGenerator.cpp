@@ -725,3 +725,59 @@ GeometryGenerator::MeshData GeometryGenerator::CreateQuad(float x, float y, floa
 
     return meshData;
 }
+
+GeometryGenerator::MeshData GeometryGenerator::CreateCone(float radius, float height, uint32 sliceCount, uint32 stackCount)
+{
+	MeshData meshData;
+
+	Vertex topVertex(0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.5f, 0.5f);
+	meshData.Vertices.push_back(topVertex);
+
+	float thetaStep = 2.0f * XM_PI / sliceCount;
+
+	uint32 baseIndex = 1;
+	float y = -height * 0.5f;
+
+	for (uint32 i = 0; i <= sliceCount; ++i)
+	{
+		float theta = i * thetaStep;
+		float x = radius * cosf(theta);
+		float z = radius * sinf(theta);
+
+		XMFLOAT3 position(x, y, z);
+
+		XMFLOAT3 normal;
+		XMStoreFloat3(&normal, XMVector3Normalize(XMVectorSet(x, height, z, 0.0f)));
+
+		XMFLOAT3 tangent(-sinf(theta), 0.0f, cosf(theta));
+
+		float u = (float)i / sliceCount;
+		float v = 1.0f;
+
+		meshData.Vertices.push_back(Vertex(
+			position.x, position.y, position.z,
+			normal.x, normal.y, normal.z,
+			tangent.x, tangent.y, tangent.z,
+			u, v));
+	}
+
+	Vertex bottomCenter(0.0f, y, 0.0f, 0.0f, -1.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.5f, 0.5f);
+	uint32 centerIndex = (uint32)meshData.Vertices.size();
+	meshData.Vertices.push_back(bottomCenter);
+
+	for (uint32 i = 0; i < sliceCount; ++i)
+	{
+		meshData.Indices32.push_back(0);
+		meshData.Indices32.push_back(baseIndex + i + 1);
+		meshData.Indices32.push_back(baseIndex + i);
+	}
+
+	for (uint32 i = 0; i < sliceCount; ++i)
+	{
+		meshData.Indices32.push_back(centerIndex);
+		meshData.Indices32.push_back(baseIndex + i);
+		meshData.Indices32.push_back(baseIndex + i + 1);
+	}
+
+	return meshData;
+}

@@ -400,6 +400,17 @@ void RenderingSystem::BuildLightItems(std::unordered_map<std::string, LightObjec
 
 		i->LightCBIndex = k;
 
+		//generated bounding geometry and world matrix for light
+		switch (i->LightType)
+		{
+		case LightType::Pointlight:
+			i->Geo = mGeometries["Sphere_LowPoly"];
+			break;
+		case LightType::Spotlight:
+			i->Geo = mGeometries["Cone"];
+			break;
+		}
+
 		mAllLights.push_back(i);
 
 		k++;
@@ -548,11 +559,9 @@ void RenderingSystem::BuildRootSignatures()
 	lightPassSlotRootParameter[1].InitAsConstantBufferView(0); //for MainPassCB
 	lightPassSlotRootParameter[2].InitAsConstantBufferView(1); //for LightItems
 
-	auto lightPassStaticSamplers = GetStaticSamplers();
-
 	// A root signature is an array of root parameters.
 	CD3DX12_ROOT_SIGNATURE_DESC lightPassRootSigDesc(3, lightPassSlotRootParameter,
-		(UINT)lightPassStaticSamplers.size(), lightPassStaticSamplers.data(),
+		0, nullptr,
 		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
 	// create a root signature with a single slot which points to a descriptor range consisting of a single constant buffer
@@ -583,7 +592,7 @@ void RenderingSystem::BuildRootSignatures()
 	SkyBoxSlotRootParameter[2].InitAsConstantBufferView(1); //for MainPassCB
 
 	CD3DX12_ROOT_SIGNATURE_DESC SkyBoxRootSigDesc(3, SkyBoxSlotRootParameter,
-		(UINT)lightPassStaticSamplers.size(), lightPassStaticSamplers.data(),
+		(UINT)staticSamplers.size(), staticSamplers.data(),
 		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
 	ComPtr<ID3DBlob> serializedSkyBoxRootSig = nullptr;
@@ -692,12 +701,11 @@ void RenderingSystem::UpdateObjectCBs(const GameTimer& gt)
 void RenderingSystem::UpdateLightCBs(const GameTimer& gt)
 {
 	auto currObjectCB = mCurrFrameResource->LightCB.get();
-	for (auto& e : mAllLights)
-	{
+	float SphereRadius;
+	XMFLOAT3 ConeScale;
 
-		if (e->LightType == LightType::Spotlight) {
-			// TODO spot to mouse click intersect y=0
-		}
+ 	for (auto& e : mAllLights)
+	{
 
 		if (e->NeedsUpdate)
 		{
@@ -708,13 +716,36 @@ void RenderingSystem::UpdateLightCBs(const GameTimer& gt)
 		{
 			Light LightConstants;
 			LightConstants.Position = e->WorldLocation;
-			LightConstants.Direction = e->WorldRotation;
+			LightConstants.Direction = e->WorldDirection;
 			LightConstants.Color = e->Color;
 			LightConstants.FalloffStart = e->FalloffStart;
 			LightConstants.FalloffEnd = e->FalloffEnd;
 			LightConstants.LightType = (int)e->LightType;
 			LightConstants.SpotPower = e->SpotPower;
 			LightConstants.Strength = XMFLOAT3(e->Strength, e->Strength, e->Strength);
+
+			switch (e->LightType)
+			{
+			case LightType::Pointlight:
+				SphereRadius = 7.f * e->Strength;
+				XMStoreFloat4x4(&LightConstants.World, XMMatrixTranspose(XMMatrixScaling(SphereRadius, SphereRadius, SphereRadius) *
+					XMMatrixTranslation(e->WorldLocation.x, e->WorldLocation.y, e->WorldLocation.z)));
+				break;
+			case LightType::Spotlight:
+				ConeScale.x = ConeScale.z = e->SpotPower / 2;
+				ConeScale.y = e->FalloffEnd / 5;
+
+				//calculate rotation matrix from start and target direction vectors
+				XMVECTOR StartDir = XMVectorSet(0.0f, -1.0f, 0.0f, 0.0f);
+				XMVECTOR TargetDir = XMVector3Normalize(XMLoadFloat3(&e->WorldDirection));
+				XMVECTOR RotationAxis = XMVector3Cross(StartDir, TargetDir);
+				float RotAngle = acosf(XMVectorGetX(XMVector3Dot(StartDir, TargetDir)));
+
+				XMStoreFloat4x4(&LightConstants.World, XMMatrixTranspose(XMMatrixScaling(ConeScale.x, ConeScale.y, ConeScale.z) *
+					XMMatrixRotationAxis(XMVector3Normalize(RotationAxis), RotAngle) *
+					XMMatrixTranslation(e->WorldLocation.x, e->WorldLocation.y, e->WorldLocation.z)));
+				break;
+			}
 
 			currObjectCB->CopyData(e->LightCBIndex, LightConstants);
 
@@ -934,8 +965,8 @@ void RenderingSystem::BuildGlobalPSOs()
 	// «агрузка шейдеров deferred освещени€ (предварительно скомпилированных, например, "DeferredLightVS.cso" и "DeferredLightPS.cso")
 	deferredPsoDesc.VS =
 	{
-		reinterpret_cast<BYTE*>(mShaders["DeferredLightPassVS"]->GetBufferPointer()),
-		mShaders["DeferredLightPassVS"]->GetBufferSize()
+		reinterpret_cast<BYTE*>(mShaders["DeferredLightPassVS_FSQuad"]->GetBufferPointer()),
+		mShaders["DeferredLightPassVS_FSQuad"]->GetBufferSize()
 	};
 	deferredPsoDesc.PS =
 	{
@@ -964,16 +995,33 @@ void RenderingSystem::BuildGlobalPSOs()
 	deferredPsoDesc.NumRenderTargets = 1;
 	deferredPsoDesc.RTVFormats[0] = mBackBufferFormat;
 	deferredPsoDesc.SampleDesc.Count = 1;
+	deferredPsoDesc.DSVFormat = mDepthStencilFormat;
 
-	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&deferredPsoDesc, IID_PPV_ARGS(&GlobalPSOs["DeferredLightPass"])));
+	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&deferredPsoDesc, IID_PPV_ARGS(&GlobalPSOs["DeferredLightPass_FSQuad"])));
 
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC deferredAddAmbientPsoDesc = deferredPsoDesc;
-	deferredPsoDesc.PS =
+
+	deferredAddAmbientPsoDesc.PS =
 	{
 		reinterpret_cast<BYTE*>(mShaders["DeferredLightPassPS_AddAmbient"]->GetBufferPointer()),
 		mShaders["DeferredLightPassPS_AddAmbient"]->GetBufferSize()
 	};
-	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&deferredPsoDesc, IID_PPV_ARGS(&GlobalPSOs["DeferredLightPass_AddAmbient"])));
+	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&deferredAddAmbientPsoDesc, IID_PPV_ARGS(&GlobalPSOs["DeferredLightPass_AddAmbient"])));
+
+	deferredPsoDesc.InputLayout = { mInputLayout.data(), (UINT)mInputLayout.size() };
+	deferredPsoDesc.VS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["DeferredLightPassVS_Bounded"]->GetBufferPointer()),
+		mShaders["DeferredLightPassVS_Bounded"]->GetBufferSize()
+	};
+
+	deferredPsoDesc.DepthStencilState.DepthEnable = true;
+	deferredPsoDesc.DepthStencilState.StencilEnable = true;
+	deferredPsoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
+	deferredPsoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_GREATER;
+	deferredPsoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_FRONT;
+
+	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&deferredPsoDesc, IID_PPV_ARGS(&GlobalPSOs["DeferredLightPass_Bounded"])));
 
 
 	//
@@ -1124,7 +1172,6 @@ void RenderingSystem::GBufferGeometryPass()
 void RenderingSystem::GBufferLightPass()
 {
 	mCommandList->SetGraphicsRootSignature(RootSignatures["DeferredLightPass"].Get());
-	mCommandList->SetPipelineState(GlobalPSOs["DeferredLightPass"].Get());
 	mCommandList->OMSetRenderTargets(1, &CurrentBackBufferView(), false, &DepthStencilView());
 
 	UINT lightCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(Light));
@@ -1145,14 +1192,27 @@ void RenderingSystem::GBufferLightPass()
 	{
 		auto li = mAllLights[i];
 
-		//mCommandList->IASetVertexBuffers(0, 1, &li->Geo->VertexBufferView());
-		//mCommandList->IASetIndexBuffer(&li->Geo->IndexBufferView());
-
 		D3D12_GPU_VIRTUAL_ADDRESS lightCBAddress = lightCB->GetGPUVirtualAddress() + li->LightCBIndex * lightCBByteSize;
 		mCommandList->SetGraphicsRootConstantBufferView(2, lightCBAddress);
 
-		//draw full-screen quad for now, replace with more precise forms
-		mCommandList->DrawInstanced(6, 1, 0, 0);
+		if (li->LightType == LightType::Directional)
+		{
+			mCommandList->SetPipelineState(GlobalPSOs["DeferredLightPass_FSQuad"].Get());
+			mCommandList->DrawInstanced(6, 1, 0, 0);
+		}
+		else
+		{
+			mCommandList->SetPipelineState(GlobalPSOs["DeferredLightPass_Bounded"].Get());
+			mCommandList->IASetVertexBuffers(0, 1, &li->Geo->VertexBufferView());
+			mCommandList->IASetIndexBuffer(&li->Geo->IndexBufferView());
+
+			std::string subMeshName = li->Geo->Name + "_LOD0";
+			UINT IndexCount = li->Geo->DrawArgs[subMeshName].IndexCount;
+			UINT StartIndexLocation = li->Geo->DrawArgs[subMeshName].StartIndexLocation;
+			UINT BaseVertexLocation = li->Geo->DrawArgs[subMeshName].BaseVertexLocation;
+
+			mCommandList->DrawIndexedInstanced(IndexCount, 1, StartIndexLocation, BaseVertexLocation, 0);
+		}
 	}
 
 	//Add ambient light on screen
@@ -1361,10 +1421,7 @@ void RenderingSystem::UpdateRenderItems(std::unordered_map<std::string, Drawable
 {
 	XMVECTOR cameraPos = mCamera.GetPosition();
 
-
-	// Draw OctTree ===============================================
-	mOctTree->Draw(mDebugDrawer);
-	// ============================================================
+	//mOctTree->Draw(mDebugDrawer);
 	
 	mAllVisibleRitems.clear();
 	alreadyCheckedRitems.clear();
@@ -1423,7 +1480,8 @@ void RenderingSystem::BuildShaders(std::vector<ShaderDesc>& ShaderDescs)
 	}
 
 	//global shaders for deferred rendering
-	mShaders["DeferredLightPassVS"] = d3dUtil::CompileShader(L"../Shaders/DeferredLightPass.hlsl", nullptr, "VS", "vs_5_0");
+	mShaders["DeferredLightPassVS_FSQuad"] = d3dUtil::CompileShader(L"../Shaders/DeferredLightPass.hlsl", nullptr, "VS_FSQuad", "vs_5_0");
+	mShaders["DeferredLightPassVS_Bounded"] = d3dUtil::CompileShader(L"../Shaders/DeferredLightPass.hlsl", nullptr, "VS_Bounded", "vs_5_0");
 	mShaders["DeferredLightPassPS"] = d3dUtil::CompileShader(L"../Shaders/DeferredLightPass.hlsl", nullptr, "PS", "ps_5_0");
 	mShaders["DeferredLightPassPS_AddAmbient"] = d3dUtil::CompileShader(L"../Shaders/DeferredLightPass.hlsl", nullptr, "PS_AddAmbient", "ps_5_0");
 	//for skybox rendering
@@ -1436,11 +1494,13 @@ void RenderingSystem::BuildBasicGeometry()
 	GeometryGenerator geoGen;
 	GeometryGenerator::MeshData box = geoGen.CreateBox(1.0f, 1.0f, 1.0f, 3);
 	GeometryGenerator::MeshData grid = geoGen.CreateGrid(20.0f, 30.0f, 60, 40);
-	GeometryGenerator::MeshData sphere = geoGen.CreateSphere(0.5f, 20, 20);
+	GeometryGenerator::MeshData sphere = geoGen.CreateSphere(1.f, 20, 20);
 	GeometryGenerator::MeshData cylinder = geoGen.CreateCylinder(0.5f, 0.3f, 3.0f, 20, 20);
+	GeometryGenerator::MeshData cone = geoGen.CreateCone(2.f, 3.f, 20, 20);
+	GeometryGenerator::MeshData sphere_lp = geoGen.CreateSphere(1.f, 10, 10);
 
-	std::vector<GeometryGenerator::MeshData*> Objects = { &box, &grid, &sphere, &cylinder };
-	std::vector<std::string> Names = { "Box", "Grid", "Sphere", "Cylinder" };
+	std::vector<GeometryGenerator::MeshData*> Objects = { &box, &grid, &sphere, &cylinder, &cone, &sphere_lp };
+	std::vector<std::string> Names = { "Box", "Grid", "Sphere", "Cylinder", "Cone", "Sphere_LowPoly"};
 
 	for (int k = 0; k < Objects.size(); k++)
 	{

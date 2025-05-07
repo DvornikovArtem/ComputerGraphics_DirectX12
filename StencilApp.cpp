@@ -265,7 +265,7 @@ void StencilApp::LoadMeshes()
 
 void StencilApp::MakeDrawableObjects()
 {
-    //Has prebuilt geometries: "Box", "Grid", "Sphere", "Cylinder"
+    //Has prebuilt geometries: "Box", "Grid", "Sphere", "Cylinder", "Cone"
 
     DrawableObject* SkyBoxSphere = new DrawableObject();
     SkyBoxSphere->Name = "SkyBoxSphere";
@@ -283,7 +283,7 @@ void StencilApp::MakeDrawableObjects()
     TesselationTestSphere->renderLayer = RenderLayer::Opaque;
     TesselationTestSphere->WorldLocation = XMFLOAT3(5.f, 3.f, -1.f);
     TesselationTestSphere->WorldRotation = XMFLOAT3(0.f, 0.f, 0.f);
-    TesselationTestSphere->Scale = XMFLOAT3(5.0f, 5.0f, 5.0f);
+    TesselationTestSphere->Scale = XMFLOAT3(2.5f, 2.5f, 2.5f);
     TesselationTestSphere->TexTransform = XMMatrixScaling(5.0f, 5.0f, 1.0f);
 
     mAllObjects[TesselationTestSphere->Name] = TesselationTestSphere;
@@ -306,7 +306,7 @@ void StencilApp::MakeDrawableObjects()
     Floor->GeometryName = "Grid";
     Floor->MaterialName = "grass";
     Floor->renderLayer = RenderLayer::Opaque;
-    Floor->WorldLocation = XMFLOAT3(0.f, 2.f, 0.f);
+    Floor->WorldLocation = XMFLOAT3(0.f, 0.f, 0.f);
     Floor->WorldRotation = XMFLOAT3(0.f, 0.f, 0.f);
     Floor->Scale = XMFLOAT3(5.0f, 1.0f, 5.0f);
     Floor->TexTransform = XMMatrixScaling(50.0f, 50.0f, 1.0f);
@@ -325,7 +325,7 @@ void StencilApp::MakeDrawableObjects()
 
     mAllObjects[Head->Name] = Head;
 
-    for (int i = 0; i < 100000; i++) {
+    for (int i = 0; i < 1; i++) {
         DrawableObject* Patrick = new DrawableObject();
         Patrick->Name = "Patrick" + std::to_string(i);
         Patrick->GeometryName = "PatrickStar";
@@ -348,7 +348,7 @@ void StencilApp::MakeLights()
     auto Direct1 = new LightObject;
     Direct1->Name = "Direct1";
     Direct1->LightType = LightType::Directional;
-    Direct1->WorldRotation = { 0.57735f, -0.57735f, 0.57735f };
+    Direct1->WorldDirection = { 0.57735f, -0.57735f, 0.57735f };
     Direct1->Strength = 1.f;
 
     mAllLightObjects[Direct1->Name] = Direct1;
@@ -357,10 +357,10 @@ void StencilApp::MakeLights()
     Point1->Name = "Point1";
     Point1->LightType = LightType::Pointlight;
     Point1->WorldLocation = { 1.f, 1.f, 1.f };
-    Point1->Strength = 2.f;
+    Point1->Strength = 1.f;
     Point1->Color = { 1.f, 0.f, 0.92f };
     Point1->FalloffStart = 1.f;
-    Point1->FalloffEnd = 10.f;
+    Point1->FalloffEnd = 9.f;
 
     mAllLightObjects[Point1->Name] = Point1;
 
@@ -368,12 +368,12 @@ void StencilApp::MakeLights()
     Spot1->Name = "Spot1";
     Spot1->LightType = LightType::Spotlight;
     Spot1->WorldLocation = { 4.f, 20.f, 5.f };
-    Spot1->Strength = 0.3f;
+    Spot1->Strength = 0.3f; //0.3 //probably defines the width
     Spot1->Color = { 0.f, 1.f, 0.f };
     Spot1->FalloffStart = 1.f;
-    Spot1->FalloffEnd = 100.f;
-    Spot1->SpotPower = 20.f;
-    Spot1->WorldRotation = { 0.5f, -1.f, 0.f };
+    Spot1->FalloffEnd = 100.f; //100 //defines how far it lights
+    Spot1->SpotPower = 20.f; //20 //defines how bright it is
+    Spot1->WorldDirection = { 0.5f, -1.f, 0.f };
 
     mAllLightObjects[Spot1->Name] = Spot1;
 
