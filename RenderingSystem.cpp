@@ -371,7 +371,7 @@ void RenderingSystem::BuildRenderItems(std::unordered_map<std::string, DrawableO
 
 		t->currentLOD = 0;
 		t->numLODs = t->Geo->DrawArgs.size() - 1;
-		t->Geo->DrawArgs[t->Geo->Name + "_LOD0"].Bounds.Transform(t->bounds, XMMatrixScaling(1.0f, 1.0f, 1.0f) * XMLoadFloat4x4(&t->World));
+		t->Geo->DrawArgs["LOD0"].Bounds.Transform(t->bounds, XMLoadFloat4x4(&t->World));
 
 		t->renderLayer = i->renderLayer;
 		t->drawableObject = i;
@@ -852,7 +852,7 @@ void RenderingSystem::BuildMeshGeometry(std::string Name, const std::string& fil
 		BoundingBox box(center, extents);
 		submesh.Bounds = box;
 
-		std::string submeshName = Name + "_LOD" + std::to_string(i);
+		std::string submeshName = "LOD" + std::to_string(i);
 
 		geo->DrawArgs[submeshName] = submesh;
 
@@ -1127,7 +1127,7 @@ void RenderingSystem::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const 
 		cmdList->SetGraphicsRootConstantBufferView(3, matCBAddress);
 
 
-		std::string subMeshName = ri->Geo->Name + "_LOD" + std::to_string(ri->currentLOD);
+		std::string subMeshName = "LOD" + std::to_string(ri->currentLOD);
 
 		UINT IndexCount = ri->Geo->DrawArgs[subMeshName].IndexCount;
 		UINT StartIndexLocation = ri->Geo->DrawArgs[subMeshName].StartIndexLocation;
@@ -1206,10 +1206,9 @@ void RenderingSystem::GBufferLightPass()
 			mCommandList->IASetVertexBuffers(0, 1, &li->Geo->VertexBufferView());
 			mCommandList->IASetIndexBuffer(&li->Geo->IndexBufferView());
 
-			std::string subMeshName = li->Geo->Name + "_LOD0";
-			UINT IndexCount = li->Geo->DrawArgs[subMeshName].IndexCount;
-			UINT StartIndexLocation = li->Geo->DrawArgs[subMeshName].StartIndexLocation;
-			UINT BaseVertexLocation = li->Geo->DrawArgs[subMeshName].BaseVertexLocation;
+			UINT IndexCount = li->Geo->DrawArgs["LOD0"].IndexCount;
+			UINT StartIndexLocation = li->Geo->DrawArgs["LOD0"].StartIndexLocation;
+			UINT BaseVertexLocation = li->Geo->DrawArgs["LOD0"].BaseVertexLocation;
 
 			mCommandList->DrawIndexedInstanced(IndexCount, 1, StartIndexLocation, BaseVertexLocation, 0);
 		}
@@ -1255,11 +1254,9 @@ void RenderingSystem::DrawSkyBox()
 		mCommandList->SetGraphicsRootConstantBufferView(1, objCBAddress);
 		mCommandList->SetGraphicsRootConstantBufferView(3, matCBAddress);
 
-		std::string subMeshName = ri->Geo->Name + "_LOD" + std::to_string(ri->currentLOD);
-
-		UINT IndexCount = ri->Geo->DrawArgs[subMeshName].IndexCount;
-		UINT StartIndexLocation = ri->Geo->DrawArgs[subMeshName].StartIndexLocation;
-		UINT BaseVertexLocation = ri->Geo->DrawArgs[subMeshName].BaseVertexLocation;
+		UINT IndexCount = ri->Geo->DrawArgs["LOD0"].IndexCount;
+		UINT StartIndexLocation = ri->Geo->DrawArgs["LOD0"].StartIndexLocation;
+		UINT BaseVertexLocation = ri->Geo->DrawArgs["LOD0"].BaseVertexLocation;
 
 		mCommandList->DrawIndexedInstanced(IndexCount, 1, StartIndexLocation, BaseVertexLocation, 0);
 	}
@@ -1437,7 +1434,7 @@ void RenderingSystem::UpdateRenderItems(std::unordered_map<std::string, Drawable
 			* XMMatrixRotationRollPitchYaw(i->WorldRotation.z, i->WorldRotation.y, i->WorldRotation.x)
 			* XMMatrixTranslation(i->WorldLocation.x, i->WorldLocation.y, i->WorldLocation.z));
 			XMStoreFloat4x4(&ri->TexTransform, i->TexTransform);
-
+			ri->Geo->DrawArgs["LOD0"].Bounds.Transform(ri->bounds, XMLoadFloat4x4(&ri->World));
 			ri->NumFramesDirty = gNumFrameResources;
 			i->NeedsUpdate = false;
 		}
@@ -1535,7 +1532,7 @@ void RenderingSystem::BuildBasicGeometry()
 		// Create bounding box
 		BoundingBox::CreateFromPoints(Submesh->Bounds, positions.size(), positions.data(), sizeof(XMFLOAT3));
 
-		geo->DrawArgs[Names[k] + "_LOD0"] = *Submesh;
+		geo->DrawArgs["LOD0"] = *Submesh;
 
 		mGeometries[geo->Name] = geo;
 	}

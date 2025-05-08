@@ -207,9 +207,6 @@ public:
     void BuildRootSignatures();
     void BuildDescriptorHeap(Material* t);
 
-    //DELETE AFTER TESTING
-    void MakeDecal() { XMStoreFloat4(&mMainPassCB.Decals[0], mCamera.GetPosition() + mCamera.GetLook() * 4); }
-
     void UpdateObjectCBs(const GameTimer& gt);
     void UpdateLightCBs(const GameTimer& gt);
     void UpdateMaterialCBs(const GameTimer& gt);
@@ -269,7 +266,6 @@ public:
     void setScreenParams(int NewWidth, int NewHeight) { mClientWidth = NewWidth; mClientHeight = NewHeight; }
 
     Camera mCamera;
-    POINT mLastMousePos;
 
 protected:
     HINSTANCE mhAppInst = nullptr; // application instance handle

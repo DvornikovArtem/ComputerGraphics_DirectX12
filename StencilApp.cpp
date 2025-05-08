@@ -40,6 +40,7 @@ private:
     void MakeLights();
 
     float mCameraMoveSpeed = 10.0f;
+    POINT mLastMousePos;
 };
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prevInstance,
@@ -71,9 +72,9 @@ bool StencilApp::Initialize()
         return false;
 
     LoadShaders();
+    LoadMeshes();
     LoadTextures();
     MakeMaterials();
-    LoadMeshes();
     MakeDrawableObjects();
     MakeLights();
 
@@ -113,9 +114,6 @@ void StencilApp::Draw(const GameTimer& gt)
 
 void StencilApp::OnMouseDown(WPARAM btnState, int x, int y)
 {
-    mRenderingSystem->mLastMousePos.x = x;
-	mRenderingSystem->mLastMousePos.y = y;
-
     SetCapture(mhMainWnd);
 }
 
@@ -129,15 +127,15 @@ void StencilApp::OnMouseMove(WPARAM btnState, int x, int y)
     if ((btnState & MK_RBUTTON) != 0)
     {
         // Make each pixel correspond to a quarter of a degree.
-        float dx = XMConvertToRadians(0.25f * static_cast<float>(x - mRenderingSystem->mLastMousePos.x));
-        float dy = XMConvertToRadians(0.25f * static_cast<float>(y - mRenderingSystem->mLastMousePos.y));
+        float dx = XMConvertToRadians(0.25f * static_cast<float>(x - mLastMousePos.x));
+        float dy = XMConvertToRadians(0.25f * static_cast<float>(y - mLastMousePos.y));
 
         mRenderingSystem->mCamera.Pitch(dy);
         mRenderingSystem->mCamera.RotateY(dx);
     }
 
-    mRenderingSystem->mLastMousePos.x = x;
-    mRenderingSystem->mLastMousePos.y = y;
+    mLastMousePos.x = x;
+    mLastMousePos.y = y;
 }
 
 void StencilApp::OnMouseWheelMove(WPARAM btnState)
@@ -166,9 +164,6 @@ void StencilApp::OnKeyboardInput(const GameTimer& gt)
 
     if (GetAsyncKeyState('D') & 0x8000)
         mRenderingSystem->mCamera.Strafe(mCameraMoveSpeed * dt);
-
-    if(GetAsyncKeyState(VK_SPACE) & 0x8000)
-        mRenderingSystem->MakeDecal();
 
     mRenderingSystem->mCamera.UpdateViewMatrix();
 }
@@ -254,6 +249,21 @@ void StencilApp::MakeMaterials()
 
 void StencilApp::LoadMeshes()
 {
+    //Imports geometry and textures from 3D model file such as .fbx
+
+    //ImportType::LODed
+    //Will load textures from first submesh with name "Name_Diffuse(Normal, etc)" that you can use later
+    //Other submeshes are assumed to be LODs and their textures are ignored
+    //Returns std::vector of single parsing result with geometry and texture name
+    //Use for models with LOD submeshes or single mesh models
+
+    //ImportType::Complex
+    //Will load every submesh as individual geometry with name "Name_SubmeshName"
+    //All textures per submesh are imported with name "SubmeshName_Diffuse(Normal, etc)"
+    //No LODs support(yet)
+    //Returns std::vector of parsing results with geometry and texture names
+    //Use for models that consist of multiple submeshes
+
     std::vector<MeshDesc> MeshDescs =
     {
         MeshDesc("Head", "../Models/african_head.obj"),
