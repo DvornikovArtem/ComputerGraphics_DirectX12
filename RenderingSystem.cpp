@@ -732,9 +732,9 @@ void RenderingSystem::UpdateLightCBs(const GameTimer& gt)
 					XMMatrixTranslation(e->WorldLocation.x, e->WorldLocation.y, e->WorldLocation.z)));
 				break;
 			case LightType::Spotlight:
-				ConeScale.x = ConeScale.z = e->SpotPower / 2;
 				ConeScale.y = e->FalloffEnd / 5;
-
+				ConeScale.x = 1.f / ConeScale.y;
+				ConeScale.x = ConeScale.z = ConeScale.x * e->SpotPower * 8;
 				//calculate rotation matrix from start and target direction vectors
 				XMVECTOR StartDir = XMVectorSet(0.0f, -1.0f, 0.0f, 0.0f);
 				XMVECTOR TargetDir = XMVector3Normalize(XMLoadFloat3(&e->WorldDirection));
@@ -1296,22 +1296,6 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 
 	ThrowIfFailed(mCommandList->Reset(mDirectCmdListAlloc.Get(), nullptr));
 
-	// OLD REALIZATION =========================================================
-	//for (int i = 0; i < TexDescs.size() ; i++)
-	//{
-	//	auto t = std::make_unique<Texture>();
-	//	t->srvHeapIndex = i;
-	//	t->Name = TexDescs[i].Name;
-	//	t->Filename = TexDescs[i].Path;
-	//	ThrowIfFailed(DirectX::CreateDDSTextureFromFile12(md3dDevice.Get(),
-	//		mCommandList.Get(), t->Filename.c_str(),
-	//		t->Resource, t->UploadHeap));
-	//	
-	//	mTextures[t->Name] = std::move(t);
-	//}
-	// =========================================================================
-
-
 	DirectX::ResourceUploadBatch upload(md3dDevice.Get());
 	upload.Begin();
 
@@ -1333,7 +1317,6 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 
 	auto finish = upload.End(mCommandQueue.Get());
 	finish.get();
-
 
 	
 	//

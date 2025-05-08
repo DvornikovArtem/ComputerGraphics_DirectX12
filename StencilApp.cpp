@@ -368,11 +368,11 @@ void StencilApp::MakeLights()
     Spot1->Name = "Spot1";
     Spot1->LightType = LightType::Spotlight;
     Spot1->WorldLocation = { 4.f, 20.f, 5.f };
-    Spot1->Strength = 0.3f; //0.3 //probably defines the width
+    Spot1->Strength = 0.3f; //0.3 //probably defines the brightness
     Spot1->Color = { 0.f, 1.f, 0.f };
     Spot1->FalloffStart = 1.f;
     Spot1->FalloffEnd = 100.f; //100 //defines how far it lights
-    Spot1->SpotPower = 20.f; //20 //defines how bright it is
+    Spot1->SpotPower = 20.f; //20 //defines how sharp it is
     Spot1->WorldDirection = { 0.5f, -1.f, 0.f };
 
     mAllLightObjects[Spot1->Name] = Spot1;
