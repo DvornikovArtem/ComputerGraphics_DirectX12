@@ -7,14 +7,6 @@ Texture2D   gNormalMap      : register(t2);
 Texture2D   gMaterialAlbedoMap : register(t3);
 Texture2D   gMaterialFresnelRoughnessMap : register(t4);
 
-
-SamplerState gsamPointWrap        : register(s0);
-SamplerState gsamPointClamp       : register(s1);
-SamplerState gsamLinearWrap       : register(s2);
-SamplerState gsamLinearClamp      : register(s3);
-SamplerState gsamAnisotropicWrap  : register(s4);
-SamplerState gsamAnisotropicClamp : register(s5);
-
 // Constant data that varies per frame.
 cbuffer cbPass : register(b0)
 {
@@ -46,26 +38,22 @@ cbuffer cbPass : register(b0)
 cbuffer cbPerLight : register(b1)
 {
     Light CurrentLight;
+    float4x4 gWorld;
 }
 
 
 struct VertexIn
 {
 	float3 PosL    : POSITION;
-    float3 NormalL : NORMAL;
-	float2 TexC    : TEXCOORD;
 };
 
 struct VertexOut
 {
 	float4 PosH    : SV_POSITION;
-    float3 PosW    : POSITION;
-    float3 NormalW : NORMAL;
-	float2 TexC    : TEXCOORD;
 };
 
 
-VertexOut VS(uint vertexID : SV_VertexID)
+VertexOut VS_FSQuad(uint vertexID : SV_VertexID)
 {
     //full-screen quad
     
@@ -79,26 +67,25 @@ VertexOut VS(uint vertexID : SV_VertexID)
     
     VertexOut vout;
     vout.PosH = float4(verts[vertexID], 0, 1);
-    vout.TexC = verts[vertexID] * 0.5f + 0.5f;
-    vout.TexC.y = 1.f - vout.TexC.y;
     return vout;
 }
 
-// Корректная линеаризация глубины с использованием параметров камеры
-float LinearizeDepth(float depth, float zNear, float zFar)
+VertexOut VS_Bounded(VertexIn vin)
 {
-    // Используем параметры из константного буфера
-    return zNear * zFar / (zFar - depth * (zFar - zNear));
+    VertexOut vout;
+    
+    vout.PosH = mul(float4(vin.PosL, 1.0f), mul(gWorld, gViewProj));
+    
+    return vout;
 }
 
 
-// Реконструкция мирового положения из глубины
-float3 ReconstructWorldPosition(float2 texCoord, float depth)
+float3 ReconstructWorldPosition(float2 UV, float depth)
 {
     //magic DirectX texcoord mutations
     float4 clipPos;
-    clipPos.x = texCoord.x * 2.0f - 1.0f;
-    clipPos.y = 1.0f - texCoord.y * 2.0f;
+    clipPos.x = UV.x * 2.0f - 1.0f;
+    clipPos.y = 1.0f - UV.y * 2.0f;
     clipPos.z = depth;
     clipPos.w = 1.0f;
 
@@ -111,14 +98,16 @@ float3 ReconstructWorldPosition(float2 texCoord, float depth)
 
 float4 PS(VertexOut pin) : SV_Target
 {
-    //loading GBufferChannels
-    float4 MatAlbedo = gMaterialAlbedoMap.Sample(gsamAnisotropicWrap, pin.TexC);
-    float4 MatParams = gMaterialFresnelRoughnessMap.Sample(gsamAnisotropicWrap, pin.TexC);
-    float4 Emissive = gEmissiveMap.Sample(gsamAnisotropicWrap, pin.TexC);
-    float4 NormalChannel = gNormalMap.Sample(gsamAnisotropicWrap, pin.TexC);
-    float4 Diffuse = gDiffuseMap.Sample(gsamAnisotropicWrap, pin.TexC) * MatAlbedo;
+    float2 UV = pin.PosH.xy / gRenderTargetSize;
+    uint2 TexelCoord = pin.PosH.xy;
+    //loading GBuffer channels
+    float4 MatAlbedo = gMaterialAlbedoMap.Load(int3(TexelCoord, 0));
+    float4 MatParams = gMaterialFresnelRoughnessMap.Load(int3(TexelCoord, 0));
+    float4 Emissive = gEmissiveMap.Load(int3(TexelCoord, 0));
+    float4 NormalChannel = gNormalMap.Load(int3(TexelCoord, 0));
+    float4 Diffuse = gDiffuseMap.Load(int3(TexelCoord, 0)) * MatAlbedo;
     
-    float3 WorldPosition = ReconstructWorldPosition(pin.TexC, Emissive.w);
+    float3 WorldPosition = ReconstructWorldPosition(UV, Emissive.w);
     float3 MatFresnelR0 = MatParams.xyz;
     float MatRoughness = MatParams.w;
     float3 Normal = NormalChannel.rgb;
@@ -133,18 +122,27 @@ float4 PS(VertexOut pin) : SV_Target
     float3 shadowFactor = 1.0f;
     float3 directLight;
     
+    //discard if there is no geometry in Gbuffer at current pixel
+    if (length(Normal) < 0.01f)
+        discard;
+    
     //calculate light based on its type
     if(CurrentLight.LightType == 0)
     {
         directLight = shadowFactor * ComputeDirectionalLight(CurrentLight, mat, Normal, toEyeW) * CurrentLight.Color;
     }
-    if (CurrentLight.LightType == 1)
+    else if (CurrentLight.LightType == 1)
     {
+        if (length(CurrentLight.Position - WorldPosition) > (CurrentLight.Strength.x * 7))
+            discard;
+        
         directLight = shadowFactor * ComputePointLight(CurrentLight, mat, WorldPosition, Normal, toEyeW) * CurrentLight.Color;
+        //return float4(UV, 0.f, 1.f);
     }
-    if (CurrentLight.LightType == 2)
+    else if(CurrentLight.LightType == 2)
     {
         directLight = shadowFactor * ComputeSpotLight(CurrentLight, mat, WorldPosition, Normal, toEyeW) * CurrentLight.Color;
+        //return float4(UV, 0.f, 1.f);
     }
 
     float4 litColor = float4(directLight, 0.f);
@@ -157,8 +155,8 @@ float4 PS(VertexOut pin) : SV_Target
 float4 PS_AddAmbient(VertexOut pin) : SV_Target
 {
     //same as PS but only adds ambient light
-    float4 MatAlbedo = gMaterialAlbedoMap.Sample(gsamAnisotropicWrap, pin.TexC);
-    float4 DiffuseAlbedo = gDiffuseMap.Sample(gsamAnisotropicWrap, pin.TexC) * MatAlbedo;
+    float4 MatAlbedo = gMaterialAlbedoMap.Load(int3(pin.PosH.xy, 0));
+    float4 DiffuseAlbedo = gDiffuseMap.Load(int3(pin.PosH.xy, 0)) * MatAlbedo;
 
     float4 ambient = gAmbientLight * DiffuseAlbedo;
 

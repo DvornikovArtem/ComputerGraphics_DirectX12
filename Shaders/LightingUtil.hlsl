@@ -91,18 +91,18 @@ float3 ComputePointLight(Light L, Material mat, float3 pos, float3 normal, float
         return 0.0f;
 
     // Normalize the light vector.
-    lightVec /= d;
+        lightVec /= d;
 
     // Scale light down by Lambert's cosine law.
-    float ndotl = max(dot(lightVec, normal), 0.0f);
-    float3 lightStrength = L.Strength * ndotl;
+        float ndotl = max(dot(lightVec, normal), 0.0f);
+        float3 lightStrength = L.Strength * ndotl;
 
     // Attenuate light by distance.
-    float att = CalcAttenuation(d, L.FalloffStart, L.FalloffEnd);
-    lightStrength *= att;
+        float att = CalcAttenuation(d, L.FalloffStart, L.FalloffEnd);
+        lightStrength *= att;
 
-    return BlinnPhong(lightStrength, lightVec, normal, toEye, mat);
-}
+        return BlinnPhong(lightStrength, lightVec, normal, toEye, mat);
+    }
 
 //---------------------------------------------------------------------------------------
 // Evaluates the lighting equation for spot lights.

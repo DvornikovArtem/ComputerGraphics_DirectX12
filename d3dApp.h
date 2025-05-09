@@ -25,7 +25,7 @@ protected:
     D3DApp(HINSTANCE hInstance);
     D3DApp(const D3DApp& rhs) = delete;
     D3DApp& operator=(const D3DApp& rhs) = delete;
-    virtual ~D3DApp();
+	virtual ~D3DApp();
 
 public:
 
@@ -87,6 +87,6 @@ protected:
     //std::unique_ptr<RenderingSystem> mRenderingSystem;
 	std::unique_ptr<RenderingSystem> mRenderingSystem = std::make_unique<RenderingSystem>();
 
-	std::unordered_map<std::string, std::unique_ptr<DrawableObject>> mAllObjects;
-	std::unordered_map<std::string, std::shared_ptr<LightObject>> mAllLightObjects;
+	std::unordered_map<std::string, DrawableObject*> mAllObjects;
+	std::unordered_map<std::string, LightObject*> mAllLightObjects;
 };

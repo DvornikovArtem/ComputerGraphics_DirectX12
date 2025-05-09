@@ -9,6 +9,10 @@
 #include <Windows.h>
 #include <DirectXMath.h>
 #include <cstdint>
+#include <array>
+
+#include "MISC/simplemath/SimpleMath.h"
+using namespace DirectX::SimpleMath;
 
 class MathHelper
 {
@@ -95,5 +99,36 @@ public:
 	static const float Infinity;
 	static const float Pi;
 
+	// For Debug System
+	static std::array<Vector3, 8> GetFrustumCornersWorldSpace(const Matrix& view, const Matrix& proj)
+	{
+		Matrix invViewProj = (view * proj).Invert();
+	
+		std::array<Vector3, 8> frustumCorners;
+	
+		// Clip-space corners of the frustum
+		std::array<Vector4, 8> clipSpaceCorners =
+		{
+			Vector4(-1, +1, 0, 1), // near top-left
+			Vector4(+1, +1, 0, 1), // near top-right
+			Vector4(-1, -1, 0, 1), // near bottom-left
+			Vector4(+1, -1, 0, 1), // near bottom-right
+	
+			Vector4(-1, +1, 1, 1), // far top-left
+			Vector4(+1, +1, 1, 1), // far top-right
+			Vector4(-1, -1, 1, 1), // far bottom-left
+			Vector4(+1, -1, 1, 1), // far bottom-right
+		};
+	
+		for (int i = 0; i < 8; ++i)
+		{
+			Vector4 corner = Vector4::Transform(clipSpaceCorners[i], invViewProj);
+			// perspective divide
+			frustumCorners[i] = Vector3((corner / corner.w).x, (corner / corner.w).y, (corner / corner.w).z);
+		}
+	
+		return frustumCorners;
+	}
+	//
 
 };
