@@ -27,7 +27,6 @@ struct OctTreeNode {
 
 
 struct OctTreeDesc {
-    // May Be It Is A Need To Make A Reference Here Instead Of Copying (ritems)
     std::vector<RenderItem*>* ritems = nullptr;
     std::vector<LightObject*>* lightItems = nullptr;
     size_t numDivisions = 3;

@@ -87,6 +87,11 @@ bool StencilApp::Initialize()
     //Called after all assets, render items and lights are initialized
     mRenderingSystem->BuildFrameResources();
 
+    //init update of all objects
+    for (auto& i : mAllObjects) { DrawableObjectUpdateList.push_back(i.second); }
+    for (auto& i : mAllLightObjects) { LightObjectUpdateList.push_back(i.second); }
+
+
     return true;
 }
  
@@ -99,14 +104,16 @@ void StencilApp::Update(const GameTimer& gt)
 {
     OnKeyboardInput(gt);
 
+
     //Set NeedsUpdate for every object that changes its values at runtime
+
     mAllObjects["Head"]->WorldRotation.y = gt.TotalTime();
-    mAllObjects["Head"]->NeedsUpdate = true;
+    DrawableObjectUpdateList.push_back(mAllObjects["Head"]);
 
     mAllLightObjects["Spot1"]->Color = { 0.5f + 0.5f * cos(gt.TotalTime()) , 0.5f + 0.5f * cos(gt.TotalTime() + 1) , 0.5f + 0.5f * cos(gt.TotalTime() + 4) };
-    mAllLightObjects["Spot1"]->NeedsUpdate = true;
+    LightObjectUpdateList.push_back(mAllLightObjects["Spot1"]);
 
-	mRenderingSystem->Update(mAllObjects);
+    mRenderingSystem->Update(DrawableObjectUpdateList, LightObjectUpdateList);
 }
 
 void StencilApp::Draw(const GameTimer& gt)
@@ -341,17 +348,14 @@ void StencilApp::MakeDrawableObjects()
 
     mAllObjects[Head->Name] = Head;
 
-    for (int i = 0; i < 1; i++) {
-        DrawableObject* Patrick = new DrawableObject();
-        Patrick->Name = "Patrick" + std::to_string(i);
-        Patrick->GeometryName = MeshParsingResults["PatrickStar"][0].GeometryName;
-        Patrick->MaterialName = "PatrickMat";
-        Patrick->renderLayer = RenderLayer::Opaque;
-        //Patrick->WorldLocation = XMFLOAT3(2.0f, 2.0f, 0.0f);
-        Patrick->WorldLocation = XMFLOAT3(-50 + i%90, 2.f, -50+(int)(i / 90));
+    DrawableObject* Patrick = new DrawableObject();
+    Patrick->Name = "Patrick";
+    Patrick->GeometryName = MeshParsingResults["PatrickStar"][0].GeometryName;
+    Patrick->MaterialName = "PatrickMat";
+    Patrick->renderLayer = RenderLayer::Opaque;
+    Patrick->WorldLocation = XMFLOAT3(-4.0f, 2.0f, 0.0f);
 
-        mAllObjects[Patrick->Name] = Patrick;
-    }
+    mAllObjects[Patrick->Name] = Patrick;
 
     mRenderingSystem->BuildRenderItems(mAllObjects);
 }

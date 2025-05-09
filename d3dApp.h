@@ -88,7 +88,7 @@ protected:
 	std::unique_ptr<RenderingSystem> mRenderingSystem = std::make_unique<RenderingSystem>();
 
 	std::unordered_map<std::string, DrawableObject*> mAllObjects;
-	std::vector<DrawableObject*> mAllObjectsToUpdate;
+	std::vector<DrawableObject*> DrawableObjectUpdateList;
 	std::unordered_map<std::string, LightObject*> mAllLightObjects;
-	std::vector<LightObject*> mAllLightObjectsToUpdate;
+	std::vector<LightObject*> LightObjectUpdateList;
 };

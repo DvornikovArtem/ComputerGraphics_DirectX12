@@ -112,8 +112,6 @@ struct RenderItem
     bool IsInViewFrustum = false;
 };
 
-
-
 struct LightObject
 {
     LightObject() {}
