@@ -21,6 +21,9 @@ enum class RenderLayer : int
     Count,
 };
 
+struct RenderItem;
+struct OctTreeNode;
+
 
 struct DrawableObject
 {
@@ -51,11 +54,12 @@ struct DrawableObject
     std::string MaterialName;
     RenderLayer renderLayer;
 
+    RenderItem* renderItem;
+
     XMFLOAT3 WorldLocation = XMFLOAT3(0.f, 0.f, 0.f);
     XMFLOAT3 WorldRotation = XMFLOAT3(0.f, 0.f, 0.f);
     XMFLOAT3 Scale = XMFLOAT3(1.f, 1.f, 1.f);
     XMMATRIX TexTransform = XMMatrixIdentity();
-    bool NeedsUpdate = true;
 };
 
 
@@ -67,6 +71,8 @@ struct RenderItem
     ~RenderItem() = default;
 
     BoundingBox bounds;
+
+    std::vector<OctTreeNode*> occupiedLeaves;
 
     RenderLayer renderLayer;
 
@@ -102,6 +108,36 @@ struct RenderItem
 
     UINT numLODs = 1;
     UINT currentLOD = 0;
+
+    bool IsInViewFrustum = false;
+};
+
+
+
+struct LightObject
+{
+    LightObject() {}
+
+    ~LightObject() = default;
+
+    BoundingBox bounds;
+
+    std::vector<OctTreeNode*> occupiedLeaves;
+
+    float Strength = 0.5f;
+    float FalloffStart = 1.0f;                          // point/spot light only
+    XMFLOAT3 WorldDirection = { 0.0f, -1.0f, 0.0f };// directional/spot light only
+    float FalloffEnd = 10.0f;                           // point/spot light only
+    XMFLOAT3 WorldLocation = { 0.0f, 0.0f, 0.0f };  // point/spot light only
+    float SpotPower = 64.0f;                            // spot light only
+    XMFLOAT3 Color = { 1.f, 1.f, 1.f };
+    LightType LightType = LightType::Pointlight;
+    std::string Name = "";
+    int LightCBIndex = 0; // auto generated value
+    //bool NeedsUpdate = true;
+    int NumFramesDirty = gNumFrameResources; // auto generated value
+    MeshGeometry* Geo = nullptr; // auto generated value
+    XMFLOAT4X4 World = MathHelper::Identity4x4();
 
     bool IsInViewFrustum = false;
 };
