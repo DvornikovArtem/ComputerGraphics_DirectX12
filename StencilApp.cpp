@@ -188,14 +188,10 @@ void StencilApp::LoadShaders()
 
     std::vector<ShaderDesc> ShaderDescs = 
     {
-        //deferred shaders
-        ShaderDesc("standardVS_deferred", L"../Shaders/DeferredGeometryPass.hlsl", "VS", nullptr, "vs_5_0"),
-        ShaderDesc("standardPS_deferred", L"../Shaders/DeferredGeometryPass.hlsl", "PS", nullptr, "ps_5_0"),
-        ShaderDesc("RotatingTilesPS_deferred", L"../Shaders/DeferredGeometryPass.hlsl", "PS", defines, "ps_5_0"),
-        ShaderDesc("standardHS_deferred", L"../Shaders/DeferredGeometryPass.hlsl", "HSMain", nullptr, "hs_5_0"),
-        ShaderDesc("standardDS_deferred", L"../Shaders/DeferredGeometryPass.hlsl", "DSMain", nullptr, "ds_5_0"),
-        ShaderDesc("HSForDecals_deferred", L"../Shaders/DeferredGeometryPass.hlsl", "HSForDecals", nullptr, "hs_5_0"),
-        ShaderDesc("DSForDecals_deferred", L"../Shaders/DeferredGeometryPass.hlsl", "DSForDecals", nullptr, "ds_5_0"),
+        //has prebuilt shaders "standardVS(PS/HS/DS)", "SkyBoxVS(PS)"
+        ShaderDesc("RotatingTilesPS", L"../Shaders/DeferredGeometryPass.hlsl", "PS", defines, "ps_5_0"),
+        ShaderDesc("HSForDecals", L"../Shaders/DeferredGeometryPass.hlsl", "HSForDecals", nullptr, "hs_5_0"),
+        ShaderDesc("DSForDecals", L"../Shaders/DeferredGeometryPass.hlsl", "DSForDecals", nullptr, "ds_5_0"),
     };
 
     mRenderingSystem->BuildShaders(ShaderDescs);
@@ -203,11 +199,10 @@ void StencilApp::LoadShaders()
 
 void StencilApp::LoadTextures()
 {
-    // First Texture in the list will be used as invalid texture
+    // has texture named INVALID (full black color) that is used whenever a texture is inaccessible
 
     std::vector<TextureDesc> TexDescs = 
     {
-        TextureDesc("INVALID", L"../Textures/INVALID.dds", TextureDesc::Texture2D),
         TextureDesc("bricksTex", L"../Textures/bricks3.dds", TextureDesc::Texture2D),
         TextureDesc("checkboardTex", L"../Textures/checkboard.dds", TextureDesc::Texture2D),
         TextureDesc("iceTex", L"../Textures/ice.dds", TextureDesc::Texture2D),
@@ -232,18 +227,19 @@ void StencilApp::MakeMaterials()
 {
     std::vector<MaterialDesc> MaterialDescs =
     {
-        MaterialDesc("bricks", "standardVS_deferred", "standardPS_deferred",  "", "", "bricksTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.25f, false),
-        MaterialDesc("checkertile", "standardVS_deferred", "standardPS_deferred", "", "", "checkboardTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.07f, 0.07f, 0.07f), 0.3f, false),
-        MaterialDesc("icemirror", "standardVS_deferred", "standardPS_deferred", "", "", "iceTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 0.3f), XMFLOAT3(0.1f, 0.1f, 0.1f), 0.5f, false),
-        MaterialDesc("Bricks_DecalTesting", "standardVS_deferred", "standardPS_deferred", "HSForDecals_deferred", "DSForDecals_deferred", "bricksTex", "ShinyStones_NormalMap", "ShinyStones_HeightMap", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, true),
-        MaterialDesc("shadowMat", "standardVS_deferred", "standardPS_deferred", "", "", "redTex", "", "", XMFLOAT4(0.0f, 0.0f, 0.0f, 0.5f), XMFLOAT3(0.001f, 0.001f, 0.001f), 0.0f, false),
-        MaterialDesc("AH", "standardVS_deferred", "standardPS_deferred", "", "", "AH_Diffuse", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, false),
-        MaterialDesc("woodCrate", "standardVS_deferred", "RotatingTilesPS_deferred", "", "", "woodCrateTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, false),
-        MaterialDesc("PatrickMat", "standardVS_deferred", "standardPS_deferred", "", "", "PatrickTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, false),
-        MaterialDesc("Semechki", "standardVS_deferred", "standardPS_deferred", "standardHS_deferred", "standardDS_deferred", "Semechki_Diffuse", "Semechki_NormalMap", "Semechki_HeightMap", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, true),
-        MaterialDesc("ShinyStones", "standardVS_deferred", "standardPS_deferred", "standardHS_deferred", "standardDS_deferred", "ShinyStones_Diffuse", "ShinyStones_NormalMap", "ShinyStones_HeightMap", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, true),
+        MaterialDesc("bricks", "standardVS", "standardPS",  "", "", "bricksTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.25f, false),
+        MaterialDesc("checkertile", "standardVS", "standardPS", "", "", "checkboardTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.07f, 0.07f, 0.07f), 0.3f, false),
+        MaterialDesc("icemirror", "standardVS", "standardPS", "", "", "iceTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 0.3f), XMFLOAT3(0.1f, 0.1f, 0.1f), 0.5f, false),
+        MaterialDesc("Bricks_DecalTesting", "standardVS", "standardPS", "HSForDecals", "DSForDecals", "bricksTex", "ShinyStones_NormalMap", "ShinyStones_HeightMap", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, true),
+        MaterialDesc("shadowMat", "standardVS", "standardPS", "", "", "redTex", "", "", XMFLOAT4(0.0f, 0.0f, 0.0f, 0.5f), XMFLOAT3(0.001f, 0.001f, 0.001f), 0.0f, false),
+        MaterialDesc("AH", "standardVS", "standardPS", "", "", "AH_Diffuse", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, false),
+        MaterialDesc("woodCrate", "standardVS", "RotatingTilesPS", "", "", "woodCrateTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, false),
+        MaterialDesc("PatrickMat", "standardVS", "standardPS", "", "", "PatrickTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, false),
+        MaterialDesc("Semechki", "standardVS", "standardPS", "standardHS", "standardDS", "Semechki_Diffuse", "Semechki_NormalMap", "Semechki_HeightMap", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, true),
+        MaterialDesc("ShinyStones", "standardVS", "standardPS", "standardHS", "standardDS", "ShinyStones_Diffuse", "ShinyStones_NormalMap", "ShinyStones_HeightMap", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, true),
         MaterialDesc("SkyBox", "SkyBoxVS", "SkyBoxPS",  "", "", "SkyCubeMap", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.1f, 0.1f, 0.1f), 1.f, false),
-        MaterialDesc("Svidetel", "standardVS_deferred", "standardPS_deferred", "", "", MeshParsingResults["Svidetel"][0].DiffuseTextureName, "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, false),
+        MaterialDesc("Svidetel", "standardVS", "standardPS", "", "", MeshParsingResults["Svidetel"][0].DiffuseTextureName, "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, false),
+    //MeshParsingResults["Svidetel"][0].DiffuseTextureName
     };
 
 

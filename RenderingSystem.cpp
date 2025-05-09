@@ -772,7 +772,6 @@ std::vector<MeshParsingResult> RenderingSystem::BuildMeshGeometry(std::string Na
 	std::vector<Vertex> vertices;
 	std::vector<std::int32_t> indices;
 
-
 	auto geo = new MeshGeometry;
 	geo->Name = Name;
 
@@ -1332,10 +1331,23 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 	DirectX::ResourceUploadBatch upload(md3dDevice.Get());
 	upload.Begin();
 
+	auto invalidTex = new Texture;
+	invalidTex->srvHeapIndex = 0;
+	invalidTex->Name = "INVALID";
+	invalidTex->Filename = L"../Textures/INVALID.dds";
+
+	ThrowIfFailed(DirectX::CreateDDSTextureFromFile(
+		md3dDevice.Get(),
+		upload,
+		invalidTex->Filename.c_str(),
+		invalidTex->Resource.GetAddressOf()));
+
+	mTextures[invalidTex->Name] = invalidTex;
+
 	for (int i = 0; i < TexDescs.size(); i++)
 	{
 		auto t = new Texture;
-		t->srvHeapIndex = i;
+		t->srvHeapIndex = i + 1;
 		t->Name = TexDescs[i].Name;
 		t->Filename = TexDescs[i].Path;
 
@@ -1351,7 +1363,7 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 	for (int i = 0; i < MPRTextures.size(); i++)
 	{
 		auto t = MPRTextures[i];
-		t->srvHeapIndex = i + TexDescs.size();
+		t->srvHeapIndex = i + TexDescs.size() + 1;
 
 		mTextures[t->Name] = t;
 	}
@@ -1364,7 +1376,7 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 	// Create the SRV heap.
 	//
 	D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
-	srvHeapDesc.NumDescriptors = TexDescs.size() + MPRTextures.size();
+	srvHeapDesc.NumDescriptors = TexDescs.size() + MPRTextures.size() + 1;
 	srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 	srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
 	ThrowIfFailed(md3dDevice->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&mSrvDescriptorHeap)));
@@ -1373,6 +1385,18 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 	// Fill out the heap with actual descriptors.
 	//
 	CD3DX12_CPU_DESCRIPTOR_HANDLE hDescriptor(mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
+
+
+	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	srvDesc.Format = invalidTex->Resource->GetDesc().Format;
+	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+	srvDesc.Texture2D.MostDetailedMip = 0;
+	srvDesc.Texture2D.MipLevels = invalidTex->Resource->GetDesc().MipLevels;
+
+	md3dDevice->CreateShaderResourceView(invalidTex->Resource.Get(), &srvDesc, hDescriptor);
+
+	hDescriptor.Offset(1, mCbvSrvDescriptorSize);
 
 	for (TextureDesc& i : TexDescs) {
 		auto it = mTextures.find(i.Name);
@@ -1604,11 +1628,18 @@ void RenderingSystem::BuildShaders(std::vector<ShaderDesc>& ShaderDescs)
 		mShaders[i.Name] = d3dUtil::CompileShader(i.Path, i.ShaderDefines, i.FunctionName, i.ShaderProfile);
 	}
 
-	//global shaders for deferred rendering
+	//standard shaders for deferred geometry rendering
+	mShaders["standardVS"] = d3dUtil::CompileShader(L"../Shaders/DeferredGeometryPass.hlsl", nullptr, "VS", "vs_5_0");
+	mShaders["standardPS"] = d3dUtil::CompileShader(L"../Shaders/DeferredGeometryPass.hlsl", nullptr, "PS", "ps_5_0");
+	mShaders["standardHS"] = d3dUtil::CompileShader(L"../Shaders/DeferredGeometryPass.hlsl", nullptr, "HSMain", "hs_5_0");
+	mShaders["standardDS"] = d3dUtil::CompileShader(L"../Shaders/DeferredGeometryPass.hlsl", nullptr, "DSMain", "ds_5_0");
+
+	//standard shaders for deferred light rendering
 	mShaders["DeferredLightPassVS_FSQuad"] = d3dUtil::CompileShader(L"../Shaders/DeferredLightPass.hlsl", nullptr, "VS_FSQuad", "vs_5_0");
 	mShaders["DeferredLightPassVS_Bounded"] = d3dUtil::CompileShader(L"../Shaders/DeferredLightPass.hlsl", nullptr, "VS_Bounded", "vs_5_0");
 	mShaders["DeferredLightPassPS"] = d3dUtil::CompileShader(L"../Shaders/DeferredLightPass.hlsl", nullptr, "PS", "ps_5_0");
 	mShaders["DeferredLightPassPS_AddAmbient"] = d3dUtil::CompileShader(L"../Shaders/DeferredLightPass.hlsl", nullptr, "PS_AddAmbient", "ps_5_0");
+
 	//for skybox rendering
 	mShaders["SkyBoxVS"] = d3dUtil::CompileShader(L"../Shaders/SkyBox.hlsl", nullptr, "VS", "vs_5_0");
 	mShaders["SkyBoxPS"] = d3dUtil::CompileShader(L"../Shaders/SkyBox.hlsl", nullptr, "PS", "ps_5_0");
