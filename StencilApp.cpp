@@ -216,6 +216,8 @@ void StencilApp::LoadMeshes()
 
     //If GenerateMaterials is set, the importer will generate a material decriptor that you can use later
 
+    //FOR NOW UNABLE TO LOAD DDS TEXTURES FROM MESHES (use manual texture import)
+
     MeshParsingResults["Head"] = mRenderingSystem->LoadMesh(MeshDesc("Head", "../Models/african_head.obj", MeshDesc::ImportType::LODed), false);
     MeshParsingResults["PatrickStar"] = mRenderingSystem->LoadMesh(MeshDesc("PatrickStar", "../Models/patrickstarW5LODs.fbx", MeshDesc::ImportType::LODed), false);
     MeshParsingResults["Svidetel"] = mRenderingSystem->LoadMesh(MeshDesc("Svidetel", "../Models/Svidetel.fbx", MeshDesc::ImportType::LODed), true);
@@ -225,6 +227,7 @@ void StencilApp::LoadTextures()
 {
     // has texture named INVALID (full black color) that is used whenever a texture is inaccessible
 
+    // DDS textures only
     std::vector<TextureDesc> TexDescs = 
     {
         TextureDesc("bricksTex", L"../Textures/bricks3.dds", TextureDesc::Texture2D),
@@ -341,7 +344,7 @@ void StencilApp::MakeDrawableObjects()
     for (int i = 0; i < 1; i++) {
         DrawableObject* Patrick = new DrawableObject();
         Patrick->Name = "Patrick" + std::to_string(i);
-        Patrick->GeometryName = "PatrickStar";
+        Patrick->GeometryName = MeshParsingResults["PatrickStar"][0].GeometryName;
         Patrick->MaterialName = "PatrickMat";
         Patrick->renderLayer = RenderLayer::Opaque;
         //Patrick->WorldLocation = XMFLOAT3(2.0f, 2.0f, 0.0f);

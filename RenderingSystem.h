@@ -147,6 +147,8 @@ struct MeshParsingResult
 
     std::string GeometryName = "";
     std::string DiffuseTextureName = "";
+    std::string NormalMapName = "";
+    std::string RoughnessMapName = "";
     MaterialDesc GeneratedMaterial;
     bool GenerateMaterial;
 };

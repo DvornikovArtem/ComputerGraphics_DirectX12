@@ -757,6 +757,15 @@ std::vector<MeshParsingResult> RenderingSystem::BuildMeshGeometry(std::string Na
 {
 	Assimp::Importer importer;
 
+
+	//select texture types we're looking for
+	const std::vector<aiTextureType> textureTypes = 
+	{
+		aiTextureType_DIFFUSE,
+		aiTextureType_NORMALS,
+		aiTextureType_DIFFUSE_ROUGHNESS
+	};
+
 	std::vector<MeshParsingResult> res;
 	res.resize(1);
 
@@ -786,32 +795,46 @@ std::vector<MeshParsingResult> RenderingSystem::BuildMeshGeometry(std::string Na
 		//read diffuse texture from first submesh
 		if (i == 0)
 		{
+			res[0].GeneratedMaterial.Name = Name + "_" + mesh->mName.C_Str();
 			aiMaterial* material = scene->mMaterials[mesh->mMaterialIndex];
-			if (material->GetTextureCount(aiTextureType_DIFFUSE) > 0)
-			{
-				aiString texturePath;
-				aiTexture* embeddedTexture;
-				if (material->GetTexture(aiTextureType_DIFFUSE, 0, &texturePath) == AI_SUCCESS) 
+			for (auto& texType : textureTypes) {
+				if (material->GetTextureCount(texType) > 0)
 				{
-					for (unsigned int i = 0; i < scene->mNumTextures; ++i) {
-						if (scene->mTextures[i]->mFilename == texturePath) {
-							embeddedTexture = scene->mTextures[i];
+					aiString texturePath;
+					aiTexture* embeddedTexture;
+					if (material->GetTexture(texType, 0, &texturePath) == AI_SUCCESS)
+					{
+						for (unsigned int i = 0; i < scene->mNumTextures; ++i) {
+							if (scene->mTextures[i]->mFilename == texturePath) {
+								embeddedTexture = scene->mTextures[i];
+								break;
+							}
+						}
+
+						//Get texture name
+						std::string TextureName = std::string(texturePath.C_Str());
+						size_t lastSlash = TextureName.find_last_of("\\/");
+						if (lastSlash != std::string::npos) { TextureName = TextureName.substr(lastSlash + 1); }
+						size_t dotPos = TextureName.find_last_of('.');
+						if (dotPos != std::string::npos) { TextureName = TextureName.substr(0, dotPos); }
+
+						ProcessEmbeddedTexture(embeddedTexture, TextureName);
+
+						switch (texType)
+						{
+						case aiTextureType_DIFFUSE:
+							res[0].DiffuseTextureName = TextureName;
+							res[0].GeneratedMaterial.DiffuseTexName = TextureName;
+							break;
+						case aiTextureType_NORMALS:
+							res[0].NormalMapName = TextureName;
+							//res[0].GeneratedMaterial.NormalMapName = TextureName;
+							break;
+						case aiTextureType_DIFFUSE_ROUGHNESS:
+							res[0].RoughnessMapName = TextureName;
 							break;
 						}
 					}
-
-					//Get texture name
-					std::string TextureName = std::string(texturePath.C_Str());
-					size_t lastSlash = TextureName.find_last_of("\\/");
-					if (lastSlash != std::string::npos) { TextureName = TextureName.substr(lastSlash + 1); }
-					size_t dotPos = TextureName.find_last_of('.');
-					if (dotPos != std::string::npos) { TextureName = TextureName.substr(0, dotPos); }
-
-					ProcessEmbeddedTexture(embeddedTexture, TextureName);
-
-					res[0].DiffuseTextureName = TextureName;
-					res[0].GeneratedMaterial.DiffuseTexName = TextureName;
-					res[0].GeneratedMaterial.Name = Name + "_" + mesh->mName.C_Str();
 				}
 			}
 		}
@@ -1476,12 +1499,15 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 void RenderingSystem::ProcessEmbeddedTexture(const aiTexture* texture, std::string TextureName)
 {
 	//can be done with either DirectXTex or stb_image(we're going for option #2)
+	std::string DebugRes = "Processing Texture " + TextureName + "\n";
+	OutputDebugStringA(DebugRes.c_str());
 
 	int width, height, channels;
 	unsigned char* imageData;
 
 	if (texture->mHeight == 0) 
 	{
+		OutputDebugStringA("COMPRESSED\n");
 		// Compressed data
 		imageData = stbi_load_from_memory(
 			reinterpret_cast<const stbi_uc*>(texture->pcData),
@@ -1490,6 +1516,7 @@ void RenderingSystem::ProcessEmbeddedTexture(const aiTexture* texture, std::stri
 	}
 	else 
 	{
+		OutputDebugStringA("UNCOMPRESSED\n");
 		// Uncompressed data
 		width = texture->mWidth;
 		height = texture->mHeight;
@@ -1497,12 +1524,14 @@ void RenderingSystem::ProcessEmbeddedTexture(const aiTexture* texture, std::stri
 		imageData = new unsigned char[width * height * 4];
 		memcpy(imageData, texture->pcData, width * height * 4);
 	}
-
+	std::string DebugRes2 = "Num Channels == " + std::to_string(channels) + "\n";
+	OutputDebugStringA(DebugRes2.c_str());
 	// need to convert RGBA to BGRA for whatever reason
 	if (channels >= 3) {
 		for (int i = 0; i < width * height; i++) {
 			std::swap(imageData[i * 4], imageData[i * 4 + 2]);
 		}
+		OutputDebugStringA("CONVERTING\n");
 	}
 
 	if (imageData) 
