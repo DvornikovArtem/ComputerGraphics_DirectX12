@@ -21,6 +21,10 @@
 #include "directx/ResourceUploadBatch.h"
 #include "RenderItem.h"
 
+#define STB_IMAGE_IMPLEMENTATION
+#define STB_IMAGE_STATIC
+#include "stb_image.h"
+
 #include "IRenderTargetProvider.h"
 #include "old/DebugRenderSysImpl.h"
 #include "OctTree.h"
@@ -116,18 +120,15 @@ struct MaterialDesc
 
 struct MeshDesc
 {
+    enum ImportType { LODed, Complex };
+
     MeshDesc() {}
 
-    MeshDesc(std::string Name, std::string Path)
+    MeshDesc(std::string Name, std::string Path, ImportType importType)
     {
         this->Name = Name;
         this->Path = Path;
-    }
-    MeshDesc(std::string Name, std::string Path, std::string TextureName)
-    {
-        this->Name = Name;
-        this->Path = Path;
-        this->TextureName = TextureName;
+        this->importType = importType;
     }
 
     ~MeshDesc() = default;
@@ -135,9 +136,18 @@ struct MeshDesc
     std::string Name;
     std::string Path;
     std::string TextureName = "";
+    ImportType importType;
 };
 
+struct MeshParsingResult
+{
+    MeshParsingResult() {}
 
+    ~MeshParsingResult() = default;
+
+    std::string GeometryName = "";
+    std::string DiffuseTextureName = "";
+};
 
 struct LightObject
 {
@@ -145,7 +155,7 @@ struct LightObject
 
     ~LightObject() = default;
 
-    float Strength = 0.5f;
+    float Strength = 1.f;
     float FalloffStart = 1.0f;                          // point/spot light only
     XMFLOAT3 WorldDirection = { 0.0f, -1.0f, 0.0f };// directional/spot light only
     float FalloffEnd = 10.0f;                           // point/spot light only
@@ -190,6 +200,7 @@ public:
             layer.clear();
         }
 
+
         mFrameResources.clear();
 
         delete mDebugDrawer;
@@ -217,13 +228,14 @@ public:
     void BuildShaders(std::vector<ShaderDesc>& ShaderDescs);
     void BuildBasicGeometry();
     void LoadTextures(std::vector<TextureDesc>& TexDescs);
+    void ProcessEmbeddedTexture(const aiTexture* texture, std::string TextureName);
 
     void CollectVisibleRenderItems(OctTreeNode* node);
 
     void UpdateRenderItems(std::unordered_map<std::string, DrawableObject*>& mAllObjects);
 
-    void BuildMeshGeometry(std::string Name, const std::string& filename);
-    void LoadMeshes(std::vector<MeshDesc>& MeshDescs);
+    std::vector<MeshParsingResult> BuildMeshGeometry(std::string Name, const std::string& filename);
+    std::vector<MeshParsingResult> LoadMesh(MeshDesc& meshDesc);
     void BuildPSOs(MaterialDesc& MDesc, std::unordered_map<std::string, ComPtr<ID3D12PipelineState>>& mPSOs);
     void BuildGlobalPSOs();
     void BuildFrameResources();
@@ -352,9 +364,10 @@ protected:
     BoundingFrustum ViewFrustum;
 
     OctTree* mOctTree;
+
+    //holds generated textures to be added in main texture pipeline later
+    std::vector<Texture*> MPRTextures;
 };
-
-
 
 
 #endif // RENDERINGSYSTEM_H

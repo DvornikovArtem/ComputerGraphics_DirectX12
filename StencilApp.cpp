@@ -41,6 +41,8 @@ private:
 
     float mCameraMoveSpeed = 10.0f;
     POINT mLastMousePos;
+
+    std::unordered_map<std::string, std::vector<MeshParsingResult>> MeshParsingResults;
 };
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prevInstance,
@@ -210,9 +212,9 @@ void StencilApp::LoadTextures()
         TextureDesc("checkboardTex", L"../Textures/checkboard.dds", TextureDesc::Texture2D),
         TextureDesc("iceTex", L"../Textures/ice.dds", TextureDesc::Texture2D),
         TextureDesc("white1x1Tex", L"../Textures/white1x1.dds", TextureDesc::Texture2D),
-        TextureDesc("meshTex", L"../Textures/african_head_diffuse.dds", TextureDesc::Texture2D),
+        TextureDesc("AH_Diffuse", L"../Textures/african_head_diffuse.dds", TextureDesc::Texture2D),
         TextureDesc("redTex", L"../Textures/rsq.dds", TextureDesc::Texture2D),
-        TextureDesc("grassTex", L"../Textures/WoodCrate01.dds", TextureDesc::Texture2D),
+        TextureDesc("woodCrateTex", L"../Textures/WoodCrate01.dds", TextureDesc::Texture2D),
         TextureDesc("PatrickTex", L"../Textures/patrickstar.dds", TextureDesc::Texture2D),
         TextureDesc("Semechki_Diffuse", L"../Textures/semente_BaseColor.dds", TextureDesc::Texture2D),
         TextureDesc("Semechki_NormalMap", L"../Textures/semente_Normal.dds", TextureDesc::Texture2D),
@@ -233,14 +235,15 @@ void StencilApp::MakeMaterials()
         MaterialDesc("bricks", "standardVS_deferred", "standardPS_deferred",  "", "", "bricksTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.25f, false),
         MaterialDesc("checkertile", "standardVS_deferred", "standardPS_deferred", "", "", "checkboardTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.07f, 0.07f, 0.07f), 0.3f, false),
         MaterialDesc("icemirror", "standardVS_deferred", "standardPS_deferred", "", "", "iceTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 0.3f), XMFLOAT3(0.1f, 0.1f, 0.1f), 0.5f, false),
-        MaterialDesc("skullMat", "standardVS_deferred", "standardPS_deferred", "HSForDecals_deferred", "DSForDecals_deferred", "bricksTex", "ShinyStones_NormalMap", "ShinyStones_HeightMap", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, true),
+        MaterialDesc("Bricks_DecalTesting", "standardVS_deferred", "standardPS_deferred", "HSForDecals_deferred", "DSForDecals_deferred", "bricksTex", "ShinyStones_NormalMap", "ShinyStones_HeightMap", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, true),
         MaterialDesc("shadowMat", "standardVS_deferred", "standardPS_deferred", "", "", "redTex", "", "", XMFLOAT4(0.0f, 0.0f, 0.0f, 0.5f), XMFLOAT3(0.001f, 0.001f, 0.001f), 0.0f, false),
-        MaterialDesc("mesh", "standardVS_deferred", "standardPS_deferred", "", "", "meshTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, false),
-        MaterialDesc("grass", "standardVS_deferred", "RotatingTilesPS_deferred", "", "", "grassTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, false),
+        MaterialDesc("AH", "standardVS_deferred", "standardPS_deferred", "", "", "AH_Diffuse", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, false),
+        MaterialDesc("woodCrate", "standardVS_deferred", "RotatingTilesPS_deferred", "", "", "woodCrateTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, false),
         MaterialDesc("PatrickMat", "standardVS_deferred", "standardPS_deferred", "", "", "PatrickTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, false),
         MaterialDesc("Semechki", "standardVS_deferred", "standardPS_deferred", "standardHS_deferred", "standardDS_deferred", "Semechki_Diffuse", "Semechki_NormalMap", "Semechki_HeightMap", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, true),
         MaterialDesc("ShinyStones", "standardVS_deferred", "standardPS_deferred", "standardHS_deferred", "standardDS_deferred", "ShinyStones_Diffuse", "ShinyStones_NormalMap", "ShinyStones_HeightMap", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, true),
         MaterialDesc("SkyBox", "SkyBoxVS", "SkyBoxPS",  "", "", "SkyCubeMap", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.1f, 0.1f, 0.1f), 1.f, false),
+        MaterialDesc("Svidetel", "standardVS_deferred", "standardPS_deferred", "", "", MeshParsingResults["Svidetel"][0].DiffuseTextureName, "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, false),
     };
 
 
@@ -264,18 +267,24 @@ void StencilApp::LoadMeshes()
     //Returns std::vector of parsing results with geometry and texture names
     //Use for models that consist of multiple submeshes
 
-    std::vector<MeshDesc> MeshDescs =
-    {
-        MeshDesc("Head", "../Models/african_head.obj"),
-        MeshDesc("PatrickStar", "../Models/patrickstarW5LODs.fbx")
-    };
-
-    mRenderingSystem->LoadMeshes(MeshDescs);
+    MeshParsingResults["Head"] = mRenderingSystem->LoadMesh(MeshDesc("Head", "../Models/african_head.obj", MeshDesc::ImportType::LODed));
+    MeshParsingResults["PatrickStar"] = mRenderingSystem->LoadMesh(MeshDesc("PatrickStar", "../Models/patrickstarW5LODs.fbx", MeshDesc::ImportType::LODed));
+    MeshParsingResults["Svidetel"] = mRenderingSystem->LoadMesh(MeshDesc("Svidetel", "../Models/Svidetel.fbx", MeshDesc::ImportType::LODed));
 }
 
 void StencilApp::MakeDrawableObjects()
 {
     //Has prebuilt geometries: "Box", "Grid", "Sphere", "Cylinder", "Cone"
+
+    DrawableObject* Svidetel = new DrawableObject();
+    Svidetel->Name = "Svidetel";
+    Svidetel->GeometryName = MeshParsingResults["Svidetel"][0].GeometryName;
+    Svidetel->MaterialName = "Svidetel";
+    Svidetel->renderLayer = RenderLayer::Opaque;
+    Svidetel->WorldLocation = XMFLOAT3(1.5f, 0.f, 0.f);
+    Svidetel->Scale = XMFLOAT3(2.f, 2.f, 2.f);
+
+    mAllObjects[Svidetel->Name] = Svidetel;
 
     DrawableObject* SkyBoxSphere = new DrawableObject();
     SkyBoxSphere->Name = "SkyBoxSphere";
@@ -292,32 +301,28 @@ void StencilApp::MakeDrawableObjects()
     TesselationTestSphere->MaterialName = "Semechki";
     TesselationTestSphere->renderLayer = RenderLayer::Opaque;
     TesselationTestSphere->WorldLocation = XMFLOAT3(5.f, 3.f, -1.f);
-    TesselationTestSphere->WorldRotation = XMFLOAT3(0.f, 0.f, 0.f);
     TesselationTestSphere->Scale = XMFLOAT3(2.5f, 2.5f, 2.5f);
     TesselationTestSphere->TexTransform = XMMatrixScaling(5.0f, 5.0f, 1.0f);
 
     mAllObjects[TesselationTestSphere->Name] = TesselationTestSphere;
 
-    DrawableObject* DecalTestCube = new DrawableObject();
-    DecalTestCube->Name = "DecalTestCube";
-    DecalTestCube->GeometryName = "Cylinder";
-    DecalTestCube->MaterialName = "skullMat";
-    DecalTestCube->renderLayer = RenderLayer::Opaque;
-    DecalTestCube->WorldLocation = XMFLOAT3(10.f, 3.f, 5.f);
-    DecalTestCube->WorldRotation = XMFLOAT3(0.f, 0.f, 0.f);
-    DecalTestCube->Scale = XMFLOAT3(5.0f, 5.0f, 5.0f);
-    DecalTestCube->TexTransform = XMMatrixScaling(5.0f, 5.0f, 1.0f);
+    DrawableObject* DecalTestCylinder = new DrawableObject();
+    DecalTestCylinder->Name = "DecalTestCylinder";
+    DecalTestCylinder->GeometryName = "Cylinder";
+    DecalTestCylinder->MaterialName = "Bricks_DecalTesting";
+    DecalTestCylinder->renderLayer = RenderLayer::Opaque;
+    DecalTestCylinder->WorldLocation = XMFLOAT3(10.f, 3.f, 5.f);
+    DecalTestCylinder->Scale = XMFLOAT3(5.0f, 5.0f, 5.0f);
+    DecalTestCylinder->TexTransform = XMMatrixScaling(5.0f, 5.0f, 1.0f);
 
-    mAllObjects[DecalTestCube->Name] = DecalTestCube;
+    mAllObjects[DecalTestCylinder->Name] = DecalTestCylinder;
 
 
     DrawableObject* Floor = new DrawableObject();
     Floor->Name = "Floor";
     Floor->GeometryName = "Grid";
-    Floor->MaterialName = "grass";
+    Floor->MaterialName = "woodCrate";
     Floor->renderLayer = RenderLayer::Opaque;
-    Floor->WorldLocation = XMFLOAT3(0.f, 0.f, 0.f);
-    Floor->WorldRotation = XMFLOAT3(0.f, 0.f, 0.f);
     Floor->Scale = XMFLOAT3(5.0f, 1.0f, 5.0f);
     Floor->TexTransform = XMMatrixScaling(50.0f, 50.0f, 1.0f);
 
@@ -326,12 +331,9 @@ void StencilApp::MakeDrawableObjects()
     DrawableObject* Head = new DrawableObject();
     Head->Name = "Head";
     Head->GeometryName = "Head";
-    Head->MaterialName = "mesh";
+    Head->MaterialName = "AH";
     Head->renderLayer = RenderLayer::Opaque;
     Head->WorldLocation = XMFLOAT3(0.f, 2.f, 0.f);
-    Head->WorldRotation = XMFLOAT3(0.f, 0.f, 0.f);
-    Head->Scale = XMFLOAT3(1.0f, 1.0f, 1.0f);
-    Head->TexTransform = XMMatrixScaling(1.f, 1.f, 1.f);
 
     mAllObjects[Head->Name] = Head;
 
@@ -343,9 +345,6 @@ void StencilApp::MakeDrawableObjects()
         Patrick->renderLayer = RenderLayer::Opaque;
         //Patrick->WorldLocation = XMFLOAT3(2.0f, 2.0f, 0.0f);
         Patrick->WorldLocation = XMFLOAT3(-50 + i%90, 2.f, -50+(int)(i / 90));
-        Patrick->WorldRotation = XMFLOAT3(0.f, 0.f, 0.f);
-        Patrick->Scale = XMFLOAT3(1.0f, 1.0f, 1.0f);
-        Patrick->TexTransform = XMMatrixScaling(1.f, 1.f, 1.f);
 
         mAllObjects[Patrick->Name] = Patrick;
     }

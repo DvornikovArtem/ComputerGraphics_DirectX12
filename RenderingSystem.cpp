@@ -754,15 +754,19 @@ void RenderingSystem::UpdateLightCBs(const GameTimer& gt)
 	}
 }
 
-void RenderingSystem::BuildMeshGeometry(std::string Name, const std::string& filename) {
+std::vector<MeshParsingResult> RenderingSystem::BuildMeshGeometry(std::string Name, const std::string& filename) 
+{
 	Assimp::Importer importer;
+
+	std::vector<MeshParsingResult> res;
+	res.resize(1);
 
 	const aiScene* scene = importer.ReadFile(filename,
 		aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_GenNormals | aiProcess_CalcTangentSpace);
 
 	if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
 		MessageBoxW(0, L"Model not found.", 0, 0);
-		return;
+		return res;
 	}
 
 	std::vector<Vertex> vertices;
@@ -781,6 +785,34 @@ void RenderingSystem::BuildMeshGeometry(std::string Name, const std::string& fil
 		XMFLOAT3 vMin = { FLT_MAX, FLT_MAX, FLT_MAX };
 		XMFLOAT3 vMax = { -FLT_MAX, -FLT_MAX, -FLT_MAX };
 
+		//read diffuse texture from first submesh
+		if (i == 0)
+		{
+			aiMaterial* material = scene->mMaterials[mesh->mMaterialIndex];
+			if (material->GetTextureCount(aiTextureType_DIFFUSE) > 0)
+			{
+				aiString texturePath;
+				aiTexture* embeddedTexture;
+				if (material->GetTexture(aiTextureType_DIFFUSE, 0, &texturePath) == AI_SUCCESS) 
+				{
+					for (unsigned int i = 0; i < scene->mNumTextures; ++i) {
+						if (scene->mTextures[i]->mFilename == texturePath) {
+							embeddedTexture = scene->mTextures[i];
+							break;
+						}
+					}
+
+					//Get texture name
+					std::string TextureName = std::string(texturePath.C_Str());
+					size_t lastSlash = TextureName.find_last_of("\\/");
+					if (lastSlash != std::string::npos) { TextureName = TextureName.substr(lastSlash + 1); }
+					size_t dotPos = TextureName.find_last_of('.');
+					if (dotPos != std::string::npos) { TextureName = TextureName.substr(0, dotPos); }
+					res[0].DiffuseTextureName = TextureName;
+					ProcessEmbeddedTexture(embeddedTexture, TextureName);
+				}
+			}
+		}
 
 		for (unsigned int j = 0; j < mesh->mNumVertices; j++) {
 			Vertex vertex;
@@ -880,20 +912,24 @@ void RenderingSystem::BuildMeshGeometry(std::string Name, const std::string& fil
 	geo->IndexBufferByteSize = ibByteSize;
 
 	mGeometries[geo->Name] = geo;
+
+	res[0].GeometryName = Name;
+	return res;
 }
 
-void RenderingSystem::LoadMeshes(std::vector<MeshDesc>& MeshDescs)
+std::vector<MeshParsingResult> RenderingSystem::LoadMesh(MeshDesc& meshDesc)
 {
 	ThrowIfFailed(mCommandList->Reset(mDirectCmdListAlloc.Get(), nullptr));
 
-	for (MeshDesc& i : MeshDescs)
-	{
-		BuildMeshGeometry(i.Name, i.Path);
-	}
+	std::vector<MeshParsingResult> res;
+
+	res = BuildMeshGeometry(meshDesc.Name, meshDesc.Path);
 
 	ThrowIfFailed(mCommandList->Close());
 	ID3D12CommandList* cmdsLists[] = { mCommandList.Get() };
 	mCommandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
+
+	return res;
 }
 
 void RenderingSystem::BuildPSOs(MaterialDesc& MDesc, std::unordered_map<std::string, ComPtr<ID3D12PipelineState>>& mPSOs)
@@ -1312,6 +1348,14 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 		mTextures[t->Name] = t;
 	}
 
+	for (int i = 0; i < MPRTextures.size(); i++)
+	{
+		auto t = MPRTextures[i];
+		t->srvHeapIndex = i + TexDescs.size();
+
+		mTextures[t->Name] = t;
+	}
+
 	auto finish = upload.End(mCommandQueue.Get());
 	finish.get();
 
@@ -1320,7 +1364,7 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 	// Create the SRV heap.
 	//
 	D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
-	srvHeapDesc.NumDescriptors = TexDescs.size();
+	srvHeapDesc.NumDescriptors = TexDescs.size() + MPRTextures.size();
 	srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 	srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
 	ThrowIfFailed(md3dDevice->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&mSrvDescriptorHeap)));
@@ -1368,9 +1412,110 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 		hDescriptor.Offset(1, mCbvSrvDescriptorSize);
 	}
 
+	for (Texture* i : MPRTextures) {
+		auto it = mTextures.find(i->Name);
+		if (it == mTextures.end()) {
+			// Обработка ошибки: текстура не найдена
+			OutputDebugStringA(("Texture not found: " + i->Name + "\n").c_str());
+			continue;
+		}
+
+		auto& tex = it->second->Resource;
+		if (!tex) {
+			// Обработка ошибки: ресурс текстуры не инициализирован
+			OutputDebugStringA(("Texture resource is null: " + i->Name + "\n").c_str());
+			continue;
+		}
+
+		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+		srvDesc.Format = tex->GetDesc().Format;
+		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+		srvDesc.Texture2D.MostDetailedMip = 0;
+		srvDesc.Texture2D.MipLevels = tex->GetDesc().MipLevels;
+
+		md3dDevice->CreateShaderResourceView(tex.Get(), &srvDesc, hDescriptor);
+
+		hDescriptor.Offset(1, mCbvSrvDescriptorSize);
+	}
+
 	ThrowIfFailed(mCommandList->Close());
 	ID3D12CommandList* cmdsLists[] = { mCommandList.Get() };
 	mCommandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
+}
+
+void RenderingSystem::ProcessEmbeddedTexture(const aiTexture* texture, std::string TextureName)
+{
+	// Загружаем текстуру из памяти с помощью WIC или другой библиотеки
+	// Например, используя DirectXTex или stb_image
+
+	// Пример с stb_image:
+	int width, height, channels;
+	unsigned char* imageData = stbi_load_from_memory(
+		reinterpret_cast<const stbi_uc*>(texture->pcData),
+		texture->mWidth,
+		&width, &height, &channels, 4);
+
+	if (imageData) 
+	{
+
+		auto* generatedTex = new Texture;
+		generatedTex->Name = TextureName;
+
+		D3D12_RESOURCE_DESC textureDesc = {};
+		textureDesc.MipLevels = 1;
+		textureDesc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+		textureDesc.Width = width;
+		textureDesc.Height = height;
+		textureDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+		textureDesc.DepthOrArraySize = 1;
+		textureDesc.SampleDesc.Count = 1;
+		textureDesc.SampleDesc.Quality = 0;
+		textureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+
+		CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_DEFAULT);
+		ThrowIfFailed(md3dDevice->CreateCommittedResource(
+			&heapProps,
+			D3D12_HEAP_FLAG_NONE,
+			&textureDesc,
+			D3D12_RESOURCE_STATE_COPY_DEST, // Сразу создаем в нужном состоянии
+			nullptr,
+			IID_PPV_ARGS(&generatedTex->Resource)));
+
+		// Создаем upload heap
+		CD3DX12_HEAP_PROPERTIES uploadHeapProps(D3D12_HEAP_TYPE_UPLOAD);
+		CD3DX12_RESOURCE_DESC uploadBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(GetRequiredIntermediateSize(generatedTex->Resource.Get(), 0, 1));
+		ThrowIfFailed(md3dDevice->CreateCommittedResource(
+			&uploadHeapProps,
+			D3D12_HEAP_FLAG_NONE,
+			&uploadBufferDesc,
+			D3D12_RESOURCE_STATE_GENERIC_READ,
+			nullptr,
+			IID_PPV_ARGS(&generatedTex->UploadHeap)));
+
+		// Заполняем данные текстуры
+		D3D12_SUBRESOURCE_DATA textureData = {};
+		textureData.pData = imageData;
+		textureData.RowPitch = width * 4;
+		textureData.SlicePitch = textureData.RowPitch * height;
+
+		// Копируем данные из upload heap в текстуру
+		UpdateSubresources(mCommandList.Get(),
+			generatedTex->Resource.Get(),
+			generatedTex->UploadHeap.Get(),
+			0, 0, 1, &textureData);
+
+		// Барьер для перевода текстуры в состояние чтения шейдером
+		CD3DX12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+			generatedTex->Resource.Get(),
+			D3D12_RESOURCE_STATE_COPY_DEST,
+			D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+		mCommandList->ResourceBarrier(1, &barrier);
+
+		MPRTextures.push_back(generatedTex);
+		stbi_image_free(imageData);
+
+	}
 }
 
 std::unordered_set<RenderItem*> alreadyCheckedRitems;

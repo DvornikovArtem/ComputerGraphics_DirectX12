@@ -67,7 +67,6 @@ public:
         }
     }
 
-    //OctTree(size_t numDivisions, const std::vector<RenderItem*>& ritems)
     OctTree(const OctTreeDesc& octTreeDesc)
     {
         this->numDivisions = octTreeDesc.numDivisions;
