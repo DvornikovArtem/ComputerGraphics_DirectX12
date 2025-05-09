@@ -355,12 +355,7 @@ void RenderingSystem::BuildRenderItems(std::unordered_map<std::string, DrawableO
 		auto i = pair.second;
 
 		auto t = new RenderItem;
-		t->World = MathHelper::Identity4x4();
-		XMStoreFloat4x4(&t->World, XMMatrixScaling(i->Scale.x, i->Scale.y, i->Scale.z) 
-			* XMMatrixRotationRollPitchYaw(i->WorldRotation.z, i->WorldRotation.y, i->WorldRotation.x) 
-			* XMMatrixTranslation(i->WorldLocation.x, i->WorldLocation.y, i->WorldLocation.z));
-		t->TexTransform = MathHelper::Identity4x4();
-		XMStoreFloat4x4(&t->TexTransform, i->TexTransform);
+
 		t->ObjCBIndex = k;
 		t->Mat = mMaterials[i->MaterialName];
 		t->Geo = mGeometries[i->GeometryName];
@@ -371,7 +366,6 @@ void RenderingSystem::BuildRenderItems(std::unordered_map<std::string, DrawableO
 
 		t->currentLOD = 0;
 		t->numLODs = t->Geo->DrawArgs.size() - 1;
-		t->Geo->DrawArgs["LOD0"].Bounds.Transform(t->bounds, XMLoadFloat4x4(&t->World));
 
 		t->renderLayer = i->renderLayer;
 		t->drawableObject = i;
@@ -383,20 +377,16 @@ void RenderingSystem::BuildRenderItems(std::unordered_map<std::string, DrawableO
 		
 		k++;
 	}
-
-	//generate OctTree
-	OctTreeDesc octTreeDesc;
-	octTreeDesc.ritems = &mAllRitems;
-	octTreeDesc.numDivisions = 4;
-	octTreeDesc.autoFitBox = false;
-	octTreeDesc.center = {0.f, 0.f, 0.f};
-	octTreeDesc.cubeSize = 1000.0f;
-
-	mOctTree = new OctTree(octTreeDesc);
 }
 
 void RenderingSystem::BuildLightItems(std::unordered_map<std::string, LightObject*>& Objects)
 {
+
+	XMVECTOR RotationAxis;
+	float RotAngle;
+	float SphereRadius;
+	XMFLOAT3 ConeScale;
+
 	int k = 0;
 	for (auto& pair : Objects)
 	{
@@ -409,16 +399,46 @@ void RenderingSystem::BuildLightItems(std::unordered_map<std::string, LightObjec
 		{
 		case LightType::Pointlight:
 			i->Geo = mGeometries["Sphere_LowPoly"];
+			SphereRadius = 7.f * i->Strength;
+			XMStoreFloat4x4(&i->World, XMMatrixScaling(SphereRadius, SphereRadius, SphereRadius) *
+				XMMatrixTranslation(i->WorldLocation.x, i->WorldLocation.y, i->WorldLocation.z));
 			break;
 		case LightType::Spotlight:
 			i->Geo = mGeometries["Cone"];
+			ConeScale.y = i->FalloffEnd / 5;
+			ConeScale.x = 1.f / ConeScale.y;
+			ConeScale.x = ConeScale.z = ConeScale.x * i->SpotPower * 8;
+			//calculate rotation matrix from start and target direction vectors
+			XMVECTOR StartDir = XMVectorSet(0.0f, -1.0f, 0.0f, 0.0f);
+			XMVECTOR TargetDir = XMVector3Normalize(XMLoadFloat3(&i->WorldDirection));
+			RotationAxis = XMVector3Cross(StartDir, TargetDir);
+			RotAngle = acosf(XMVectorGetX(XMVector3Dot(StartDir, TargetDir)));
+
+			XMStoreFloat4x4(&i->World, XMMatrixScaling(ConeScale.x, ConeScale.y, ConeScale.z) *
+				XMMatrixRotationAxis(XMVector3Normalize(RotationAxis), RotAngle) *
+				XMMatrixTranslation(i->WorldLocation.x, i->WorldLocation.y, i->WorldLocation.z));
 			break;
+		}
+
+		if (i->LightType != LightType::Directional) {
+			i->Geo->DrawArgs["LOD0"].Bounds.Transform(i->bounds, XMLoadFloat4x4(&i->World));
 		}
 
 		mAllLights.push_back(i);
 
 		k++;
 	}
+
+	//generate OctTree
+	OctTreeDesc octTreeDesc;
+	octTreeDesc.ritems = &mAllRitems;
+	octTreeDesc.lightItems = &mAllLights;
+	octTreeDesc.numDivisions = 4;
+	octTreeDesc.autoFitBox = false;
+	octTreeDesc.center = { 0.f, 0.f, 0.f };
+	octTreeDesc.cubeSize = 1000.0f;
+
+	mOctTree = new OctTree(octTreeDesc);
 }
 
 void RenderingSystem::LogAdapterOutputs(IDXGIAdapter* adapter)
@@ -646,7 +666,7 @@ void RenderingSystem::BuildDescriptorHeap(Material* t)
 
 }
 
-void RenderingSystem::Update(std::vector<DrawableObject*>& mAllObjectsToUpdate)
+void RenderingSystem::Update(std::vector<DrawableObject*>& mAllObjectsToUpdate, std::vector<LightObject*>& mAllLightObjectsToUpdate)
 {
 	// Cycle through the circular frame resource array.
 	mCurrFrameResourceIndex = (mCurrFrameResourceIndex + 1) % gNumFrameResources;
@@ -668,6 +688,7 @@ void RenderingSystem::Update(std::vector<DrawableObject*>& mAllObjectsToUpdate)
 	UpdateMaterialCBs(*gt);
 	UpdateMainPassCB(*gt);
 	UpdateReflectedPassCB(*gt);
+	UpdateLightItems(mAllLightObjectsToUpdate);
 	UpdateLightCBs(*gt);
 
 }
@@ -702,20 +723,84 @@ void RenderingSystem::UpdateObjectCBs(const GameTimer& gt)
 
 }
 
-void RenderingSystem::UpdateLightCBs(const GameTimer& gt)
+std::unordered_set<LightObject*> alreadyCheckedLitems;
+
+void RenderingSystem::CollectVisibleLightItems()
 {
-	auto currObjectCB = mCurrFrameResource->LightCB.get();
+	std::vector<OctTreeNode*> leaves = mOctTree->GetAllNodesAtLevel(mOctTree->getNumDivisions() - 1);
+
+	for (auto& leaf : leaves) {
+		if (ViewFrustum.Contains(leaf->bounds) != DirectX::ContainmentType::DISJOINT) {
+			for (LightObject* li : leaf->OverlappedLightObjects) {
+				if (alreadyCheckedLitems.find(li) != alreadyCheckedLitems.end()) continue;
+				alreadyCheckedLitems.insert(li);
+				li->IsInViewFrustum = ViewFrustum.Intersects(li->bounds);
+				if (li->IsInViewFrustum) {
+					mAllVisibleLitems.push_back(li);
+				}
+			}
+		}
+	}
+}
+
+
+void RenderingSystem::UpdateLightItems(std::vector<LightObject*>& mAllLightObjectsToUpdate)
+{
+
+	XMVECTOR RotationAxis;
+	float RotAngle;
 	float SphereRadius;
 	XMFLOAT3 ConeScale;
 
- 	for (auto& e : mAllLights)
-	{
+	for (auto& e : mAllLightObjectsToUpdate) {
 
-		if (e->NeedsUpdate)
+		switch (e->LightType)
 		{
-			e->NumFramesDirty = gNumFrameResources;
-			e->NeedsUpdate = false;
+		case LightType::Pointlight:
+			SphereRadius = 7.f * e->Strength;
+			XMStoreFloat4x4(&e->World, XMMatrixScaling(SphereRadius, SphereRadius, SphereRadius) *
+				XMMatrixTranslation(e->WorldLocation.x, e->WorldLocation.y, e->WorldLocation.z));
+			break;
+		case LightType::Spotlight:
+			ConeScale.y = e->FalloffEnd / 5;
+			ConeScale.x = 1.f / ConeScale.y;
+			ConeScale.x = ConeScale.z = ConeScale.x * e->SpotPower * 8;
+			//calculate rotation matrix from start and target direction vectors
+			XMVECTOR StartDir = XMVectorSet(0.0f, -1.0f, 0.0f, 0.0f);
+			XMVECTOR TargetDir = XMVector3Normalize(XMLoadFloat3(&e->WorldDirection));
+			RotationAxis = XMVector3Cross(StartDir, TargetDir);
+			RotAngle = acosf(XMVectorGetX(XMVector3Dot(StartDir, TargetDir)));
+
+			XMStoreFloat4x4(&e->World, XMMatrixScaling(ConeScale.x, ConeScale.y, ConeScale.z) *
+				XMMatrixRotationAxis(XMVector3Normalize(RotationAxis), RotAngle) *
+				XMMatrixTranslation(e->WorldLocation.x, e->WorldLocation.y, e->WorldLocation.z));
+
+			mDebugDrawer->DrawBoundingBox(e->bounds);
+			break;
 		}
+
+		if (e->LightType != LightType::Directional) {
+			e->Geo->DrawArgs["LOD0"].Bounds.Transform(e->bounds, XMLoadFloat4x4(&e->World));
+		}
+
+		e->NumFramesDirty = gNumFrameResources;
+
+		mOctTree->UpdateLightItemTreeLocation(e);
+	}
+
+	mAllVisibleLitems.clear();
+	alreadyCheckedLitems.clear();
+	CollectVisibleLightItems();
+
+	mAllLightObjectsToUpdate.clear();
+}
+
+void RenderingSystem::UpdateLightCBs(const GameTimer& gt)
+{
+	auto currObjectCB = mCurrFrameResource->LightCB.get();
+
+	for (auto& e : mAllLights)
+	{
 		if (e->NumFramesDirty > 0)
 		{
 			Light LightConstants;
@@ -728,28 +813,7 @@ void RenderingSystem::UpdateLightCBs(const GameTimer& gt)
 			LightConstants.SpotPower = e->SpotPower;
 			LightConstants.Strength = XMFLOAT3(e->Strength, e->Strength, e->Strength);
 
-			switch (e->LightType)
-			{
-			case LightType::Pointlight:
-				SphereRadius = 7.f * e->Strength;
-				XMStoreFloat4x4(&LightConstants.World, XMMatrixTranspose(XMMatrixScaling(SphereRadius, SphereRadius, SphereRadius) *
-					XMMatrixTranslation(e->WorldLocation.x, e->WorldLocation.y, e->WorldLocation.z)));
-				break;
-			case LightType::Spotlight:
-				ConeScale.y = e->FalloffEnd / 5;
-				ConeScale.x = 1.f / ConeScale.y;
-				ConeScale.x = ConeScale.z = ConeScale.x * e->SpotPower * 8;
-				//calculate rotation matrix from start and target direction vectors
-				XMVECTOR StartDir = XMVectorSet(0.0f, -1.0f, 0.0f, 0.0f);
-				XMVECTOR TargetDir = XMVector3Normalize(XMLoadFloat3(&e->WorldDirection));
-				XMVECTOR RotationAxis = XMVector3Cross(StartDir, TargetDir);
-				float RotAngle = acosf(XMVectorGetX(XMVector3Dot(StartDir, TargetDir)));
-
-				XMStoreFloat4x4(&LightConstants.World, XMMatrixTranspose(XMMatrixScaling(ConeScale.x, ConeScale.y, ConeScale.z) *
-					XMMatrixRotationAxis(XMVector3Normalize(RotationAxis), RotAngle) *
-					XMMatrixTranslation(e->WorldLocation.x, e->WorldLocation.y, e->WorldLocation.z)));
-				break;
-			}
+			XMStoreFloat4x4(&LightConstants.World, XMMatrixTranspose(XMLoadFloat4x4(&e->World)));
 
 			currObjectCB->CopyData(e->LightCBIndex, LightConstants);
 
@@ -1113,6 +1177,7 @@ void RenderingSystem::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const 
 	{
 		auto ri = ritems[i];
 		if (!ri->IsInViewFrustum) continue;
+
 		cmdList->IASetVertexBuffers(0, 1, &ri->Geo->VertexBufferView());
 		cmdList->IASetIndexBuffer(&ri->Geo->IndexBufferView());
 		cmdList->IASetPrimitiveTopology(ri->Mat->UseTesselation ? D3D_PRIMITIVE_TOPOLOGY_3_CONTROL_POINT_PATCHLIST : D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -1206,6 +1271,8 @@ void RenderingSystem::GBufferLightPass()
 		}
 		else
 		{
+			if (!li->IsInViewFrustum) continue;
+
 			mCommandList->SetPipelineState(GlobalPSOs["DeferredLightPass_Bounded"].Get());
 			mCommandList->IASetVertexBuffers(0, 1, &li->Geo->VertexBufferView());
 			mCommandList->IASetIndexBuffer(&li->Geo->IndexBufferView());
@@ -1215,6 +1282,8 @@ void RenderingSystem::GBufferLightPass()
 			UINT BaseVertexLocation = li->Geo->DrawArgs["LOD0"].BaseVertexLocation;
 
 			mCommandList->DrawIndexedInstanced(IndexCount, 1, StartIndexLocation, BaseVertexLocation, 0);
+
+			li->IsInViewFrustum = false;
 		}
 	}
 
@@ -1405,10 +1474,6 @@ void RenderingSystem::UpdateRenderItems(std::vector<DrawableObject*>& mAllObject
 	XMVECTOR cameraPos = mCamera.GetPosition();
 
 	mOctTree->Draw(mDebugDrawer);
-	
-	mAllVisibleRitems.clear();
-	alreadyCheckedRitems.clear();
-	CollectVisibleRenderItems();
 
 	
 	for (auto& ri : mAllVisibleRitems) {
@@ -1444,6 +1509,10 @@ void RenderingSystem::UpdateRenderItems(std::vector<DrawableObject*>& mAllObject
 
 		mOctTree->UpdateRenderItemTreeLocation(ri);
 	}
+
+	mAllVisibleRitems.clear();
+	alreadyCheckedRitems.clear();
+	CollectVisibleRenderItems();
 
 	mAllObjectsToUpdate.clear();
 }

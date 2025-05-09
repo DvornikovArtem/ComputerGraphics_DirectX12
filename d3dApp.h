@@ -90,4 +90,5 @@ protected:
 	std::unordered_map<std::string, DrawableObject*> mAllObjects;
 	std::vector<DrawableObject*> mAllObjectsToUpdate;
 	std::unordered_map<std::string, LightObject*> mAllLightObjects;
+	std::vector<LightObject*> mAllLightObjectsToUpdate;
 };

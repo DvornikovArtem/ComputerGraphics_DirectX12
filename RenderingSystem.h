@@ -138,29 +138,6 @@ struct MeshDesc
 };
 
 
-
-struct LightObject
-{
-    LightObject() {}
-
-    ~LightObject() = default;
-
-    float Strength = 0.5f;
-    float FalloffStart = 1.0f;                          // point/spot light only
-    XMFLOAT3 WorldDirection = { 0.0f, -1.0f, 0.0f };// directional/spot light only
-    float FalloffEnd = 10.0f;                           // point/spot light only
-    XMFLOAT3 WorldLocation = { 0.0f, 0.0f, 0.0f };  // point/spot light only
-    float SpotPower = 64.0f;                            // spot light only
-    XMFLOAT3 Color = { 1.f, 1.f, 1.f };
-    LightType LightType = LightType::Pointlight;
-    std::string Name = "";
-    int LightCBIndex = 0; // auto generated value
-    bool NeedsUpdate = true;
-    int NumFramesDirty = gNumFrameResources; // auto generated value
-    MeshGeometry* Geo = nullptr; // auto generated value
-    XMFLOAT4X4 World = MathHelper::Identity4x4();
-};
-
 class RenderingSystem : public IRenderTargetProvider {
 //class RenderingSystem {
 public:
@@ -219,8 +196,10 @@ public:
     void LoadTextures(std::vector<TextureDesc>& TexDescs);
 
     void CollectVisibleRenderItems();
+    void CollectVisibleLightItems();
 
     void UpdateRenderItems(std::vector<DrawableObject*>& mAllObjectsToUpdate);
+    void UpdateLightItems(std::vector<LightObject*>& mAllLightObjectsToUpdate);
 
     void BuildMeshGeometry(std::string Name, const std::string& filename);
     void LoadMeshes(std::vector<MeshDesc>& MeshDescs);
@@ -247,7 +226,7 @@ public:
 
     void Render();
 
-    void Update(std::vector<DrawableObject*>& mAllObjectsToUpdate);
+    void Update(std::vector<DrawableObject*>& mAllObjectsToUpdate, std::vector<LightObject*>& mAllLightObjectsToUpdate);
 
     std::array<const CD3DX12_STATIC_SAMPLER_DESC, 6> GetStaticSamplers();
 
@@ -330,6 +309,7 @@ protected:
     std::vector<RenderItem*> mAllVisibleRitems;
     std::vector<RenderItem*> mRitemsToUpdate;
     std::vector<LightObject*> mAllLights;
+    std::vector<LightObject*> mAllVisibleLitems;
     std::vector<RenderItem*> mRitemLayer[(int)RenderLayer::Count];
 
     PassConstants mMainPassCB;

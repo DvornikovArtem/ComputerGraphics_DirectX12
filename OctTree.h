@@ -20,6 +20,7 @@ struct OctTreeNode {
     BoundingBox bounds;
     std::array<OctTreeNode*, 8> children;
     std::vector<RenderItem*> OverlappedItems;
+    std::vector<LightObject*> OverlappedLightObjects;
     bool isLeaf = false;
     int level = 0;
 };
@@ -28,10 +29,11 @@ struct OctTreeNode {
 struct OctTreeDesc {
     // May Be It Is A Need To Make A Reference Here Instead Of Copying (ritems)
     std::vector<RenderItem*>* ritems = nullptr;
+    std::vector<LightObject*>* lightItems = nullptr;
     size_t numDivisions = 3;
     bool autoFitBox = true;
     XMFLOAT3 center = { 0.0f, 0.0f, 0.0f };
-    float cubeSize = 100.0f;
+    float cubeSize = 1000.0f;
 };
 
 
@@ -42,32 +44,6 @@ private:
     std::vector<std::vector<OctTreeNode*>> levels;
 
 public:
-    OctTree(const XMFLOAT3& center, float cubeSize, size_t numDivisions, const std::vector<RenderItem*>& ritems)
-    {
-        this->numDivisions = numDivisions;
-
-        XMFLOAT3 extents(cubeSize / 2.0f, cubeSize / 2.0f, cubeSize / 2.0f);
-        root = new OctTreeNode;
-        root->bounds = BoundingBox(center, extents);
-        root->level = 0;
-
-        levels.resize(numDivisions);
-
-        BuildTree(root, 0, numDivisions);
-
-        for (auto& ri : ritems) {
-            if (ri->renderLayer == RenderLayer::Sky) continue;
-            std::vector<OctTreeNode*> intersectingLeaves;
-            FindIntersectingLeaves(ri->bounds, intersectingLeaves);
-
-            for (auto& leaf : intersectingLeaves) {
-                leaf->isLeaf = true;
-                leaf->OverlappedItems.push_back(ri);
-            }
-        }
-    }
-
-    //OctTree(size_t numDivisions, const std::vector<RenderItem*>& ritems)
     OctTree(const OctTreeDesc& octTreeDesc)
     {
         this->numDivisions = octTreeDesc.numDivisions;
@@ -111,11 +87,22 @@ public:
             FindIntersectingLeaves(ri->bounds, intersectingLeaves);
 
             for (auto& leaf : intersectingLeaves) {
-                //leaf->isLeaf = true;
                 leaf->OverlappedItems.push_back(ri);
             }
 
             ri->occupiedLeaves = std::move(intersectingLeaves);
+        }
+
+        for (auto& li : (*octTreeDesc.lightItems)) {
+            if (li->LightType == LightType::Directional) continue;
+            std::vector<OctTreeNode*> intersectingLeaves;
+            FindIntersectingLeaves(li->bounds, intersectingLeaves);
+
+            for (auto& leaf : intersectingLeaves) {
+                leaf->OverlappedLightObjects.push_back(li);
+            }
+
+            li->occupiedLeaves = std::move(intersectingLeaves);
         }
     }
 
@@ -130,7 +117,7 @@ public:
 
     void Draw(gfw::DebugRenderSysImpl* debugDrawer)
     {
-        for (auto bbox : GetAllNodesAtLevel(this->numDivisions - 1)) if (bbox->OverlappedItems.size() > 0) debugDrawer->DrawBoundingBox(bbox->bounds);
+        for (auto bbox : GetAllNodesAtLevel(this->numDivisions - 1)) if (bbox->OverlappedLightObjects.size() > 0) debugDrawer->DrawBoundingBox(bbox->bounds);
         //for (auto bbox : GetAllNodesAtLevel(this->numDivisions - 1)) debugDrawer->DrawBoundingBox(bbox->bounds);
     }
 
@@ -146,6 +133,24 @@ public:
         for (auto& leaf : newLeaves) {
             leaf->OverlappedItems.push_back(ri);
         }
+
+        ri->occupiedLeaves = std::move(newLeaves);
+    }
+
+    void UpdateLightItemTreeLocation(LightObject* li)
+    {
+        for (auto& leaf : li->occupiedLeaves) {
+            auto& vec = leaf->OverlappedLightObjects;
+            vec.erase(std::remove(vec.begin(), vec.end(), li), vec.end());
+        }
+
+        std::vector<OctTreeNode*> newLeaves;
+        FindIntersectingLeaves(li->bounds, newLeaves);
+        for (auto& leaf : newLeaves) {
+            leaf->OverlappedLightObjects.push_back(li);
+        }
+
+        li->occupiedLeaves = std::move(newLeaves);
     }
 
 

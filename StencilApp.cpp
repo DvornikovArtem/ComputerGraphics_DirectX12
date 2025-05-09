@@ -101,7 +101,7 @@ void StencilApp::Update(const GameTimer& gt)
 
     float t = gt.TotalTime();
 
-    float radius = 3.0f;
+    float radius = 45.0f;
     float speed = 1.0f;
     float angle = speed * t;
 
@@ -112,12 +112,14 @@ void StencilApp::Update(const GameTimer& gt)
     mAllObjects["Head"]->WorldLocation.z = radius * sin(angle);
 
     mAllObjectsToUpdate.push_back(mAllObjects["Head"]);
-    //mAllObjects["Head"]->NeedsUpdate = true;
     
     mAllLightObjects["Spot1"]->Color = { 0.5f + 0.5f * cos(gt.TotalTime()) , 0.5f + 0.5f * cos(gt.TotalTime() + 1) , 0.5f + 0.5f * cos(gt.TotalTime() + 4) };
-    mAllLightObjects["Spot1"]->NeedsUpdate = true;
+    mAllLightObjects["Spot1"]->WorldLocation.x = radius * cos(angle);
+    mAllLightObjects["Spot1"]->WorldLocation.z = radius * sin(angle);
+    mAllLightObjectsToUpdate.push_back(mAllLightObjects["Spot1"]);
 
-	mRenderingSystem->Update(mAllObjectsToUpdate);
+
+	mRenderingSystem->Update(mAllObjectsToUpdate, mAllLightObjectsToUpdate);
 }
 
 void StencilApp::Draw(const GameTimer& gt)
@@ -298,6 +300,7 @@ void StencilApp::MakeDrawableObjects()
     SkyBoxSphere->Scale = XMFLOAT3(5000.0f, 5000.0f, 5000.0f);
 
     mAllObjects[SkyBoxSphere->Name] = SkyBoxSphere;
+    mAllObjectsToUpdate.push_back(SkyBoxSphere);
 
     DrawableObject* TesselationTestSphere = new DrawableObject();
     TesselationTestSphere->Name = "TesselationTestSphere";
@@ -310,6 +313,7 @@ void StencilApp::MakeDrawableObjects()
     TesselationTestSphere->TexTransform = XMMatrixScaling(5.0f, 5.0f, 1.0f);
 
     mAllObjects[TesselationTestSphere->Name] = TesselationTestSphere;
+    mAllObjectsToUpdate.push_back(TesselationTestSphere);
 
     DrawableObject* DecalTestCube = new DrawableObject();
     DecalTestCube->Name = "DecalTestCube";
@@ -322,6 +326,7 @@ void StencilApp::MakeDrawableObjects()
     DecalTestCube->TexTransform = XMMatrixScaling(5.0f, 5.0f, 1.0f);
 
     mAllObjects[DecalTestCube->Name] = DecalTestCube;
+    mAllObjectsToUpdate.push_back(DecalTestCube);
 
 
     DrawableObject* Floor = new DrawableObject();
@@ -335,6 +340,7 @@ void StencilApp::MakeDrawableObjects()
     Floor->TexTransform = XMMatrixScaling(50.0f, 50.0f, 1.0f);
 
     mAllObjects[Floor->Name] = Floor;
+    mAllObjectsToUpdate.push_back(Floor);
 
     DrawableObject* Head = new DrawableObject();
     Head->Name = "Head";
@@ -347,6 +353,7 @@ void StencilApp::MakeDrawableObjects()
     Head->TexTransform = XMMatrixScaling(1.f, 1.f, 1.f);
 
     mAllObjects[Head->Name] = Head;
+    mAllObjectsToUpdate.push_back(Head);
 
     for (int i = 0; i < 100; i++) {
         DrawableObject* Patrick = new DrawableObject();
@@ -361,6 +368,7 @@ void StencilApp::MakeDrawableObjects()
         Patrick->TexTransform = XMMatrixScaling(1.f, 1.f, 1.f);
 
         mAllObjects[Patrick->Name] = Patrick;
+        mAllObjectsToUpdate.push_back(Patrick);
     }
 
     mRenderingSystem->BuildRenderItems(mAllObjects);
@@ -375,6 +383,7 @@ void StencilApp::MakeLights()
     Direct1->Strength = 1.f;
 
     mAllLightObjects[Direct1->Name] = Direct1;
+    mAllLightObjectsToUpdate.push_back(Direct1);
 
     auto Point1 = new LightObject;
     Point1->Name = "Point1";
@@ -386,11 +395,12 @@ void StencilApp::MakeLights()
     Point1->FalloffEnd = 9.f;
 
     mAllLightObjects[Point1->Name] = Point1;
+    mAllLightObjectsToUpdate.push_back(Point1);
 
     auto Spot1 = new LightObject;
     Spot1->Name = "Spot1";
     Spot1->LightType = LightType::Spotlight;
-    Spot1->WorldLocation = { 4.f, 20.f, 5.f };
+    Spot1->WorldLocation = { 20.f, 20.f, 40.f };
     Spot1->Strength = 0.3f; //0.3 //probably defines the brightness
     Spot1->Color = { 0.f, 1.f, 0.f };
     Spot1->FalloffStart = 1.f;
@@ -399,6 +409,7 @@ void StencilApp::MakeLights()
     Spot1->WorldDirection = { 0.5f, -1.f, 0.f };
 
     mAllLightObjects[Spot1->Name] = Spot1;
+    mAllLightObjectsToUpdate.push_back(Spot1);
 
     mRenderingSystem->BuildLightItems(mAllLightObjects);
 }
