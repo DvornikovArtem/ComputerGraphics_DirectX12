@@ -218,9 +218,9 @@ public:
     void BuildBasicGeometry();
     void LoadTextures(std::vector<TextureDesc>& TexDescs);
 
-    void CollectVisibleRenderItems(OctTreeNode* node);
+    void CollectVisibleRenderItems();
 
-    void UpdateRenderItems(std::unordered_map<std::string, DrawableObject*>& mAllObjects);
+    void UpdateRenderItems(std::vector<DrawableObject*>& mAllObjectsToUpdate);
 
     void BuildMeshGeometry(std::string Name, const std::string& filename);
     void LoadMeshes(std::vector<MeshDesc>& MeshDescs);
@@ -247,7 +247,7 @@ public:
 
     void Render();
 
-    void Update(std::unordered_map<std::string, DrawableObject*>& mAllObjects);
+    void Update(std::vector<DrawableObject*>& mAllObjectsToUpdate);
 
     std::array<const CD3DX12_STATIC_SAMPLER_DESC, 6> GetStaticSamplers();
 
@@ -328,6 +328,7 @@ protected:
     std::vector<D3D12_INPUT_ELEMENT_DESC> mInputLayout;
     std::vector<RenderItem*> mAllRitems;
     std::vector<RenderItem*> mAllVisibleRitems;
+    std::vector<RenderItem*> mRitemsToUpdate;
     std::vector<LightObject*> mAllLights;
     std::vector<RenderItem*> mRitemLayer[(int)RenderLayer::Count];
 

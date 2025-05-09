@@ -21,6 +21,9 @@ enum class RenderLayer : int
     Count,
 };
 
+struct RenderItem;
+struct OctTreeNode;
+
 
 struct DrawableObject
 {
@@ -51,11 +54,13 @@ struct DrawableObject
     std::string MaterialName;
     RenderLayer renderLayer;
 
+    RenderItem* renderItem;
+
     XMFLOAT3 WorldLocation = XMFLOAT3(0.f, 0.f, 0.f);
     XMFLOAT3 WorldRotation = XMFLOAT3(0.f, 0.f, 0.f);
     XMFLOAT3 Scale = XMFLOAT3(1.f, 1.f, 1.f);
     XMMATRIX TexTransform = XMMatrixIdentity();
-    bool NeedsUpdate = true;
+    bool NeedsUpdate = false;
 };
 
 
@@ -67,6 +72,8 @@ struct RenderItem
     ~RenderItem() = default;
 
     BoundingBox bounds;
+
+    std::vector<OctTreeNode*> occupiedLeaves;
 
     RenderLayer renderLayer;
 

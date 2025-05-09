@@ -114,20 +114,40 @@ public:
                 //leaf->isLeaf = true;
                 leaf->OverlappedItems.push_back(ri);
             }
+
+            ri->occupiedLeaves = std::move(intersectingLeaves);
         }
     }
 
     ~OctTree() { DeleteTree(root); }
 
-OctTreeNode * getRoot() { return root; }
+    OctTreeNode* getRoot() { return root; }
 
-// Highest Level = 0, Lowest Level = (numDivisions - 1)
-std::vector<OctTreeNode*> GetAllNodesAtLevel(int level) { return levels[level]; }
+    size_t getNumDivisions() const { return numDivisions; }
 
-void Draw(gfw::DebugRenderSysImpl* debugDrawer)
-{
-    for (auto bbox : GetAllNodesAtLevel(this->numDivisions - 1)) if (bbox->OverlappedItems.size() > 0) debugDrawer->DrawBoundingBox(bbox->bounds);
-}
+    // Highest Level = 0, Lowest Level = (numDivisions - 1)
+    std::vector<OctTreeNode*> GetAllNodesAtLevel(int level) { return levels[level]; }
+
+    void Draw(gfw::DebugRenderSysImpl* debugDrawer)
+    {
+        for (auto bbox : GetAllNodesAtLevel(this->numDivisions - 1)) if (bbox->OverlappedItems.size() > 0) debugDrawer->DrawBoundingBox(bbox->bounds);
+        //for (auto bbox : GetAllNodesAtLevel(this->numDivisions - 1)) debugDrawer->DrawBoundingBox(bbox->bounds);
+    }
+
+    void UpdateRenderItemTreeLocation(RenderItem* ri)
+    {
+        for (auto& leaf : ri->occupiedLeaves) {
+            auto& vec = leaf->OverlappedItems;
+            vec.erase(std::remove(vec.begin(), vec.end(), ri), vec.end());
+        }
+
+        std::vector<OctTreeNode*> newLeaves;
+        FindIntersectingLeaves(ri->bounds, newLeaves);
+        for (auto& leaf : newLeaves) {
+            leaf->OverlappedItems.push_back(ri);
+        }
+    }
+
 
 private:
 

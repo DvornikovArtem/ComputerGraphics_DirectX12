@@ -378,6 +378,8 @@ void RenderingSystem::BuildRenderItems(std::unordered_map<std::string, DrawableO
 
 		mRitemLayer[(int)i->renderLayer].push_back(t);
 		mAllRitems.push_back(t);
+
+		i->renderItem = t;
 		
 		k++;
 	}
@@ -386,7 +388,9 @@ void RenderingSystem::BuildRenderItems(std::unordered_map<std::string, DrawableO
 	OctTreeDesc octTreeDesc;
 	octTreeDesc.ritems = &mAllRitems;
 	octTreeDesc.numDivisions = 4;
-	octTreeDesc.autoFitBox = true;
+	octTreeDesc.autoFitBox = false;
+	octTreeDesc.center = {0.f, 0.f, 0.f};
+	octTreeDesc.cubeSize = 1000.0f;
 
 	mOctTree = new OctTree(octTreeDesc);
 }
@@ -642,7 +646,7 @@ void RenderingSystem::BuildDescriptorHeap(Material* t)
 
 }
 
-void RenderingSystem::Update(std::unordered_map<std::string, DrawableObject*>& mAllObjects)
+void RenderingSystem::Update(std::vector<DrawableObject*>& mAllObjectsToUpdate)
 {
 	// Cycle through the circular frame resource array.
 	mCurrFrameResourceIndex = (mCurrFrameResourceIndex + 1) % gNumFrameResources;
@@ -659,7 +663,7 @@ void RenderingSystem::Update(std::unordered_map<std::string, DrawableObject*>& m
 	}
 
 	UpdateCamera(*gt);
-	UpdateRenderItems(mAllObjects);
+	UpdateRenderItems(mAllObjectsToUpdate);
 	UpdateObjectCBs(*gt);
 	UpdateMaterialCBs(*gt);
 	UpdateMainPassCB(*gt);
@@ -1375,13 +1379,12 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 
 std::unordered_set<RenderItem*> alreadyCheckedRitems;
 
-void RenderingSystem::CollectVisibleRenderItems(OctTreeNode* node)
+void RenderingSystem::CollectVisibleRenderItems()
 {
-	//if (!node) return;
 
-	std::vector<OctTreeNode*> leafes = mOctTree->GetAllNodesAtLevel(3);
+	std::vector<OctTreeNode*> leaves = mOctTree->GetAllNodesAtLevel(mOctTree->getNumDivisions() - 1);
 
-	for (auto& leaf : leafes) {
+	for (auto& leaf : leaves) {
 		if (ViewFrustum.Contains(leaf->bounds) != DirectX::ContainmentType::DISJOINT) {
 			for (RenderItem* ri : leaf->OverlappedItems) {
 				if (alreadyCheckedRitems.find(ri) != alreadyCheckedRitems.end()) continue;
@@ -1397,20 +1400,20 @@ void RenderingSystem::CollectVisibleRenderItems(OctTreeNode* node)
 }
 
 
-void RenderingSystem::UpdateRenderItems(std::unordered_map<std::string, DrawableObject*>& mAllObjects)
+void RenderingSystem::UpdateRenderItems(std::vector<DrawableObject*>& mAllObjectsToUpdate)
 {
 	XMVECTOR cameraPos = mCamera.GetPosition();
 
-	//mOctTree->Draw(mDebugDrawer);
+	mOctTree->Draw(mDebugDrawer);
 	
 	mAllVisibleRitems.clear();
 	alreadyCheckedRitems.clear();
-	CollectVisibleRenderItems(mOctTree->getRoot());
+	CollectVisibleRenderItems();
 
 	
-	for (int k = 0; k < mAllVisibleRitems.size(); k++) {
-		auto& ri = mAllVisibleRitems[k];
+	for (auto& ri : mAllVisibleRitems) {
 		auto& i = ri->drawableObject;
+
 
 		//mDebugDrawer->DrawBoundingBox(ri->bounds);
 
@@ -1427,18 +1430,22 @@ void RenderingSystem::UpdateRenderItems(std::unordered_map<std::string, Drawable
 		else if (DistanceToObject < 40.f) ri->currentLOD = std::min(ri->numLODs - 1, (UINT)3);
 		else ri->currentLOD = std::min(ri->numLODs - 1, (UINT)4);
 		// ==========================================================================================================================================================
+	}
 
-		if (i->NeedsUpdate)
-		{
-			XMStoreFloat4x4(&ri->World, XMMatrixScaling(i->Scale.x, i->Scale.y, i->Scale.z)
+	for (auto& i : mAllObjectsToUpdate) {
+		auto& ri = i->renderItem;
+
+		XMStoreFloat4x4(&ri->World, XMMatrixScaling(i->Scale.x, i->Scale.y, i->Scale.z)
 			* XMMatrixRotationRollPitchYaw(i->WorldRotation.z, i->WorldRotation.y, i->WorldRotation.x)
 			* XMMatrixTranslation(i->WorldLocation.x, i->WorldLocation.y, i->WorldLocation.z));
-			XMStoreFloat4x4(&ri->TexTransform, i->TexTransform);
-			ri->Geo->DrawArgs["LOD0"].Bounds.Transform(ri->bounds, XMLoadFloat4x4(&ri->World));
-			ri->NumFramesDirty = gNumFrameResources;
-			i->NeedsUpdate = false;
-		}
+		XMStoreFloat4x4(&ri->TexTransform, i->TexTransform);
+		ri->Geo->DrawArgs["LOD0"].Bounds.Transform(ri->bounds, XMLoadFloat4x4(&ri->World));
+		ri->NumFramesDirty = gNumFrameResources;
+
+		mOctTree->UpdateRenderItemTreeLocation(ri);
 	}
+
+	mAllObjectsToUpdate.clear();
 }
 
 void RenderingSystem::BuildInputLayout()

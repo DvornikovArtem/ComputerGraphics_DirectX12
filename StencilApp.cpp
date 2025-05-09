@@ -1,6 +1,8 @@
 #include "d3dApp.h"
 #include "MathHelper.h"
 
+#include <algorithm>
+
 using Microsoft::WRL::ComPtr;
 using namespace DirectX;
 using namespace DirectX::PackedVector;
@@ -97,14 +99,25 @@ void StencilApp::Update(const GameTimer& gt)
 {
     OnKeyboardInput(gt);
 
-    //Set NeedsUpdate for every object that changes its values at runtime
-    mAllObjects["Head"]->WorldRotation.y = gt.TotalTime();
-    mAllObjects["Head"]->NeedsUpdate = true;
+    float t = gt.TotalTime();
 
+    float radius = 3.0f;
+    float speed = 1.0f;
+    float angle = speed * t;
+
+    //Set NeedsUpdate for every object that changes its values at runtime
+    mAllObjects["Head"]->WorldRotation.y = angle;
+
+    mAllObjects["Head"]->WorldLocation.x = radius * cos(angle);
+    mAllObjects["Head"]->WorldLocation.z = radius * sin(angle);
+
+    mAllObjectsToUpdate.push_back(mAllObjects["Head"]);
+    //mAllObjects["Head"]->NeedsUpdate = true;
+    
     mAllLightObjects["Spot1"]->Color = { 0.5f + 0.5f * cos(gt.TotalTime()) , 0.5f + 0.5f * cos(gt.TotalTime() + 1) , 0.5f + 0.5f * cos(gt.TotalTime() + 4) };
     mAllLightObjects["Spot1"]->NeedsUpdate = true;
 
-	mRenderingSystem->Update(mAllObjects);
+	mRenderingSystem->Update(mAllObjectsToUpdate);
 }
 
 void StencilApp::Draw(const GameTimer& gt)
@@ -328,14 +341,14 @@ void StencilApp::MakeDrawableObjects()
     Head->GeometryName = "Head";
     Head->MaterialName = "mesh";
     Head->renderLayer = RenderLayer::Opaque;
-    Head->WorldLocation = XMFLOAT3(0.f, 2.f, 0.f);
+    Head->WorldLocation = XMFLOAT3(2.f, 2.f, 2.f);
     Head->WorldRotation = XMFLOAT3(0.f, 0.f, 0.f);
     Head->Scale = XMFLOAT3(1.0f, 1.0f, 1.0f);
     Head->TexTransform = XMMatrixScaling(1.f, 1.f, 1.f);
 
     mAllObjects[Head->Name] = Head;
 
-    for (int i = 0; i < 1; i++) {
+    for (int i = 0; i < 100; i++) {
         DrawableObject* Patrick = new DrawableObject();
         Patrick->Name = "Patrick" + std::to_string(i);
         Patrick->GeometryName = "PatrickStar";
