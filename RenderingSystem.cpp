@@ -663,7 +663,6 @@ void RenderingSystem::Update(std::unordered_map<std::string, DrawableObject*>& m
 	UpdateObjectCBs(*gt);
 	UpdateMaterialCBs(*gt);
 	UpdateMainPassCB(*gt);
-	UpdateReflectedPassCB(*gt);
 	UpdateLightCBs(*gt);
 
 }
@@ -807,8 +806,12 @@ std::vector<MeshParsingResult> RenderingSystem::BuildMeshGeometry(std::string Na
 					if (lastSlash != std::string::npos) { TextureName = TextureName.substr(lastSlash + 1); }
 					size_t dotPos = TextureName.find_last_of('.');
 					if (dotPos != std::string::npos) { TextureName = TextureName.substr(0, dotPos); }
-					res[0].DiffuseTextureName = TextureName;
+
 					ProcessEmbeddedTexture(embeddedTexture, TextureName);
+
+					res[0].DiffuseTextureName = TextureName;
+					res[0].GeneratedMaterial.DiffuseTexName = TextureName;
+					res[0].GeneratedMaterial.Name = Name + "_" + mesh->mName.C_Str();
 				}
 			}
 		}
@@ -916,13 +919,15 @@ std::vector<MeshParsingResult> RenderingSystem::BuildMeshGeometry(std::string Na
 	return res;
 }
 
-std::vector<MeshParsingResult> RenderingSystem::LoadMesh(MeshDesc& meshDesc)
+std::vector<MeshParsingResult> RenderingSystem::LoadMesh(MeshDesc& meshDesc, bool GenerateMaterial)
 {
 	ThrowIfFailed(mCommandList->Reset(mDirectCmdListAlloc.Get(), nullptr));
 
 	std::vector<MeshParsingResult> res;
 
 	res = BuildMeshGeometry(meshDesc.Name, meshDesc.Path);
+
+	for (auto& i : res) i.GenerateMaterial = GenerateMaterial;
 
 	ThrowIfFailed(mCommandList->Close());
 	ID3D12CommandList* cmdsLists[] = { mCommandList.Get() };
@@ -1470,15 +1475,35 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 
 void RenderingSystem::ProcessEmbeddedTexture(const aiTexture* texture, std::string TextureName)
 {
-	// Загружаем текстуру из памяти с помощью WIC или другой библиотеки
-	// Например, используя DirectXTex или stb_image
+	//can be done with either DirectXTex or stb_image(we're going for option #2)
 
-	// Пример с stb_image:
 	int width, height, channels;
-	unsigned char* imageData = stbi_load_from_memory(
-		reinterpret_cast<const stbi_uc*>(texture->pcData),
-		texture->mWidth,
-		&width, &height, &channels, 4);
+	unsigned char* imageData;
+
+	if (texture->mHeight == 0) 
+	{
+		// Compressed data
+		imageData = stbi_load_from_memory(
+			reinterpret_cast<const stbi_uc*>(texture->pcData),
+			texture->mWidth,
+			&width, &height, &channels, STBI_rgb_alpha);
+	}
+	else 
+	{
+		// Uncompressed data
+		width = texture->mWidth;
+		height = texture->mHeight;
+		channels = 4;
+		imageData = new unsigned char[width * height * 4];
+		memcpy(imageData, texture->pcData, width * height * 4);
+	}
+
+	// need to convert RGBA to BGRA for whatever reason
+	if (channels >= 3) {
+		for (int i = 0; i < width * height; i++) {
+			std::swap(imageData[i * 4], imageData[i * 4 + 2]);
+		}
+	}
 
 	if (imageData) 
 	{
@@ -1742,26 +1767,6 @@ void RenderingSystem::UpdateMainPassCB(const GameTimer& gt)
 	// Main pass stored in index 2
 	auto currPassCB = mCurrFrameResource->PassCB.get();
 	currPassCB->CopyData(0, mMainPassCB);
-}
-
-void RenderingSystem::UpdateReflectedPassCB(const GameTimer& gt)
-{
-	mReflectedPassCB = mMainPassCB;
-
-	XMVECTOR mirrorPlane = XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f); // xy plane
-	XMMATRIX R = XMMatrixReflect(mirrorPlane);
-
-	// Reflect the lighting.
-	//for (int i = 0; i < 3; ++i)
-	//{
-	//	XMVECTOR lightDir = XMLoadFloat3(&mMainPassCB.Lights[i].Direction);
-	//	XMVECTOR reflectedLightDir = XMVector3TransformNormal(lightDir, R);
-	//	XMStoreFloat3(&mReflectedPassCB.Lights[i].Direction, reflectedLightDir);
-	//}
-
-	// Reflected pass stored in index 1
-	auto currPassCB = mCurrFrameResource->PassCB.get();
-	currPassCB->CopyData(1, mReflectedPassCB);
 }
 
 void RenderingSystem::UpdateCamera(const GameTimer& gt)

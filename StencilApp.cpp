@@ -197,6 +197,30 @@ void StencilApp::LoadShaders()
     mRenderingSystem->BuildShaders(ShaderDescs);
 }
 
+void StencilApp::LoadMeshes()
+{
+    //Imports geometry and textures from 3D model file such as .fbx
+
+    //ImportType::LODed
+    //Will load textures from first submesh with name "Name_Diffuse(Normal, etc)" that you can use later
+    //Other submeshes are assumed to be LODs and their textures are ignored
+    //Returns std::vector of single parsing result with geometry and texture name
+    //Use for models with LOD submeshes or single mesh models
+
+    //ImportType::Complex
+    //Will load every submesh as individual geometry with name "Name_SubmeshName"
+    //All textures per submesh are imported with name "SubmeshName_Diffuse(Normal, etc)"
+    //No LODs support(yet)
+    //Returns std::vector of parsing results with geometry and texture names
+    //Use for models that consist of multiple submeshes
+
+    //If GenerateMaterials is set, the importer will generate a material decriptor that you can use later
+
+    MeshParsingResults["Head"] = mRenderingSystem->LoadMesh(MeshDesc("Head", "../Models/african_head.obj", MeshDesc::ImportType::LODed), false);
+    MeshParsingResults["PatrickStar"] = mRenderingSystem->LoadMesh(MeshDesc("PatrickStar", "../Models/patrickstarW5LODs.fbx", MeshDesc::ImportType::LODed), false);
+    MeshParsingResults["Svidetel"] = mRenderingSystem->LoadMesh(MeshDesc("Svidetel", "../Models/Svidetel.fbx", MeshDesc::ImportType::LODed), true);
+}
+
 void StencilApp::LoadTextures()
 {
     // has texture named INVALID (full black color) that is used whenever a texture is inaccessible
@@ -225,47 +249,28 @@ void StencilApp::LoadTextures()
 
 void StencilApp::MakeMaterials()
 {
+    //You can modify Mesh Parsing Result materials here, before they are fully initialized
     std::vector<MaterialDesc> MaterialDescs =
     {
         MaterialDesc("bricks", "standardVS", "standardPS",  "", "", "bricksTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.25f, false),
-        MaterialDesc("checkertile", "standardVS", "standardPS", "", "", "checkboardTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.07f, 0.07f, 0.07f), 0.3f, false),
-        MaterialDesc("icemirror", "standardVS", "standardPS", "", "", "iceTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 0.3f), XMFLOAT3(0.1f, 0.1f, 0.1f), 0.5f, false),
         MaterialDesc("Bricks_DecalTesting", "standardVS", "standardPS", "HSForDecals", "DSForDecals", "bricksTex", "ShinyStones_NormalMap", "ShinyStones_HeightMap", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, true),
-        MaterialDesc("shadowMat", "standardVS", "standardPS", "", "", "redTex", "", "", XMFLOAT4(0.0f, 0.0f, 0.0f, 0.5f), XMFLOAT3(0.001f, 0.001f, 0.001f), 0.0f, false),
         MaterialDesc("AH", "standardVS", "standardPS", "", "", "AH_Diffuse", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, false),
         MaterialDesc("woodCrate", "standardVS", "RotatingTilesPS", "", "", "woodCrateTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, false),
         MaterialDesc("PatrickMat", "standardVS", "standardPS", "", "", "PatrickTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, false),
         MaterialDesc("Semechki", "standardVS", "standardPS", "standardHS", "standardDS", "Semechki_Diffuse", "Semechki_NormalMap", "Semechki_HeightMap", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, true),
         MaterialDesc("ShinyStones", "standardVS", "standardPS", "standardHS", "standardDS", "ShinyStones_Diffuse", "ShinyStones_NormalMap", "ShinyStones_HeightMap", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, true),
         MaterialDesc("SkyBox", "SkyBoxVS", "SkyBoxPS",  "", "", "SkyCubeMap", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.1f, 0.1f, 0.1f), 1.f, false),
-        MaterialDesc("Svidetel", "standardVS", "standardPS", "", "", MeshParsingResults["Svidetel"][0].DiffuseTextureName, "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, false),
-    //MeshParsingResults["Svidetel"][0].DiffuseTextureName
     };
 
+    for (auto& i : MeshParsingResults)
+    {
+        for (auto& j : i.second)
+        {
+            if (j.GenerateMaterial) MaterialDescs.push_back(j.GeneratedMaterial);
+        }
+    }
 
     mRenderingSystem->BuildMaterials(MaterialDescs);
-}
-
-void StencilApp::LoadMeshes()
-{
-    //Imports geometry and textures from 3D model file such as .fbx
-
-    //ImportType::LODed
-    //Will load textures from first submesh with name "Name_Diffuse(Normal, etc)" that you can use later
-    //Other submeshes are assumed to be LODs and their textures are ignored
-    //Returns std::vector of single parsing result with geometry and texture name
-    //Use for models with LOD submeshes or single mesh models
-
-    //ImportType::Complex
-    //Will load every submesh as individual geometry with name "Name_SubmeshName"
-    //All textures per submesh are imported with name "SubmeshName_Diffuse(Normal, etc)"
-    //No LODs support(yet)
-    //Returns std::vector of parsing results with geometry and texture names
-    //Use for models that consist of multiple submeshes
-
-    MeshParsingResults["Head"] = mRenderingSystem->LoadMesh(MeshDesc("Head", "../Models/african_head.obj", MeshDesc::ImportType::LODed));
-    MeshParsingResults["PatrickStar"] = mRenderingSystem->LoadMesh(MeshDesc("PatrickStar", "../Models/patrickstarW5LODs.fbx", MeshDesc::ImportType::LODed));
-    MeshParsingResults["Svidetel"] = mRenderingSystem->LoadMesh(MeshDesc("Svidetel", "../Models/Svidetel.fbx", MeshDesc::ImportType::LODed));
 }
 
 void StencilApp::MakeDrawableObjects()
@@ -275,7 +280,7 @@ void StencilApp::MakeDrawableObjects()
     DrawableObject* Svidetel = new DrawableObject();
     Svidetel->Name = "Svidetel";
     Svidetel->GeometryName = MeshParsingResults["Svidetel"][0].GeometryName;
-    Svidetel->MaterialName = "Svidetel";
+    Svidetel->MaterialName = MeshParsingResults["Svidetel"][0].GeneratedMaterial.Name;
     Svidetel->renderLayer = RenderLayer::Opaque;
     Svidetel->WorldLocation = XMFLOAT3(1.5f, 0.f, 0.f);
     Svidetel->Scale = XMFLOAT3(2.f, 2.f, 2.f);

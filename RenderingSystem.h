@@ -111,10 +111,10 @@ struct MaterialDesc
     XMFLOAT4 DiffuseAlbedo = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
     XMFLOAT3 FresnelR0 = XMFLOAT3(0.05f, 0.05f, 0.05f);
     float Roughness = 0.f;
-    std::string PixelShaderName = "";
-    std::string VertexShaderName = "";
-    std::string HullShaderName = "";
-    std::string DomainShaderName = "";
+    std::string PixelShaderName = "standardPS";
+    std::string VertexShaderName = "standardVS";
+    std::string HullShaderName = "standardHS";
+    std::string DomainShaderName = "standardDS";
     bool UseTesselation = false;
 };
 
@@ -147,6 +147,8 @@ struct MeshParsingResult
 
     std::string GeometryName = "";
     std::string DiffuseTextureName = "";
+    MaterialDesc GeneratedMaterial;
+    bool GenerateMaterial;
 };
 
 struct LightObject
@@ -222,7 +224,6 @@ public:
     void UpdateLightCBs(const GameTimer& gt);
     void UpdateMaterialCBs(const GameTimer& gt);
     void UpdateMainPassCB(const GameTimer& gt);
-    void UpdateReflectedPassCB(const GameTimer& gt);
     void UpdateCamera(const GameTimer& gt);
     void BuildInputLayout();
     void BuildShaders(std::vector<ShaderDesc>& ShaderDescs);
@@ -235,7 +236,7 @@ public:
     void UpdateRenderItems(std::unordered_map<std::string, DrawableObject*>& mAllObjects);
 
     std::vector<MeshParsingResult> BuildMeshGeometry(std::string Name, const std::string& filename);
-    std::vector<MeshParsingResult> LoadMesh(MeshDesc& meshDesc);
+    std::vector<MeshParsingResult> LoadMesh(MeshDesc& meshDesc, bool GenerateMaterial);
     void BuildPSOs(MaterialDesc& MDesc, std::unordered_map<std::string, ComPtr<ID3D12PipelineState>>& mPSOs);
     void BuildGlobalPSOs();
     void BuildFrameResources();
@@ -344,7 +345,6 @@ protected:
     std::vector<RenderItem*> mRitemLayer[(int)RenderLayer::Count];
 
     PassConstants mMainPassCB;
-    PassConstants mReflectedPassCB;
 
     float mTheta = 1.24f * XM_PI;
     float mPhi = 0.42f * XM_PI;
