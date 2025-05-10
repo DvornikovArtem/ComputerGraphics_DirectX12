@@ -130,7 +130,7 @@ public:
         }
     }
 
-    void addNode(RenderItem* ri)
+    void addNodeForRitem(RenderItem* ri)
     {
         OctTreeNode* node = root;
 
@@ -173,6 +173,49 @@ public:
     }
 
 
+    void addNodeForLitem(LightObject* li)
+    {
+        OctTreeNode* node = root;
+
+        while (node->level < numDivisions - 1)
+        {
+            bool found = false;
+            const XMFLOAT3& center = node->bounds.Center;
+            const XMFLOAT3& extent = node->bounds.Extents;
+            XMFLOAT3 childExtents = { extent.x / 2.0f, extent.y / 2.0f, extent.z / 2.0f };
+
+            for (int i = 0; i < 8; ++i) {
+                XMFLOAT3 childCenter = center;
+                childCenter.x += (i & 1) ? childExtents.x : -childExtents.x;
+                childCenter.y += (i & 2) ? childExtents.y : -childExtents.y;
+                childCenter.z += (i & 4) ? childExtents.z : -childExtents.z;
+
+                BoundingBox childBox(childCenter, childExtents);
+
+                if (childBox.Intersects(li->bounds)) {
+                    if (!node->children[i]) {
+                        OctTreeNode* child = new OctTreeNode();
+                        child->parent = node;
+                        child->bounds = childBox;
+                        child->level = node->level + 1;
+                        child->isLeaf = (child->level == numDivisions - 1);
+                        node->children[i] = child;
+                        levels[child->level].push_back(child);
+                    }
+                    node = node->children[i];
+                    found = true;
+                    break;
+                }
+            }
+
+            if (!found) break;
+        }
+
+        node->OverlappedLitems.push_back(li);
+        li->occupiedLeaves.push_back(node);
+    }
+
+
 
     void UpdateRenderItemTreeLocation(RenderItem* ri)
     {
@@ -191,7 +234,7 @@ public:
         }
 
         if (newLeaves.empty()) {
-            addNode(ri);
+            addNodeForRitem(ri);
         }
 
         for (auto& leaf : ri->occupiedLeaves) {
@@ -203,6 +246,10 @@ public:
 
     void UpdateLightItemTreeLocation(LightObject* li)
     {
+
+        if (li->LightType != LightType::Directional) return;
+
+
         for (auto& leaf : li->occupiedLeaves) {
             auto& vec = leaf->OverlappedLitems;
             vec.erase(std::remove(vec.begin(), vec.end(), li), vec.end());
@@ -212,6 +259,14 @@ public:
         FindIntersectingLeaves(li->bounds, newLeaves);
         for (auto& leaf : newLeaves) {
             leaf->OverlappedLitems.push_back(li);
+        }
+
+        if (newLeaves.empty()) {
+            addNodeForLitem(li);
+        }
+
+        for (auto& leaf : li->occupiedLeaves) {
+            checkToDeleteNode(leaf);
         }
 
         li->occupiedLeaves = std::move(newLeaves);
