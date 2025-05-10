@@ -404,6 +404,28 @@ namespace gfw
 		DrawLine(corners[3], corners[7], Color(0.0f, 0.0f, 1.0f, 0.2f));
 	}
 
+	void DebugRenderSysImpl::DrawBoundingBox(const DirectX::BoundingBox& box, const DirectX::SimpleMath::Color& color)
+	{
+		Vector3 corners[8];
+
+		box.GetCorners(&corners[0]);
+
+		DrawLine(corners[0], corners[1], color);
+		DrawLine(corners[1], corners[2], color);
+		DrawLine(corners[2], corners[3], color);
+		DrawLine(corners[3], corners[0], color);
+
+		DrawLine(corners[4], corners[5], color);
+		DrawLine(corners[5], corners[6], color);
+		DrawLine(corners[6], corners[7], color);
+		DrawLine(corners[7], corners[4], color);
+
+		DrawLine(corners[0], corners[4], color);
+		DrawLine(corners[1], corners[5], color);
+		DrawLine(corners[2], corners[6], color);
+		DrawLine(corners[3], corners[7], color);
+	}
+
 
 	void DebugRenderSysImpl::DrawBoundingBox(const DirectX::BoundingBox& box, const DirectX::SimpleMath::Matrix& transform)
 	{

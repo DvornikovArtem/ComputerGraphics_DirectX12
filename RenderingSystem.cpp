@@ -439,11 +439,11 @@ void RenderingSystem::BuildLightItems(std::unordered_map<std::string, LightObjec
 	//generate OctTree
 	OctTreeDesc octTreeDesc;
 	octTreeDesc.ritems = &mAllRitems;
-	octTreeDesc.lightItems = &mAllLights;
+	octTreeDesc.litems = &mAllLights;
 	octTreeDesc.numDivisions = 4;
-	octTreeDesc.autoFitBox = false;
-	octTreeDesc.center = { 0.f, 0.f, 0.f };
-	octTreeDesc.cubeSize = 1000.0f;
+	octTreeDesc.autoFitBox = true;
+	//octTreeDesc.center = { 0.f, 0.f, 0.f };
+	//octTreeDesc.cubeSize = 1000.0f;
 
 	mOctTree = new OctTree(octTreeDesc);
 }
@@ -736,6 +736,12 @@ void RenderingSystem::UpdateLightItems(std::vector<LightObject*>& mAllLightObjec
 	float RotAngle;
 	float SphereRadius;
 	XMFLOAT3 ConeScale;
+
+	for (auto& e : mAllVisibleLitems) {
+		if (e->LightType != LightType::Directional) {
+			mDebugDrawer->DrawBoundingBox(e->bounds, Color(0.f, 1.f, 0.f, 1.f));
+		}
+	}
 
 	for (auto& e : mAllLightObjectsToUpdate) {
 
@@ -1642,6 +1648,8 @@ void RenderingSystem::ProcessEmbeddedTexture(const aiTexture* texture, std::stri
 	}
 }
 
+
+
 std::unordered_set<RenderItem*> alreadyCheckedRitems;
 
 void RenderingSystem::CollectVisibleRenderItems()
@@ -1649,9 +1657,10 @@ void RenderingSystem::CollectVisibleRenderItems()
 
 	std::vector<OctTreeNode*> leaves = mOctTree->GetAllNodesAtLevel(mOctTree->getNumDivisions() - 1);
 
+
 	for (auto& leaf : leaves) {
 		if (ViewFrustum.Contains(leaf->bounds) != DirectX::ContainmentType::DISJOINT) {
-			for (RenderItem* ri : leaf->OverlappedItems) {
+			for (RenderItem* ri : leaf->OverlappedRitems) {
 				if (alreadyCheckedRitems.find(ri) != alreadyCheckedRitems.end()) continue;
 				alreadyCheckedRitems.insert(ri);
 				ri->IsInViewFrustum = ViewFrustum.Intersects(ri->bounds);
@@ -1670,7 +1679,7 @@ void RenderingSystem::CollectVisibleLightItems()
 
 	for (auto& leaf : leaves) {
 		if (ViewFrustum.Contains(leaf->bounds) != DirectX::ContainmentType::DISJOINT) {
-			for (LightObject* li : leaf->OverlappedLightObjects) {
+			for (LightObject* li : leaf->OverlappedLitems) {
 				if (alreadyCheckedLitems.find(li) != alreadyCheckedLitems.end()) continue;
 				alreadyCheckedLitems.insert(li);
 				li->IsInViewFrustum = ViewFrustum.Intersects(li->bounds);
@@ -1687,10 +1696,13 @@ void RenderingSystem::UpdateRenderItems(std::vector<DrawableObject*>& mAllObject
 {
 	XMVECTOR cameraPos = mCamera.GetPosition();
 
-	//mOctTree->Draw(mDebugDrawer);
+	mOctTree->Draw(mDebugDrawer);
 
 	for (auto& ri : mAllVisibleRitems) {
 		auto& i = ri->drawableObject;
+
+		if (ri->renderLayer != RenderLayer::Sky)
+			mDebugDrawer->DrawBoundingBox(ri->bounds, Color(1.f, 0.f, 0.f, 1.f));
 
 		float dx = i->WorldLocation.x - XMVectorGetX(cameraPos);
 		float dy = i->WorldLocation.y - XMVectorGetY(cameraPos);

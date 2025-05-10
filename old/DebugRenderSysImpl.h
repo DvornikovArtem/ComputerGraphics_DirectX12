@@ -169,6 +169,7 @@ namespace gfw
 
 	public:
 		virtual void DrawBoundingBox(const DirectX::BoundingBox& box);
+		virtual void DrawBoundingBox(const DirectX::BoundingBox& box, const DirectX::SimpleMath::Color& color);
 		virtual void DrawBoundingBox(const DirectX::BoundingBox& box, const DirectX::SimpleMath::Matrix& transform);
 		virtual void DrawLine(const DirectX::SimpleMath::Vector3& pos0, const DirectX::SimpleMath::Vector3& pos1, const DirectX::SimpleMath::Color& color);
 		virtual void DrawArrow(const DirectX::SimpleMath::Vector3& p0, const DirectX::SimpleMath::Vector3& p1, const DirectX::SimpleMath::Color& color, const DirectX::SimpleMath::Vector3& n);
