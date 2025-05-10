@@ -85,30 +85,6 @@ public:
         levels.resize(numDivisions);
 
         BuildTree(root, 0, numDivisions);
-
-        /*for (auto& ri : (*octTreeDesc.ritems)) {
-            if (ri->renderLayer == RenderLayer::Sky) continue;
-            std::vector<OctTreeNode*> intersectingLeaves;
-            FindIntersectingLeaves(ri->bounds, intersectingLeaves);
-
-            for (auto& leaf : intersectingLeaves) {
-                leaf->OverlappedRitems.push_back(ri);
-            }
-
-            ri->occupiedLeaves = std::move(intersectingLeaves);
-        }
-
-        for (auto& li : (*octTreeDesc.litems)) {
-            if (li->LightType == LightType::Directional) continue;
-            std::vector<OctTreeNode*> intersectingLeaves;
-            FindIntersectingLeaves(li->bounds, intersectingLeaves);
-
-            for (auto& leaf : intersectingLeaves) {
-                leaf->OverlappedLitems.push_back(li);
-            }
-
-            li->occupiedLeaves = std::move(intersectingLeaves);
-        }*/
     }
 
     ~OctTree() { DeleteTree(root); }
@@ -127,7 +103,7 @@ public:
         //for (auto bbox : GetAllNodesAtLevel(0)) debugDrawer->DrawBoundingBox(bbox->bounds, Color(0.f, 0.f, 1.f, 1.f));
     }
 
-    void TryPruneEmptyNode(OctTreeNode* node)
+    void checkToDeleteNode(OctTreeNode* node)
     {
         if (!node->OverlappedRitems.empty() || !node->OverlappedLitems.empty()) return;
 
@@ -150,19 +126,63 @@ public:
                 }
             }
 
-            TryPruneEmptyNode(parent);
+            checkToDeleteNode(parent);
         }
     }
+
+    void addNode(RenderItem* ri)
+    {
+        OctTreeNode* node = root;
+
+        while (node->level < numDivisions - 1)
+        {
+            bool found = false;
+            const XMFLOAT3& center = node->bounds.Center;
+            const XMFLOAT3& extent = node->bounds.Extents;
+            XMFLOAT3 childExtents = { extent.x / 2.0f, extent.y / 2.0f, extent.z / 2.0f };
+
+            for (int i = 0; i < 8; ++i) {
+                XMFLOAT3 childCenter = center;
+                childCenter.x += (i & 1) ? childExtents.x : -childExtents.x;
+                childCenter.y += (i & 2) ? childExtents.y : -childExtents.y;
+                childCenter.z += (i & 4) ? childExtents.z : -childExtents.z;
+
+                BoundingBox childBox(childCenter, childExtents);
+
+                if (childBox.Intersects(ri->bounds)) {
+                    if (!node->children[i]) {
+                        OctTreeNode* child = new OctTreeNode();
+                        child->parent = node;
+                        child->bounds = childBox;
+                        child->level = node->level + 1;
+                        child->isLeaf = (child->level == numDivisions - 1);
+                        node->children[i] = child;
+                        levels[child->level].push_back(child);
+                    }
+                    node = node->children[i];
+                    found = true;
+                    break;
+                }
+            }
+
+            if (!found) break;
+        }
+
+        node->OverlappedRitems.push_back(ri);
+        ri->occupiedLeaves.push_back(node);
+    }
+
 
 
     void UpdateRenderItemTreeLocation(RenderItem* ri)
     {
         if (ri->renderLayer == RenderLayer::Sky) return;
 
-        /*for (auto& leaf : ri->occupiedLeaves) {
+
+        for (auto& leaf : ri->occupiedLeaves) {
             auto& vec = leaf->OverlappedRitems;
             vec.erase(std::remove(vec.begin(), vec.end(), ri), vec.end());
-        }*/
+        }
 
         std::vector<OctTreeNode*> newLeaves;
         FindIntersectingLeaves(ri->bounds, newLeaves);
@@ -170,13 +190,12 @@ public:
             leaf->OverlappedRitems.push_back(ri);
         }
 
+        if (newLeaves.empty()) {
+            addNode(ri);
+        }
 
         for (auto& leaf : ri->occupiedLeaves) {
-            auto& vec = leaf->OverlappedRitems;
-            vec.erase(std::remove(vec.begin(), vec.end(), ri), vec.end());
-            if (std::find(newLeaves.begin(), newLeaves.end(), leaf) == newLeaves.end()) {
-                TryPruneEmptyNode(leaf);
-            }
+            checkToDeleteNode(leaf);
         }
 
         ri->occupiedLeaves = std::move(newLeaves);
