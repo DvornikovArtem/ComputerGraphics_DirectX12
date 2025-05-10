@@ -737,12 +737,6 @@ void RenderingSystem::UpdateLightItems(std::vector<LightObject*>& mAllLightObjec
 	float SphereRadius;
 	XMFLOAT3 ConeScale;
 
-	for (auto& e : mAllVisibleLitems) {
-		if (e->LightType != LightType::Directional) {
-			mDebugDrawer->DrawBoundingBox(e->bounds, Color(0.f, 1.f, 0.f, 1.f));
-		}
-	}
-
 	for (auto& e : mAllLightObjectsToUpdate) {
 
 		switch (e->LightType)
@@ -1696,13 +1690,9 @@ void RenderingSystem::UpdateRenderItems(std::vector<DrawableObject*>& mAllObject
 {
 	XMVECTOR cameraPos = mCamera.GetPosition();
 
-	mOctTree->Draw(mDebugDrawer);
 
 	for (auto& ri : mAllVisibleRitems) {
 		auto& i = ri->drawableObject;
-
-		if (ri->renderLayer != RenderLayer::Sky)
-			mDebugDrawer->DrawBoundingBox(ri->bounds, Color(1.f, 0.f, 0.f, 1.f));
 
 		float dx = i->WorldLocation.x - XMVectorGetX(cameraPos);
 		float dy = i->WorldLocation.y - XMVectorGetY(cameraPos);

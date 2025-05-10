@@ -64,7 +64,7 @@ struct DrawableObject
 
 
 // Lightweight structure stores parameters to draw a shape.
-struct RenderItem
+struct RenderItem 
 {
     RenderItem() = default;
 

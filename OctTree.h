@@ -103,7 +103,7 @@ public:
         //for (auto bbox : GetAllNodesAtLevel(0)) debugDrawer->DrawBoundingBox(bbox->bounds, Color(0.f, 0.f, 1.f, 1.f));
     }
 
-    void checkToDeleteNode(OctTreeNode* node)
+    void CullTreeFromNode(OctTreeNode* node)
     {
         if (!node->OverlappedRitems.empty() || !node->OverlappedLitems.empty()) return;
 
@@ -126,10 +126,11 @@ public:
                 }
             }
 
-            checkToDeleteNode(parent);
+            CullTreeFromNode(parent);
         }
     }
 
+    //RecreateTreeFromItem
     void addNodeForRitem(RenderItem* ri)
     {
         OctTreeNode* node = root;
@@ -215,8 +216,6 @@ public:
         li->occupiedLeaves.push_back(node);
     }
 
-
-
     void UpdateRenderItemTreeLocation(RenderItem* ri)
     {
         if (ri->renderLayer == RenderLayer::Sky) return;
@@ -238,7 +237,7 @@ public:
         }
 
         for (auto& leaf : ri->occupiedLeaves) {
-            checkToDeleteNode(leaf);
+            CullTreeFromNode(leaf);
         }
 
         ri->occupiedLeaves = std::move(newLeaves);
@@ -266,7 +265,7 @@ public:
         }
 
         for (auto& leaf : li->occupiedLeaves) {
-            checkToDeleteNode(leaf);
+            CullTreeFromNode(leaf);
         }
 
         li->occupiedLeaves = std::move(newLeaves);
@@ -295,7 +294,7 @@ private:
             node->children[i]->isLeaf = currentLevel + 2 == maxLevel;
             node->children[i]->level = currentLevel + 1;
 
-            if (!doesNodeIntersectRitemsOrLitems(node->children[i])) {
+            if (!HasIntersections(node->children[i])) {
                 delete node->children[i];
                 node->children[i] = nullptr;
                 continue;
@@ -311,7 +310,7 @@ private:
         }
     }
 
-    bool doesNodeIntersectRitemsOrLitems(OctTreeNode* node) {
+    bool HasIntersections(OctTreeNode* node) {
         bool intersectAnyItem = false;
 
         for (auto& ri : *ritems) {

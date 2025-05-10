@@ -358,6 +358,17 @@ void StencilApp::MakeDrawableObjects()
 
     mAllObjects[Patrick->Name] = Patrick;
 
+    //for (int i = 0; i < 10000; i++) {
+    //    DrawableObject* Patrick = new DrawableObject();
+    //    Patrick->Name = "Patrick" + std::to_string(i);
+    //    Patrick->GeometryName = MeshParsingResults["PatrickStar"][0].GeometryName;
+    //    Patrick->MaterialName = "PatrickMat";
+    //    Patrick->renderLayer = RenderLayer::Opaque;
+    //    Patrick->WorldLocation = XMFLOAT3((2 * i) % 100, 2.0f, (int)(i / 50));
+
+    //    mAllObjects[Patrick->Name] = Patrick;
+    //}
+
     mRenderingSystem->BuildRenderItems(mAllObjects);
 }
 
