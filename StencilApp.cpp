@@ -107,7 +107,8 @@ void StencilApp::Update(const GameTimer& gt)
 
     //Set NeedsUpdate for every object that changes its values at runtime
 
-    mAllObjects["Head"]->WorldRotation.y = gt.TotalTime();
+    //mAllObjects["Head"]->WorldRotation.y = gt.TotalTime();
+    mAllObjects["Head"]->WorldLocation.x += 0.005;
     DrawableObjectUpdateList.push_back(mAllObjects["Head"]);
 
     mAllLightObjects["Spot1"]->Color = { 0.5f + 0.5f * cos(gt.TotalTime()) , 0.5f + 0.5f * cos(gt.TotalTime() + 1) , 0.5f + 0.5f * cos(gt.TotalTime() + 4) };
@@ -344,7 +345,7 @@ void StencilApp::MakeDrawableObjects()
     Head->GeometryName = "Head";
     Head->MaterialName = "AH";
     Head->renderLayer = RenderLayer::Opaque;
-    Head->WorldLocation = XMFLOAT3(0.f, 2.f, 0.f);
+    Head->WorldLocation = XMFLOAT3(2.f, 50.f, 2.f);
 
     mAllObjects[Head->Name] = Head;
 
