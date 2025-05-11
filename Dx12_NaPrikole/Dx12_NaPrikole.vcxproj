@@ -212,11 +212,13 @@
     <Image Include="..\Textures\WoodCrate02.dds" />
   </ItemGroup>
   <ItemGroup>
+    <FxCompile Include="..\Shaders\Common.hlsl" />
     <FxCompile Include="..\Shaders\Debug.hlsl" />
     <FxCompile Include="..\Shaders\Default.hlsl" />
     <FxCompile Include="..\Shaders\DeferredLightPass.hlsl" />
     <FxCompile Include="..\Shaders\DeferredGeometryPass.hlsl" />
     <FxCompile Include="..\Shaders\LightingUtil.hlsl" />
+    <FxCompile Include="..\Shaders\Shadows.hlsl" />
     <FxCompile Include="..\Shaders\SkyBox.hlsl" />
   </ItemGroup>
   <ItemGroup>
@@ -244,6 +246,7 @@
     <ClInclude Include="..\old\DebugRenderSysImpl.h" />
     <ClInclude Include="..\RenderingSystem.h" />
     <ClInclude Include="..\RenderItem.h" />
+    <ClInclude Include="..\ShadowMap.h" />
     <ClInclude Include="..\stb_image.h" />
     <ClInclude Include="..\UploadBuffer.h" />
   </ItemGroup>
@@ -265,6 +268,7 @@
     <ClCompile Include="..\MISC\simplemath\SimpleMath.cpp" />
     <ClCompile Include="..\old\DebugRenderSysImpl.cpp" />
     <ClCompile Include="..\RenderingSystem.cpp" />
+    <ClCompile Include="..\ShadowMap.cpp" />
     <ClCompile Include="..\StencilApp.cpp" />
   </ItemGroup>
   <ItemGroup>

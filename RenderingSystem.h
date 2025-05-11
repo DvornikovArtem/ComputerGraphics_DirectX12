@@ -190,6 +190,7 @@ public:
 
 
     void Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer* gt);
+    void FinishInitialize();
     void OnResize();
 
     void LogAdapters();
@@ -232,6 +233,11 @@ public:
 
     void GBufferGeometryPass();
     void GBufferLightPass();
+
+    CD3DX12_CPU_DESCRIPTOR_HANDLE GetCpuSrv(int index)const;
+    CD3DX12_GPU_DESCRIPTOR_HANDLE RenderingSystem::GetGpuSrv(int index)const;
+    CD3DX12_CPU_DESCRIPTOR_HANDLE RenderingSystem::GetDsv(int index)const;
+    CD3DX12_CPU_DESCRIPTOR_HANDLE RenderingSystem::GetRtv(int index)const;
 
     // For Debug System ===============================================================================
     D3D12_CPU_DESCRIPTOR_HANDLE GetCurrentRTV() const override { return CurrentBackBufferView(); }
@@ -353,6 +359,8 @@ protected:
 
     //holds generated textures to be added in main texture pipeline later
     std::vector<Texture*> MPRTextures;
+
+    UINT TexDescsLength;
 };
 
 

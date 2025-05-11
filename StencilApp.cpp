@@ -75,17 +75,17 @@ bool StencilApp::Initialize()
 
     LoadShaders();
     LoadMeshes();
+    MakeLights();
     LoadTextures();
     MakeMaterials();
     MakeDrawableObjects();
-    MakeLights();
 
     mRenderingSystem->mCamera.SetPosition(-1.0f, 3.0f, 5.0f);
     mRenderingSystem->mCamera.RotateY(DirectX::XM_PI - 0.2f);
     mRenderingSystem->mCamera.Pitch(DirectX::XM_PI / 12.f);
 
     //Called after all assets, render items and lights are initialized
-    mRenderingSystem->BuildFrameResources();
+    mRenderingSystem->FinishInitialize();
 
     //init update of all objects
     for (auto& i : mAllObjects) { DrawableObjectUpdateList.push_back(i.second); }

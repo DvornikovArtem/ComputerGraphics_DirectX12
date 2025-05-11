@@ -67,7 +67,7 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 
 	CreateCommandObjects();
 	CreateSwapChain();
-	CreateRtvAndDsvDescriptorHeaps();
+	//CreateRtvAndDsvDescriptorHeaps();
 
 	mGbuffer = std::make_unique<Gbuffer>(mClientWidth, mClientHeight, md3dDevice);
 
@@ -99,6 +99,17 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 	FlushCommandQueue();
 }
 
+void RenderingSystem::FinishInitialize()
+{
+	CreateRtvAndDsvDescriptorHeaps();
+	int k = 0;
+	for (auto& litem : mAllLights) {
+		litem->shadowMap->BuildDescriptors(GetCpuSrv(TexDescsLength + MPRTextures.size() + 1 + k), GetGpuSrv(TexDescsLength + MPRTextures.size() + 1 + k), GetDsv(1 + k));
+		k++;
+	}
+	BuildFrameResources();
+}
+
 void RenderingSystem::OnResize() {
 	assert(md3dDevice);
 	assert(mSwapChain);
@@ -123,12 +134,14 @@ void RenderingSystem::OnResize() {
 
 	mCurrBackBuffer = 0;
 
-	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHeapHandle(mRtvHeap->GetCPUDescriptorHandleForHeapStart());
-	for (UINT i = 0; i < SwapChainBufferCount; i++)
-	{
-		ThrowIfFailed(mSwapChain->GetBuffer(i, IID_PPV_ARGS(&mSwapChainBuffer[i])));
-		md3dDevice->CreateRenderTargetView(mSwapChainBuffer[i].Get(), nullptr, rtvHeapHandle);
-		rtvHeapHandle.Offset(1, mRtvDescriptorSize);
+	if (mRtvHeap) {
+		CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHeapHandle(mRtvHeap->GetCPUDescriptorHandleForHeapStart());
+		for (UINT i = 0; i < SwapChainBufferCount; i++)
+		{
+			ThrowIfFailed(mSwapChain->GetBuffer(i, IID_PPV_ARGS(&mSwapChainBuffer[i])));
+			md3dDevice->CreateRenderTargetView(mSwapChainBuffer[i].Get(), nullptr, rtvHeapHandle);
+			rtvHeapHandle.Offset(1, mRtvDescriptorSize);
+		}
 	}
 
 	// Create the depth/stencil buffer and view.
@@ -165,12 +178,14 @@ void RenderingSystem::OnResize() {
 		IID_PPV_ARGS(mDepthStencilBuffer.GetAddressOf())));
 
 	// Create descriptor to mip level 0 of entire resource using the format of the resource.
-	D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc;
-	dsvDesc.Flags = D3D12_DSV_FLAG_NONE;
-	dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
-	dsvDesc.Format = mDepthStencilFormat;
-	dsvDesc.Texture2D.MipSlice = 0;
-	md3dDevice->CreateDepthStencilView(mDepthStencilBuffer.Get(), &dsvDesc, DepthStencilView());
+	if (mDsvHeap) {
+		D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc;
+		dsvDesc.Flags = D3D12_DSV_FLAG_NONE;
+		dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+		dsvDesc.Format = mDepthStencilFormat;
+		dsvDesc.Texture2D.MipSlice = 0;
+		md3dDevice->CreateDepthStencilView(mDepthStencilBuffer.Get(), &dsvDesc, DepthStencilView());
+	}
 
 	// Transition the resource from its initial state to be used as a depth buffer.
 	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mDepthStencilBuffer.Get(),
@@ -197,8 +212,10 @@ void RenderingSystem::OnResize() {
 	mCamera.SetLens(0.25f * MathHelper::Pi, AspectRatio(), 1.0f, 100000.0f);
 	
 
-	// FINISH ME
 	mGbuffer->Resize(mClientWidth, mClientHeight, md3dDevice.Get());
+
+	for (auto& litem : mAllLights)
+		litem->shadowMap->OnResize(mClientWidth, mClientHeight);
 }
 
 void RenderingSystem::Render()
@@ -401,6 +418,8 @@ void RenderingSystem::BuildLightItems(std::unordered_map<std::string, LightObjec
 
 		i->LightCBIndex = k;
 
+		i->shadowMap = new ShadowMap(md3dDevice.Get(), mClientWidth, mClientHeight);
+
 		//generated bounding geometry and world matrix for light
 		switch (i->LightType)
 		{
@@ -528,14 +547,66 @@ void RenderingSystem::CreateRtvAndDsvDescriptorHeaps()
 	ThrowIfFailed(md3dDevice->CreateDescriptorHeap(
 		&rtvHeapDesc, IID_PPV_ARGS(mRtvHeap.GetAddressOf())));
 
+	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHeapHandle(mRtvHeap->GetCPUDescriptorHandleForHeapStart());
+	for (UINT i = 0; i < SwapChainBufferCount; i++)
+	{
+		ThrowIfFailed(mSwapChain->GetBuffer(i, IID_PPV_ARGS(&mSwapChainBuffer[i])));
+		md3dDevice->CreateRenderTargetView(mSwapChainBuffer[i].Get(), nullptr, rtvHeapHandle);
+		rtvHeapHandle.Offset(1, mRtvDescriptorSize);
+	}
+
 
 	D3D12_DESCRIPTOR_HEAP_DESC dsvHeapDesc;
-	dsvHeapDesc.NumDescriptors = 1;
+	dsvHeapDesc.NumDescriptors = 1 + mAllLights.size();
 	dsvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
 	dsvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
 	dsvHeapDesc.NodeMask = 0;
 	ThrowIfFailed(md3dDevice->CreateDescriptorHeap(
 		&dsvHeapDesc, IID_PPV_ARGS(mDsvHeap.GetAddressOf())));
+
+
+	CD3DX12_CPU_DESCRIPTOR_HANDLE hDescriptor(DepthStencilView());
+
+	D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc;
+	dsvDesc.Flags = D3D12_DSV_FLAG_NONE;
+	dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+	dsvDesc.Format = mDepthStencilFormat;
+	dsvDesc.Texture2D.MipSlice = 0;
+	md3dDevice->CreateDepthStencilView(mDepthStencilBuffer.Get(), &dsvDesc, hDescriptor);
+	hDescriptor.Offset(1, mCbvSrvUavDescriptorSize);
+	
+	for (int i = 0; i < mAllLights.size(); i++) {
+		md3dDevice->CreateDepthStencilView(nullptr, &dsvDesc, hDescriptor);
+		hDescriptor.Offset(1, mCbvSrvUavDescriptorSize);
+	}
+}
+
+CD3DX12_CPU_DESCRIPTOR_HANDLE RenderingSystem::GetCpuSrv(int index)const
+{
+	auto srv = CD3DX12_CPU_DESCRIPTOR_HANDLE(mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
+	srv.Offset(index, mCbvSrvUavDescriptorSize);
+	return srv;
+}
+
+CD3DX12_GPU_DESCRIPTOR_HANDLE RenderingSystem::GetGpuSrv(int index)const
+{
+	auto srv = CD3DX12_GPU_DESCRIPTOR_HANDLE(mSrvDescriptorHeap->GetGPUDescriptorHandleForHeapStart());
+	srv.Offset(index, mCbvSrvUavDescriptorSize);
+	return srv;
+}
+
+CD3DX12_CPU_DESCRIPTOR_HANDLE RenderingSystem::GetDsv(int index)const
+{
+	auto dsv = CD3DX12_CPU_DESCRIPTOR_HANDLE(mDsvHeap->GetCPUDescriptorHandleForHeapStart());
+	dsv.Offset(index, mDsvDescriptorSize);
+	return dsv;
+}
+
+CD3DX12_CPU_DESCRIPTOR_HANDLE RenderingSystem::GetRtv(int index)const
+{
+	auto rtv = CD3DX12_CPU_DESCRIPTOR_HANDLE(mRtvHeap->GetCPUDescriptorHandleForHeapStart());
+	rtv.Offset(index, mRtvDescriptorSize);
+	return rtv;
 }
 
 void RenderingSystem::BuildRootSignatures()
@@ -1410,6 +1481,8 @@ void RenderingSystem::UpdateMaterialCBs(const GameTimer& gt)
 void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 {
 
+	TexDescsLength = TexDescs.size();
+
 	ThrowIfFailed(mCommandList->Reset(mDirectCmdListAlloc.Get(), nullptr));
 
 	DirectX::ResourceUploadBatch upload(md3dDevice.Get());
@@ -1460,7 +1533,7 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 	// Create the SRV heap.
 	//
 	D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
-	srvHeapDesc.NumDescriptors = TexDescs.size() + MPRTextures.size() + 1;
+	srvHeapDesc.NumDescriptors = TexDescs.size() + MPRTextures.size() + 1 + mAllLights.size();
 	srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 	srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
 	ThrowIfFailed(md3dDevice->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&mSrvDescriptorHeap)));
@@ -1481,6 +1554,7 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 	md3dDevice->CreateShaderResourceView(invalidTex->Resource.Get(), &srvDesc, hDescriptor);
 
 	hDescriptor.Offset(1, mCbvSrvDescriptorSize);
+
 
 	for (TextureDesc& i : TexDescs) {
 		auto it = mTextures.find(i.Name);
@@ -1545,6 +1619,11 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 		md3dDevice->CreateShaderResourceView(tex.Get(), &srvDesc, hDescriptor);
 
 		hDescriptor.Offset(1, mCbvSrvDescriptorSize);
+	}
+
+	for (int i = 0; i < mAllLights.size(); i++) {
+		md3dDevice->CreateShaderResourceView(nullptr, &srvDesc, hDescriptor);
+		hDescriptor.Offset(1, mCbvSrvUavDescriptorSize);
 	}
 
 	ThrowIfFailed(mCommandList->Close());

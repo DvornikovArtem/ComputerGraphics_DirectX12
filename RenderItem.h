@@ -4,7 +4,7 @@
 #define RENDERITEM_H
 
 #include "MathHelper.h"
-//#include "DirectXCollision.h"
+#include "ShadowMap.h"
 
 using namespace DirectX;
 
@@ -116,11 +116,15 @@ struct LightObject
 {
     LightObject() {}
 
-    ~LightObject() = default;
+    ~LightObject() {
+        delete shadowMap;
+    };
 
     BoundingBox bounds;
 
     std::vector<OctTreeNode*> occupiedLeaves;
+
+    ShadowMap* shadowMap;
 
     float Strength = 0.5f;
     float FalloffStart = 1.0f;                          // point/spot light only
