@@ -44,11 +44,11 @@ public:
 
 	void OnResize(UINT newWidth, UINT newHeight);
 
+	int SRVHeapIndex = 0;
+
 private:
 	void BuildDescriptors();
 	void BuildResource();
-
-private:
 
 	ID3D12Device* md3dDevice = nullptr;
 
@@ -68,6 +68,7 @@ private:
 	ComPtr<ID3D12DescriptorHeap> mCpuDsv;
 
 	Microsoft::WRL::ComPtr<ID3D12Resource> mShadowMapResource = nullptr;
+
 };
 
 #endif // SHADOWMAP_H

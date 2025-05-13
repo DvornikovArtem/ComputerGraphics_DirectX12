@@ -92,8 +92,6 @@ bool D3DApp::Initialize()
 {
 	if(!InitMainWindow())
 		return false;
-
-	
 	
 	mRenderingSystem->Initialize(mhMainWnd, mhAppInst, &mTimer);
 

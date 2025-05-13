@@ -67,7 +67,6 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 
 	CreateCommandObjects();
 	CreateSwapChain();
-	//CreateRtvAndDsvDescriptorHeaps();
 
 	mGbuffer = std::make_unique<Gbuffer>(mClientWidth, mClientHeight, md3dDevice);
 
@@ -105,6 +104,7 @@ void RenderingSystem::FinishInitialize()
 	int k = 0;
 	for (auto& litem : mAllLights) {
 		litem->shadowMap->BuildDescriptors(GetCpuSrv(TexDescsLength + MPRTextures.size() + 1 + k), GetGpuSrv(TexDescsLength + MPRTextures.size() + 1 + k), GetDsv(1 + k));
+		litem->shadowMap->SRVHeapIndex = TexDescsLength + MPRTextures.size() + 1 + k;
 		k++;
 	}
 	BuildFrameResources();
@@ -656,15 +656,16 @@ void RenderingSystem::BuildRootSignatures()
 	lightPassTexTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 5, 0);
 
 	// Root parameter can be a table, root descriptor or root constants.
-	CD3DX12_ROOT_PARAMETER lightPassSlotRootParameter[3];
+	CD3DX12_ROOT_PARAMETER lightPassSlotRootParameter[4];
 
 	// Perfomance TIP: Order from most frequent to least frequent.
 	lightPassSlotRootParameter[0].InitAsDescriptorTable(1, &lightPassTexTable, D3D12_SHADER_VISIBILITY_PIXEL);
 	lightPassSlotRootParameter[1].InitAsConstantBufferView(0); //for MainPassCB
 	lightPassSlotRootParameter[2].InitAsConstantBufferView(1); //for LightItems
+	lightPassSlotRootParameter[3].InitAsShaderResourceView(5);
 
 	// A root signature is an array of root parameters.
-	CD3DX12_ROOT_SIGNATURE_DESC lightPassRootSigDesc(3, lightPassSlotRootParameter,
+	CD3DX12_ROOT_SIGNATURE_DESC lightPassRootSigDesc(4, lightPassSlotRootParameter,
 		0, nullptr,
 		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
@@ -1506,6 +1507,9 @@ void RenderingSystem::GBufferLightPass()
 		D3D12_GPU_VIRTUAL_ADDRESS lightCBAddress = lightCB->GetGPUVirtualAddress() + li->LightCBIndex * lightCBByteSize;
 		mCommandList->SetGraphicsRootConstantBufferView(2, lightCBAddress);
 
+		//D3D12_GPU_VIRTUAL_ADDRESS ShadowMap = mSrvDescriptorHeap->GetGPUDescriptorHandleForHeapStart().ptr + li->shadowMap->SRVHeapIndex * mCbvSrvDescriptorSize;
+		//mCommandList->SetGraphicsRootShaderResourceView(3, ShadowMap);
+		
 		if (li->LightType == LightType::Directional)
 		{
 			mCommandList->SetPipelineState(GlobalPSOs["DeferredLightPass_FSQuad"].Get());
