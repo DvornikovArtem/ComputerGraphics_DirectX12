@@ -214,8 +214,7 @@ void RenderingSystem::OnResize() {
 
 	mGbuffer->Resize(mClientWidth, mClientHeight, md3dDevice.Get());
 
-	for (auto& litem : mAllLights)
-		litem->shadowMap->OnResize(mClientWidth, mClientHeight);
+
 }
 
 void RenderingSystem::Render()
@@ -421,7 +420,7 @@ void RenderingSystem::BuildLightItems(std::unordered_map<std::string, LightObjec
 
 		i->LightCBIndex = k;
 
-		i->shadowMap = new ShadowMap(md3dDevice.Get(), mClientWidth, mClientHeight);
+		i->shadowMap = new ShadowMap(md3dDevice.Get(), 2048, 2048);
 
 		//generated bounding geometry and world matrix for light
 		switch (i->LightType)
@@ -856,6 +855,25 @@ void RenderingSystem::UpdateLightCBs(const GameTimer& gt)
 {
 	auto currObjectCB = mCurrFrameResource->LightCB.get();
 
+	float SphereRadius = 10;
+	float lightAngle;
+
+	XMVECTOR lightDir;
+	XMVECTOR lightPos;
+	XMVECTOR targetPos;
+	XMVECTOR lightUp = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+	XMMATRIX lightView = XMMatrixIdentity();
+	XMMATRIX lightProj = XMMatrixIdentity();
+	XMFLOAT3 sphereCenterLS;
+	float l, b, n, r, t, f;
+	// Transform NDC space [-1,+1]^2 to texture space [0,1]^2
+	XMMATRIX T(
+		0.5f, 0.0f, 0.0f, 0.0f,
+		0.0f, -0.5f, 0.0f, 0.0f,
+		0.0f, 0.0f, 1.0f, 0.0f,
+		0.5f, 0.5f, 0.0f, 1.0f);
+	XMMATRIX S = XMMatrixIdentity();
+
 	for (auto& e : mAllLights)
 	{
 		if (e->NumFramesDirty > 0)
@@ -870,38 +888,80 @@ void RenderingSystem::UpdateLightCBs(const GameTimer& gt)
 			LightConstants.SpotPower = e->SpotPower;
 			LightConstants.Strength = XMFLOAT3(e->Strength, e->Strength, e->Strength);
 
+			switch (e->LightType)
+			{
+			case LightType::Directional:
+				lightDir = XMLoadFloat3(&e->WorldDirection);
+				lightPos = -2.0f * SphereRadius * lightDir;
+				targetPos = XMVectorZero();
+				lightView = XMMatrixLookAtLH(lightPos, targetPos, lightUp);
 
-			// Нормализуем направление
-			XMVECTOR lightDir = XMVector3Normalize(XMLoadFloat3(&e->WorldDirection));
-			XMVECTOR lightTarget = XMVectorZero();
-			XMVECTOR lightUp = { 0.0f, 1.0f, 0.0f };
+				// Transform bounding sphere to light space.
+				sphereCenterLS;
+				XMStoreFloat3(&sphereCenterLS, XMVector3TransformCoord(targetPos, lightView));
 
-			// Позиция источника - противоположное направление, умноженное на большое расстояние
-			XMVECTOR lightPos = lightTarget - (lightDir * 1000.0f);
+				// Ortho frustum in light space encloses scene.
+				l = sphereCenterLS.x - SphereRadius;
+				b = sphereCenterLS.y - SphereRadius;
+				n = sphereCenterLS.z - SphereRadius;
+				r = sphereCenterLS.x + SphereRadius;
+				t = sphereCenterLS.y + SphereRadius;
+				f = sphereCenterLS.z + SphereRadius;
 
-			// View матрица (вид от источника света)
-			auto lightView = XMMatrixLookAtLH(lightPos, lightTarget, lightUp);
+				lightProj = XMMatrixOrthographicOffCenterLH(l, r, b, t, n, f);
 
-			// Orthographic проекция для Directional Light
-			float width = mClientWidth;  // Размер области освещения
-			float height = mClientHeight;
-			float nearZ = 1.0f;
-			float farZ = 2000.0f;
+				S = lightView * lightProj * T;
+				break;
 
-			auto lightProj = XMMatrixOrthographicLH(width, height, nearZ, farZ);
+			case LightType::Spotlight:
+				lightPos = XMLoadFloat3(&e->WorldLocation);
+				lightDir = XMLoadFloat3(&e->WorldDirection);
+				targetPos = lightPos + lightDir;
 
-			// Transform NDC space [-1,+1]^2 to texture space [0,1]^2
-			XMMATRIX T(
-				0.5f, 0.0f, 0.0f, 0.0f,
-				0.0f, -0.5f, 0.0f, 0.0f,
-				0.0f, 0.0f, 1.0f, 0.0f,
-				0.5f, 0.5f, 0.0f, 1.0f);
+				//ADD FOV CALCULATION
+				lightView = XMMatrixLookAtLH(lightPos, targetPos, lightUp);
+				lightProj = XMMatrixPerspectiveFovLH(XM_PI/6, 1.0f, 10.f, e->FalloffEnd);
 
-			XMMATRIX S = lightView * lightProj * T;
-			XMStoreFloat4x4(&LightConstants.View, lightView);
-			XMStoreFloat4x4(&LightConstants.Proj, lightProj);
-			XMStoreFloat4x4(&LightConstants.ShadowTransform, S);
+				S = lightView * lightProj * T;
+				break;
 
+			case LightType::Pointlight:
+				lightPos = XMLoadFloat3(&e->WorldLocation);
+
+				lightProj = XMMatrixPerspectiveFovLH(XM_PIDIV2, 1.0f, 0.1f, e->FalloffEnd);
+
+				static const XMVECTOR directions[6] =
+				{
+					XMVectorSet(1.0f, 0.0f, 0.0f, 0.0f),  // +X
+					XMVectorSet(-1.0f, 0.0f, 0.0f, 0.0f), // -X
+					XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f),  // +Y
+					XMVectorSet(0.0f, -1.0f, 0.0f, 0.0f), // -Y
+					XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f),  // +Z
+					XMVectorSet(0.0f, 0.0f, -1.0f, 0.0f)  // -Z
+				};
+
+				static const XMVECTOR ups[6] =
+				{
+					XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f),  // +X
+					XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f),  // -X
+					XMVectorSet(0.0f, 0.0f, -1.0f, 0.0f), // +Y
+					XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f),  // -Y
+					XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f),  // +Z
+					XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f)   // -Z
+				};
+
+				for (int i = 0; i < 6; ++i)
+				{
+					targetPos = lightPos + directions[i];
+					lightView = XMMatrixLookAtLH(lightPos, targetPos, ups[i]);
+				}
+				S = lightView * lightProj * T;
+				break;
+			}
+
+			XMStoreFloat4x4(&LightConstants.View, XMMatrixTranspose(lightView));
+			XMStoreFloat4x4(&LightConstants.Proj, XMMatrixTranspose(lightProj));
+			XMStoreFloat4x4(&LightConstants.ShadowTransform, XMMatrixTranspose(S));
 			XMStoreFloat4x4(&LightConstants.World, XMMatrixTranspose(XMLoadFloat4x4(&e->World)));
 
 			currObjectCB->CopyData(e->LightCBIndex, LightConstants);
@@ -1390,6 +1450,8 @@ void RenderingSystem::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const 
 
 void RenderingSystem::GBufferGeometryPass()
 {
+	mCommandList->RSSetViewports(1, &mScreenViewport);
+	mCommandList->RSSetScissorRects(1, &mScissorRect);
 	mCommandList->SetGraphicsRootSignature(RootSignatures["Default"].Get());
 
 	D3D12_CPU_DESCRIPTOR_HANDLE rtvs[5] = {
@@ -1503,6 +1565,7 @@ void RenderingSystem::DrawSkyBox()
 		D3D12_GPU_VIRTUAL_ADDRESS objCBAddress = objectCB->GetGPUVirtualAddress() + ri->ObjCBIndex * objCBByteSize;
 		D3D12_GPU_VIRTUAL_ADDRESS matCBAddress = matCB->GetGPUVirtualAddress() + ri->Mat->MatCBIndex * matCBByteSize;
 
+
 		mCommandList->SetGraphicsRootDescriptorTable(0, TextureDescs);
 		mCommandList->SetGraphicsRootConstantBufferView(1, objCBAddress);
 		mCommandList->SetGraphicsRootConstantBufferView(3, matCBAddress);
@@ -1520,7 +1583,7 @@ void RenderingSystem::DrawShadowMaps()
 	mCommandList->SetGraphicsRootSignature(RootSignatures["Default"].Get());
 	for (auto& i : mAllLights)
 	{
-		if (i->LightType == LightType::Pointlight) continue;
+		//if (i->LightType == LightType::Pointlight) continue;
 
 		mCommandList->RSSetViewports(1, &i->shadowMap->Viewport());
 		mCommandList->RSSetScissorRects(1, &i->shadowMap->ScissorRect());
@@ -1543,16 +1606,14 @@ void RenderingSystem::DrawShadowMaps()
 		UINT lightCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(Light));
 		auto lightCB = mCurrFrameResource->LightCB->Resource();
 
-		mCommandList->SetGraphicsRootConstantBufferView(2, lightCB->GetGPUVirtualAddress());
-
 		UINT objCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(ObjectConstants));
 		UINT matCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(MaterialConstants));
 		auto objectCB = mCurrFrameResource->ObjectCB->Resource();
 		auto matCB = mCurrFrameResource->MaterialCB->Resource();
 
-		for (size_t i = 0; i < mRitemLayer[(int)RenderLayer::Opaque].size(); ++i)
+		for (size_t j = 0; j < mRitemLayer[(int)RenderLayer::Opaque].size(); ++j)
 		{
-			auto& ri = mRitemLayer[(int)RenderLayer::Opaque][i];
+			auto& ri = mRitemLayer[(int)RenderLayer::Opaque][j];
 			if (!ri->IsInViewFrustum) continue;
 			mCommandList->IASetVertexBuffers(0, 1, &ri->Geo->VertexBufferView());
 			mCommandList->IASetIndexBuffer(&ri->Geo->IndexBufferView());
@@ -1566,9 +1627,11 @@ void RenderingSystem::DrawShadowMaps()
 
 			D3D12_GPU_VIRTUAL_ADDRESS objCBAddress = objectCB->GetGPUVirtualAddress() + ri->ObjCBIndex * objCBByteSize;
 			D3D12_GPU_VIRTUAL_ADDRESS matCBAddress = matCB->GetGPUVirtualAddress() + ri->Mat->MatCBIndex * matCBByteSize;
+			D3D12_GPU_VIRTUAL_ADDRESS lightCBAddress = lightCB->GetGPUVirtualAddress() + i->LightCBIndex * lightCBByteSize;
 
 			mCommandList->SetGraphicsRootDescriptorTable(0, TextureDescs);
 			mCommandList->SetGraphicsRootConstantBufferView(1, objCBAddress);
+			mCommandList->SetGraphicsRootConstantBufferView(2, lightCBAddress);
 			mCommandList->SetGraphicsRootConstantBufferView(3, matCBAddress);
 
 

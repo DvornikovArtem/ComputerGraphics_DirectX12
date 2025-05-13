@@ -320,7 +320,7 @@ void StencilApp::MakeDrawableObjects()
     DrawableObject* DecalTestCylinder = new DrawableObject();
     DecalTestCylinder->Name = "DecalTestCylinder";
     DecalTestCylinder->GeometryName = "Cylinder";
-    DecalTestCylinder->MaterialName = "Bricks_DecalTesting";
+    DecalTestCylinder->MaterialName = "bricks";
     DecalTestCylinder->renderLayer = RenderLayer::Opaque;
     DecalTestCylinder->WorldLocation = XMFLOAT3(10.f, 3.f, 5.f);
     DecalTestCylinder->Scale = XMFLOAT3(5.0f, 5.0f, 5.0f);
