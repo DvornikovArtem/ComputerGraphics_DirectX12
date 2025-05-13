@@ -1,58 +1,94 @@
-//***************************************************************************************
-// Shadows.hlsl by Frank Luna (C) 2015 All Rights Reserved.
-//***************************************************************************************
+#include "LightingUtil.hlsl"
 
-// Include common HLSL code.
-#include "Common.hlsl"
+Texture2D gDiffuseMap : register(t0);
+Texture2D gNormalMap : register(t1);
+Texture2D gHeightMap : register(t2);
 
-struct VertexIn
+SamplerState gsamPointWrap : register(s0);
+SamplerState gsamPointClamp : register(s1);
+SamplerState gsamLinearWrap : register(s2);
+SamplerState gsamLinearClamp : register(s3);
+SamplerState gsamAnisotropicWrap : register(s4);
+SamplerState gsamAnisotropicClamp : register(s5);
+
+// Constant data that varies per frame.
+cbuffer cbPerObject : register(b0)
 {
-    float3 PosL : POSITION;
-    float2 TexC : TEXCOORD;
+    float4x4 gWorld;
+    float4x4 gTexTransform;
+    float gTesselationFactor;
 };
 
-struct VertexOut
+// Constant data that varies per Light.
+cbuffer cbPerLight : register(b1)
 {
-    float4 PosH : SV_POSITION;
-    float2 TexC : TEXCOORD;
+    Light CurrentLight;
+    float4x4 World;
+    float4x4 View;
+    float4x4 Proj;
+    float4x4 ShadowTransform;
+}
+
+cbuffer cbMaterial : register(b2)
+{
+    float4 gDiffuseAlbedo;
+    float3 gFresnelR0;
+    float gRoughness;
+    float4x4 gMatTransform;
 };
 
-VertexOut VS(VertexIn vin)
+struct VS_INPUT
 {
-    VertexOut vout = (VertexOut) 0.0f;
+    float3 Pos : POSITION;
+    float2 TexC : TEXCOORD;
+    float3 Normal : NORMAL;
+    float3 Tangent : TANGENT;
+};
 
-    MaterialData matData = gMaterialData[gMaterialIndex];
+struct DS_VS_OUTPUT_PS_INPUT
+{
+    float4 PosCS   : SV_POSITION;
+    float3 PosW    : POSITION;
+    float2 TexC    : TEXCOORD;
+    float3 Normal  : NORMAL;
+    float3 Tangent : TANGENT;
+};
+
+DS_VS_OUTPUT_PS_INPUT VS(VS_INPUT vin)
+{
+    DS_VS_OUTPUT_PS_INPUT vout = (DS_VS_OUTPUT_PS_INPUT) 0.0f;
 	
     // Transform to world space.
-    float4 posW = mul(float4(vin.PosL, 1.0f), gWorld);
+    float4 posW = mul(float4(vin.Pos, 1.0f), gWorld);
+    vout.PosW = posW.xyz;
+
+    // Assumes nonuniform scaling; otherwise, need to use inverse-transpose of world matrix.
+    vout.Normal = normalize(mul(vin.Normal, (float3x3) gWorld));
+    
+    vout.Tangent = normalize(mul(vin.Tangent, (float3x3) gWorld));
 
     // Transform to homogeneous clip space.
-    vout.PosH = mul(posW, gViewProj);
+    vout.PosCS = mul(posW, mul(View, Proj));
 	
 	// Output vertex attributes for interpolation across triangle.
-    float4 texC = mul(float4(vin.TexC, 0.0f, 1.0f), gTexTransform);
-    vout.TexC = mul(texC, matData.MatTransform).xy;
-	
+	float4 texC = mul(float4(vin.TexC, 0.0f, 1.0f), gTexTransform);
+    vout.TexC = mul(texC, gMatTransform).xy;
+
     return vout;
 }
 
-// This is only used for alpha cut out geometry, so that shadows 
-// show up correctly.  Geometry that does not need to sample a
-// texture can use a NULL pixel shader for depth pass.
-void PS(VertexOut pin)
+//might need to add proper PS here
+void PS(DS_VS_OUTPUT_PS_INPUT pin)
 {
-	// Fetch the material data.
-    MaterialData matData = gMaterialData[gMaterialIndex];
-    float4 diffuseAlbedo = matData.DiffuseAlbedo;
-    uint diffuseMapIndex = matData.DiffuseMapIndex;
-	
-	// Dynamically look up the texture in the array.
-    diffuseAlbedo *= gTextureMaps[diffuseMapIndex].Sample(gsamAnisotropicWrap, pin.TexC);
-
-#ifdef ALPHA_TEST
-    // Discard pixel if texture alpha < 0.1.  We do this test as soon 
-    // as possible in the shader so that we can potentially exit the
-    // shader early, thereby skipping the rest of the shader code.
-    clip(diffuseAlbedo.a - 0.1f);
-#endif
+    
+    float2 uv = pin.TexC;
+    
+    float4 diffusealbedo = gDiffuseMap.Sample(gsamAnisotropicWrap, uv) * gDiffuseAlbedo;
+    
+	// discard pixel if texture alpha < 0.1.  we do this test as soon 
+	// as possible in the shader so that we can potentially exit the
+	// shader early, thereby skipping the rest of the shader code.
+    clip(diffusealbedo.a - 0.1f);
 }
+
+

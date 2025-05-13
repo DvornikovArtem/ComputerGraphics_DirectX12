@@ -212,7 +212,6 @@
     <Image Include="..\Textures\WoodCrate02.dds" />
   </ItemGroup>
   <ItemGroup>
-    <FxCompile Include="..\Shaders\Common.hlsl" />
     <FxCompile Include="..\Shaders\Debug.hlsl" />
     <FxCompile Include="..\Shaders\Default.hlsl" />
     <FxCompile Include="..\Shaders\DeferredLightPass.hlsl" />

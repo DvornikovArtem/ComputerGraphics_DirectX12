@@ -237,6 +237,9 @@ void RenderingSystem::Render()
 	mCommandList->ClearRenderTargetView(CurrentBackBufferView(), (float*)&mMainPassCB.FogColor, 0, nullptr);
 	mCommandList->ClearDepthStencilView(DepthStencilView(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
 
+	// Create frame shadow maps
+	DrawShadowMaps();
+	
 
 	// Deferred Passes:
 	
@@ -259,7 +262,7 @@ void RenderingSystem::Render()
 	//
 	DrawSkyBox();
 
-	// Draw debug primitives (lines, boxes, etc.)
+	// Draw debug primitives
 	mDebugDrawer->Draw(
 		0.0f,
 		mCommandQueue,
@@ -566,18 +569,18 @@ void RenderingSystem::CreateRtvAndDsvDescriptorHeaps()
 
 
 	CD3DX12_CPU_DESCRIPTOR_HANDLE hDescriptor(DepthStencilView());
-
+	
 	D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc;
 	dsvDesc.Flags = D3D12_DSV_FLAG_NONE;
 	dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
 	dsvDesc.Format = mDepthStencilFormat;
 	dsvDesc.Texture2D.MipSlice = 0;
 	md3dDevice->CreateDepthStencilView(mDepthStencilBuffer.Get(), &dsvDesc, hDescriptor);
-	hDescriptor.Offset(1, mCbvSrvUavDescriptorSize);
+	hDescriptor.Offset(1, mDsvDescriptorSize);
 	
 	for (int i = 0; i < mAllLights.size(); i++) {
 		md3dDevice->CreateDepthStencilView(nullptr, &dsvDesc, hDescriptor);
-		hDescriptor.Offset(1, mCbvSrvUavDescriptorSize);
+		hDescriptor.Offset(1, mDsvDescriptorSize);
 	}
 }
 
@@ -867,6 +870,38 @@ void RenderingSystem::UpdateLightCBs(const GameTimer& gt)
 			LightConstants.SpotPower = e->SpotPower;
 			LightConstants.Strength = XMFLOAT3(e->Strength, e->Strength, e->Strength);
 
+
+			// Нормализуем направление
+			XMVECTOR lightDir = XMVector3Normalize(XMLoadFloat3(&e->WorldDirection));
+			XMVECTOR lightTarget = XMVectorZero();
+			XMVECTOR lightUp = { 0.0f, 1.0f, 0.0f };
+
+			// Позиция источника - противоположное направление, умноженное на большое расстояние
+			XMVECTOR lightPos = lightTarget - (lightDir * 1000.0f);
+
+			// View матрица (вид от источника света)
+			auto lightView = XMMatrixLookAtLH(lightPos, lightTarget, lightUp);
+
+			// Orthographic проекция для Directional Light
+			float width = mClientWidth;  // Размер области освещения
+			float height = mClientHeight;
+			float nearZ = 1.0f;
+			float farZ = 2000.0f;
+
+			auto lightProj = XMMatrixOrthographicLH(width, height, nearZ, farZ);
+
+			// Transform NDC space [-1,+1]^2 to texture space [0,1]^2
+			XMMATRIX T(
+				0.5f, 0.0f, 0.0f, 0.0f,
+				0.0f, -0.5f, 0.0f, 0.0f,
+				0.0f, 0.0f, 1.0f, 0.0f,
+				0.5f, 0.5f, 0.0f, 1.0f);
+
+			XMMATRIX S = lightView * lightProj * T;
+			XMStoreFloat4x4(&LightConstants.View, lightView);
+			XMStoreFloat4x4(&LightConstants.Proj, lightProj);
+			XMStoreFloat4x4(&LightConstants.ShadowTransform, S);
+
 			XMStoreFloat4x4(&LightConstants.World, XMMatrixTranspose(XMLoadFloat4x4(&e->World)));
 
 			currObjectCB->CopyData(e->LightCBIndex, LightConstants);
@@ -1084,7 +1119,6 @@ std::vector<MeshParsingResult> RenderingSystem::LoadMesh(MeshDesc& meshDesc, boo
 
 void RenderingSystem::BuildPSOs(MaterialDesc& MDesc, std::unordered_map<std::string, ComPtr<ID3D12PipelineState>>& mPSOs)
 {
-	D3D12_GRAPHICS_PIPELINE_STATE_DESC opaquePsoDesc;
 
 	//
 	// PSO for GBuffer Geometry Pass
@@ -1133,6 +1167,34 @@ void RenderingSystem::BuildPSOs(MaterialDesc& MDesc, std::unordered_map<std::str
 	descPipelineState.SampleDesc.Count = 1;
 
 	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&descPipelineState, IID_PPV_ARGS(&mPSOs["GBufferGeometryPass"])));
+
+	///
+	/// PSO for ShadowMap generation (opaque geometry)
+	/// 
+
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC ShadowMapPSODesc = descPipelineState;
+	ShadowMapPSODesc.RasterizerState.DepthBias = 1000;
+	ShadowMapPSODesc.RasterizerState.DepthBiasClamp = 0.0f;
+	ShadowMapPSODesc.RasterizerState.SlopeScaledDepthBias = 1.0f;
+	ShadowMapPSODesc.VS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["ShadowOpaqueVS"]->GetBufferPointer()),
+		mShaders["ShadowOpaqueVS"]->GetBufferSize()
+	};
+	ShadowMapPSODesc.PS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["ShadowOpaquePS"]->GetBufferPointer()),
+		mShaders["ShadowOpaquePS"]->GetBufferSize()
+	};
+
+	// Shadow map pass does not have a render target.
+	ShadowMapPSODesc.NumRenderTargets = 0;
+	ShadowMapPSODesc.RTVFormats[0] = DXGI_FORMAT_UNKNOWN;
+	ShadowMapPSODesc.RTVFormats[1] = DXGI_FORMAT_UNKNOWN;
+	ShadowMapPSODesc.RTVFormats[2] = DXGI_FORMAT_UNKNOWN;
+	ShadowMapPSODesc.RTVFormats[3] = DXGI_FORMAT_UNKNOWN;
+	ShadowMapPSODesc.RTVFormats[4] = DXGI_FORMAT_UNKNOWN;
+	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&ShadowMapPSODesc, IID_PPV_ARGS(&mPSOs["ShadowOpaque"])));
 }
 
 void RenderingSystem::BuildGlobalPSOs()
@@ -1248,6 +1310,7 @@ void RenderingSystem::BuildGlobalPSOs()
 		mShaders["SkyBoxPS"]->GetBufferSize()
 	};
 	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&skyPsoDesc, IID_PPV_ARGS(&GlobalPSOs["SkyBox"])));
+
 }
 
 void RenderingSystem::BuildFrameResources()
@@ -1376,7 +1439,7 @@ void RenderingSystem::GBufferLightPass()
 	// For each light item...
 	for (size_t i = 0; i < mAllLights.size(); ++i)
 	{
-		auto li = mAllLights[i];
+		auto& li = mAllLights[i];
 
 		D3D12_GPU_VIRTUAL_ADDRESS lightCBAddress = lightCB->GetGPUVirtualAddress() + li->LightCBIndex * lightCBByteSize;
 		mCommandList->SetGraphicsRootConstantBufferView(2, lightCBAddress);
@@ -1449,6 +1512,79 @@ void RenderingSystem::DrawSkyBox()
 		UINT BaseVertexLocation = ri->Geo->DrawArgs["LOD0"].BaseVertexLocation;
 
 		mCommandList->DrawIndexedInstanced(IndexCount, 1, StartIndexLocation, BaseVertexLocation, 0);
+	}
+}
+
+void RenderingSystem::DrawShadowMaps()
+{
+	mCommandList->SetGraphicsRootSignature(RootSignatures["Default"].Get());
+	for (auto& i : mAllLights)
+	{
+		if (i->LightType == LightType::Pointlight) continue;
+
+		mCommandList->RSSetViewports(1, &i->shadowMap->Viewport());
+		mCommandList->RSSetScissorRects(1, &i->shadowMap->ScissorRect());
+
+		// Change to DEPTH_WRITE.
+		mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(i->shadowMap->Resource(),
+			D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_DEPTH_WRITE));
+
+
+		// Clear the back buffer and depth buffer.
+		mCommandList->ClearDepthStencilView(i->shadowMap->Dsv(),
+			D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
+
+		// Set null render target because we are only going to draw to
+		// depth buffer.  Setting a null render target will disable color writes.
+		// Note the active PSO also must specify a render target count of 0.
+		mCommandList->OMSetRenderTargets(0, nullptr, false, &i->shadowMap->Dsv());
+
+		// Bind the pass constant buffer for the shadow map pass.
+		UINT lightCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(Light));
+		auto lightCB = mCurrFrameResource->LightCB->Resource();
+
+		mCommandList->SetGraphicsRootConstantBufferView(2, lightCB->GetGPUVirtualAddress());
+
+		UINT objCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(ObjectConstants));
+		UINT matCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(MaterialConstants));
+		auto objectCB = mCurrFrameResource->ObjectCB->Resource();
+		auto matCB = mCurrFrameResource->MaterialCB->Resource();
+
+		for (size_t i = 0; i < mRitemLayer[(int)RenderLayer::Opaque].size(); ++i)
+		{
+			auto& ri = mRitemLayer[(int)RenderLayer::Opaque][i];
+			if (!ri->IsInViewFrustum) continue;
+			mCommandList->IASetVertexBuffers(0, 1, &ri->Geo->VertexBufferView());
+			mCommandList->IASetIndexBuffer(&ri->Geo->IndexBufferView());
+			mCommandList->IASetPrimitiveTopology(ri->Mat->UseTesselation ? D3D_PRIMITIVE_TOPOLOGY_3_CONTROL_POINT_PATCHLIST : D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+			mCommandList->SetPipelineState(ri->Mat->PSOs["ShadowOpaque"].Get());
+
+			ID3D12DescriptorHeap* descriptorHeaps[] = { ri->Mat->mSrvDescriptorHeap.Get() };
+			mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
+
+			CD3DX12_GPU_DESCRIPTOR_HANDLE TextureDescs(ri->Mat->mSrvDescriptorHeap->GetGPUDescriptorHandleForHeapStart());
+
+			D3D12_GPU_VIRTUAL_ADDRESS objCBAddress = objectCB->GetGPUVirtualAddress() + ri->ObjCBIndex * objCBByteSize;
+			D3D12_GPU_VIRTUAL_ADDRESS matCBAddress = matCB->GetGPUVirtualAddress() + ri->Mat->MatCBIndex * matCBByteSize;
+
+			mCommandList->SetGraphicsRootDescriptorTable(0, TextureDescs);
+			mCommandList->SetGraphicsRootConstantBufferView(1, objCBAddress);
+			mCommandList->SetGraphicsRootConstantBufferView(3, matCBAddress);
+
+
+			std::string subMeshName = "LOD" + std::to_string(ri->currentLOD);
+
+			UINT IndexCount = ri->Geo->DrawArgs[subMeshName].IndexCount;
+			UINT StartIndexLocation = ri->Geo->DrawArgs[subMeshName].StartIndexLocation;
+			UINT BaseVertexLocation = ri->Geo->DrawArgs[subMeshName].BaseVertexLocation;
+
+			mCommandList->DrawIndexedInstanced(IndexCount, 1, StartIndexLocation, BaseVertexLocation, 0);
+
+		}
+
+		// Change back to GENERIC_READ so we can read the texture in a shader.
+		mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(i->shadowMap->Resource(),
+			D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_GENERIC_READ));
 	}
 }
 
@@ -1836,6 +1972,10 @@ void RenderingSystem::BuildShaders(std::vector<ShaderDesc>& ShaderDescs)
 	//for skybox rendering
 	mShaders["SkyBoxVS"] = d3dUtil::CompileShader(L"../Shaders/SkyBox.hlsl", nullptr, "VS", "vs_5_0");
 	mShaders["SkyBoxPS"] = d3dUtil::CompileShader(L"../Shaders/SkyBox.hlsl", nullptr, "PS", "ps_5_0");
+
+	//for shadowmap geometry generation
+	mShaders["ShadowOpaqueVS"] = d3dUtil::CompileShader(L"../Shaders/Shadows.hlsl", nullptr, "VS", "vs_5_0");
+	mShaders["ShadowOpaquePS"] = d3dUtil::CompileShader(L"../Shaders/Shadows.hlsl", nullptr, "PS", "ps_5_0");
 }
 
 void RenderingSystem::BuildBasicGeometry()

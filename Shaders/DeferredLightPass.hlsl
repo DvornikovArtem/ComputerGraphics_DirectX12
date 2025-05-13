@@ -39,6 +39,9 @@ cbuffer cbPerLight : register(b1)
 {
     Light CurrentLight;
     float4x4 gWorld;
+    float4x4 View;
+    float4x4 Proj;
+    float4x4 ShadowTransform;
 }
 
 

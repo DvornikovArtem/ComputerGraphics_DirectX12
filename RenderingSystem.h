@@ -248,6 +248,8 @@ public:
 
     void DrawSkyBox();
 
+    void DrawShadowMaps();
+
     void Render();
 
     void Update(std::vector<DrawableObject*>& mAllObjectsToUpdate, std::vector<LightObject*>& mAllLightObjectsToUpdate);
