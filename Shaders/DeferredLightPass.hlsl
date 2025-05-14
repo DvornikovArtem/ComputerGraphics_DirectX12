@@ -9,6 +9,8 @@ Texture2D   gMaterialFresnelRoughnessMap : register(t4);
 
 Texture2D gShadowMap : register(t5);
 
+SamplerComparisonState gShadowSampler : register(s0);
+
 // Constant data that varies per frame.
 cbuffer cbPass : register(b0)
 {
@@ -101,6 +103,38 @@ float3 ReconstructWorldPosition(float2 UV, float depth)
     return viewPos.xyz;
 }
 
+float CalcShadowFactor(float4 shadowPosH)
+{
+    // Complete projection by doing division by w.
+    shadowPosH.xyz /= shadowPosH.w;
+
+    // Depth in NDC space.
+    float depth = shadowPosH.z;
+
+    uint width, height, numMips;
+    gShadowMap.GetDimensions(0, width, height, numMips);
+
+    // Texel size.
+    float dx = 1.0f / (float) width;
+
+    float percentLit = 0.0f;
+    const float2 offsets[9] =
+    {
+        float2(-dx, -dx), float2(0.0f, -dx), float2(dx, -dx),
+        float2(-dx, 0.0f), float2(0.0f, 0.0f), float2(dx, 0.0f),
+        float2(-dx, +dx), float2(0.0f, +dx), float2(dx, +dx)
+    };
+
+    [unroll]
+    for (int i = 0; i < 9; ++i)
+    {
+        percentLit += gShadowMap.SampleCmpLevelZero(gShadowSampler,
+            shadowPosH.xy + offsets[i], depth).r;
+    }
+    
+    return percentLit / 9.0f;
+}
+
 float4 PS(VertexOut pin) : SV_Target
 {
     float2 UV = pin.PosH.xy / gRenderTargetSize;
@@ -117,6 +151,8 @@ float4 PS(VertexOut pin) : SV_Target
     float MatRoughness = MatParams.w;
     float3 Normal = NormalChannel.rgb;
     
+    
+    
     // Vector from point being lit to eye.
     float3 toEyeW = gEyePosW - WorldPosition;
     float distToEye = length(toEyeW);
@@ -124,7 +160,10 @@ float4 PS(VertexOut pin) : SV_Target
 
     const float shininess = 1.0f - MatRoughness;
     Material mat = { Diffuse, MatFresnelR0, shininess };
-    float3 shadowFactor = 1.0f;
+    
+    float3 shadowFactor = float3(1.0f, 1.0f, 1.0f);
+    //shadowFactor[0] = CalcShadowFactor(ShadowPos);
+
     float3 directLight;
     
     //discard if there is no geometry in Gbuffer at current pixel

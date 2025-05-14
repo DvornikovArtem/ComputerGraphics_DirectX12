@@ -700,10 +700,25 @@ void RenderingSystem::BuildRootSignatures()
 
 	lightPassSlotRootParameter[7].InitAsDescriptorTable(1, &texTable6, D3D12_SHADER_VISIBILITY_ALL); //ShadowMap
 
-	CD3DX12_ROOT_SIGNATURE_DESC lightPassRootSigDesc(8, lightPassSlotRootParameter,
-		0, nullptr,
-		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+	//ShadowMap ComparisonSampler
+	const CD3DX12_STATIC_SAMPLER_DESC StaticSamplers[1] = 
+	{
+		CD3DX12_STATIC_SAMPLER_DESC(
+		0, // register(s0)
+		D3D12_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT,
+		D3D12_TEXTURE_ADDRESS_MODE_BORDER,
+		D3D12_TEXTURE_ADDRESS_MODE_BORDER,
+		D3D12_TEXTURE_ADDRESS_MODE_BORDER,
+		0.0f,
+		16,
+		D3D12_COMPARISON_FUNC_LESS_EQUAL,
+		D3D12_STATIC_BORDER_COLOR_OPAQUE_WHITE)
+	};
 
+	CD3DX12_ROOT_SIGNATURE_DESC lightPassRootSigDesc(8, lightPassSlotRootParameter,
+		1, StaticSamplers,
+		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+	
 	ComPtr<ID3DBlob> serializedLightPassRootSig = nullptr;
 	ComPtr<ID3DBlob> lightPassErrorBlob = nullptr;
 	HRESULT lightPassHr = D3D12SerializeRootSignature(&lightPassRootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1,
