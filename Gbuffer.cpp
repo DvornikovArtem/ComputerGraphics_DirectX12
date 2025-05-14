@@ -253,9 +253,7 @@ void Gbuffer::CopyDescriptors(D3D12_CPU_DESCRIPTOR_HANDLE otherStart)
 
 void Gbuffer::CopySRVDescriptors(D3D12_CPU_DESCRIPTOR_HANDLE otherStart)
 {
-    ID3D12Device* device = md3dDevice.Get();
-    // Копируем все 7 RTV-дескрипторов из нашей кучки в предоставленное место.
-    device->CopyDescriptorsSimple(7, otherStart,
+    md3dDevice.Get()->CopyDescriptorsSimple(NumBuffers, otherStart,
         m_SRVDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
         D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 }

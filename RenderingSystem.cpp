@@ -102,7 +102,10 @@ void RenderingSystem::FinishInitialize()
 {
 	CreateRtvAndDsvDescriptorHeaps();
 
-	mGbuffer.get()->CopySRVDescriptors(GetCpuSrv(TexDescsLength + MPRTextures.size() + 1));
+	//copy GBuffer SRVs into main SRVHeap
+	md3dDevice->CopyDescriptorsSimple(mGbuffer->NumBuffers, GetCpuSrv(TexDescsLength + MPRTextures.size() + 1),
+		mGbuffer->m_SRVDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
+		D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
 	int k = 0;
 	for (auto& litem : mAllLights) {
