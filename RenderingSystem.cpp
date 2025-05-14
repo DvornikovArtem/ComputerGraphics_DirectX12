@@ -616,20 +616,30 @@ void RenderingSystem::BuildRootSignatures()
 
 	//default
 
-	CD3DX12_DESCRIPTOR_RANGE texTable;
-	texTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, 0);
+	CD3DX12_DESCRIPTOR_RANGE texTable1;
+	texTable1.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
 
-	CD3DX12_ROOT_PARAMETER slotRootParameter[4];
+	CD3DX12_DESCRIPTOR_RANGE texTable2;
+	texTable2.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);
 
-	slotRootParameter[0].InitAsDescriptorTable(1, &texTable, D3D12_SHADER_VISIBILITY_ALL);
+	CD3DX12_DESCRIPTOR_RANGE texTable3;
+	texTable3.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2);
 
-	slotRootParameter[1].InitAsConstantBufferView(0); //ObjectCB
-	slotRootParameter[2].InitAsConstantBufferView(1); //MainPassCB
-	slotRootParameter[3].InitAsConstantBufferView(2); //MaterialCB
+	CD3DX12_ROOT_PARAMETER slotRootParameter[6];
+
+	// Texture resources
+	slotRootParameter[0].InitAsDescriptorTable(1, &texTable1, D3D12_SHADER_VISIBILITY_ALL); // Diffuse texture
+	slotRootParameter[1].InitAsDescriptorTable(1, &texTable2, D3D12_SHADER_VISIBILITY_ALL); // Normal map
+	slotRootParameter[2].InitAsDescriptorTable(1, &texTable3, D3D12_SHADER_VISIBILITY_ALL); // Height map
+
+	// Constant buffers
+	slotRootParameter[3].InitAsConstantBufferView(0); // ObjectCB
+	slotRootParameter[4].InitAsConstantBufferView(1); // MainPassCB 
+	slotRootParameter[5].InitAsConstantBufferView(2); // MaterialCB
 
 	auto staticSamplers = GetStaticSamplers();
 
-	CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(4, slotRootParameter,
+	CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(6, slotRootParameter,
 		(UINT)staticSamplers.size(), staticSamplers.data(),
 		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
@@ -683,35 +693,6 @@ void RenderingSystem::BuildRootSignatures()
 		serializedLightPassRootSig->GetBufferPointer(),
 		serializedLightPassRootSig->GetBufferSize(),
 		IID_PPV_ARGS(RootSignatures["DeferredLightPass"].GetAddressOf())));
-
-}
-
-void RenderingSystem::BuildDescriptorHeap(Material* t)
-{
-	D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
-	srvHeapDesc.NumDescriptors = 3;
-	srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-	srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-	ThrowIfFailed(md3dDevice->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&t->mSrvDescriptorHeap)));
-
-
-	//Copying Descriptors from global SRVHeap
-
-	D3D12_CPU_DESCRIPTOR_HANDLE srcDescriptors[] = 
-	{
-		mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart().ptr + t->DiffuseSrvHeapIndex * mCbvSrvDescriptorSize,
-		mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart().ptr + t->NormalSrvHeapIndex * mCbvSrvDescriptorSize,
-		mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart().ptr + t->HeightSrvHeapIndex * mCbvSrvDescriptorSize
-	};
-
-	D3D12_CPU_DESCRIPTOR_HANDLE destDescriptors[] =
-	{
-		t->mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart().ptr,
-		t->mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart().ptr + 1 * mCbvSrvDescriptorSize,
-		t->mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart().ptr + 2 * mCbvSrvDescriptorSize
-	};
-
-	md3dDevice->CopyDescriptors( 3, destDescriptors, nullptr, 3, srcDescriptors, nullptr, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
 }
 
@@ -1367,7 +1348,6 @@ void RenderingSystem::BuildMaterials(std::vector<MaterialDesc>& MaterialDescs)
 		t->UseTesselation = MaterialDescs[i].UseTesselation;
 
 		BuildPSOs(MaterialDescs[i], t->PSOs);
-		BuildDescriptorHeap(t);
 
 		mMaterials[t->Name] = t;
 	}
@@ -1382,6 +1362,9 @@ void RenderingSystem::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const 
 	auto objectCB = mCurrFrameResource->ObjectCB->Resource();
 	auto matCB = mCurrFrameResource->MaterialCB->Resource();
 
+	auto passCB = mCurrFrameResource->PassCB->Resource();
+	mCommandList->SetGraphicsRootConstantBufferView(4, passCB->GetGPUVirtualAddress());
+
 	// For each render item...
 	for (size_t i = 0; i < ritems.size(); ++i)
 	{
@@ -1392,17 +1375,24 @@ void RenderingSystem::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const 
 		cmdList->IASetPrimitiveTopology(ri->Mat->UseTesselation ? D3D_PRIMITIVE_TOPOLOGY_3_CONTROL_POINT_PATCHLIST : D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 		cmdList->SetPipelineState(ri->Mat->PSOs[PSOName].Get());
 
-		ID3D12DescriptorHeap* descriptorHeaps[] = { ri->Mat->mSrvDescriptorHeap.Get() };
+		ID3D12DescriptorHeap* descriptorHeaps[] = { mSrvDescriptorHeap.Get() };
 		cmdList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
-
-		CD3DX12_GPU_DESCRIPTOR_HANDLE TextureDescs(ri->Mat->mSrvDescriptorHeap->GetGPUDescriptorHandleForHeapStart());
 
 		D3D12_GPU_VIRTUAL_ADDRESS objCBAddress = objectCB->GetGPUVirtualAddress() + ri->ObjCBIndex * objCBByteSize;
 		D3D12_GPU_VIRTUAL_ADDRESS matCBAddress = matCB->GetGPUVirtualAddress() + ri->Mat->MatCBIndex * matCBByteSize;
 
-		cmdList->SetGraphicsRootDescriptorTable(0, TextureDescs);
-		cmdList->SetGraphicsRootConstantBufferView(1, objCBAddress);
-		cmdList->SetGraphicsRootConstantBufferView(3, matCBAddress);
+		auto diffuseSrv = GetGpuSrv(ri->Mat->DiffuseSrvHeapIndex);
+		auto normalSrv = GetGpuSrv(ri->Mat->NormalSrvHeapIndex);
+		auto heightSrv = GetGpuSrv(ri->Mat->HeightSrvHeapIndex);
+
+		cmdList->SetGraphicsRootDescriptorTable(0, diffuseSrv);
+		cmdList->SetGraphicsRootDescriptorTable(1, normalSrv);
+		cmdList->SetGraphicsRootDescriptorTable(2, heightSrv);
+
+		cmdList->SetGraphicsRootConstantBufferView(3, objCBAddress);
+		//cmdList->SetGraphicsRootConstantBufferView(4, passCBAddress);
+		cmdList->SetGraphicsRootConstantBufferView(5, matCBAddress);
+
 
 
 		std::string subMeshName = "LOD" + std::to_string(ri->currentLOD);
@@ -1443,9 +1433,6 @@ void RenderingSystem::GBufferGeometryPass()
 	//mCommandList->ClearDepthStencilView(DepthStencilView(), D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 
 
-
-	auto passCB = mCurrFrameResource->PassCB->Resource();
-	mCommandList->SetGraphicsRootConstantBufferView(2, passCB->GetGPUVirtualAddress());
 	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Opaque], "GBufferGeometryPass");
 }
 
@@ -1518,7 +1505,7 @@ void RenderingSystem::DrawSkyBox()
 	mCommandList->OMSetRenderTargets(1, &CurrentBackBufferView(), true, &DepthStencilView());
 	mCommandList->SetGraphicsRootSignature(RootSignatures["Default"].Get());
 	mCommandList->SetPipelineState(GlobalPSOs["SkyBox"].Get());
-	mCommandList->SetGraphicsRootConstantBufferView(2, passCB->GetGPUVirtualAddress());
+	mCommandList->SetGraphicsRootConstantBufferView(4, passCB->GetGPUVirtualAddress());
 
 	// For each render item...
 	for (size_t i = 0; i < mRitemLayer[(int)RenderLayer::Sky].size(); ++i)
@@ -1529,18 +1516,18 @@ void RenderingSystem::DrawSkyBox()
 		mCommandList->IASetIndexBuffer(&ri->Geo->IndexBufferView());
 		mCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-		ID3D12DescriptorHeap* descriptorHeaps[] = { ri->Mat->mSrvDescriptorHeap.Get() };
+		ID3D12DescriptorHeap* descriptorHeaps[] = { mSrvDescriptorHeap.Get() };
 		mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
-
-		CD3DX12_GPU_DESCRIPTOR_HANDLE TextureDescs(ri->Mat->mSrvDescriptorHeap->GetGPUDescriptorHandleForHeapStart());
 
 		D3D12_GPU_VIRTUAL_ADDRESS objCBAddress = objectCB->GetGPUVirtualAddress() + ri->ObjCBIndex * objCBByteSize;
 		D3D12_GPU_VIRTUAL_ADDRESS matCBAddress = matCB->GetGPUVirtualAddress() + ri->Mat->MatCBIndex * matCBByteSize;
 
 
-		mCommandList->SetGraphicsRootDescriptorTable(0, TextureDescs);
-		mCommandList->SetGraphicsRootConstantBufferView(1, objCBAddress);
-		mCommandList->SetGraphicsRootConstantBufferView(3, matCBAddress);
+		auto diffuseSrv = GetGpuSrv(ri->Mat->DiffuseSrvHeapIndex);
+
+		mCommandList->SetGraphicsRootDescriptorTable(0, diffuseSrv);
+		mCommandList->SetGraphicsRootConstantBufferView(3, objCBAddress);
+		mCommandList->SetGraphicsRootConstantBufferView(5, matCBAddress);
 
 		UINT IndexCount = ri->Geo->DrawArgs["LOD0"].IndexCount;
 		UINT StartIndexLocation = ri->Geo->DrawArgs["LOD0"].StartIndexLocation;
@@ -1592,19 +1579,25 @@ void RenderingSystem::DrawShadowMaps()
 			mCommandList->IASetPrimitiveTopology(ri->Mat->UseTesselation ? D3D_PRIMITIVE_TOPOLOGY_3_CONTROL_POINT_PATCHLIST : D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 			mCommandList->SetPipelineState(ri->Mat->PSOs["ShadowOpaque"].Get());
 
-			ID3D12DescriptorHeap* descriptorHeaps[] = { ri->Mat->mSrvDescriptorHeap.Get() };
+			ID3D12DescriptorHeap* descriptorHeaps[] = { mSrvDescriptorHeap.Get() };
 			mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
 
-			CD3DX12_GPU_DESCRIPTOR_HANDLE TextureDescs(ri->Mat->mSrvDescriptorHeap->GetGPUDescriptorHandleForHeapStart());
 
 			D3D12_GPU_VIRTUAL_ADDRESS objCBAddress = objectCB->GetGPUVirtualAddress() + ri->ObjCBIndex * objCBByteSize;
 			D3D12_GPU_VIRTUAL_ADDRESS matCBAddress = matCB->GetGPUVirtualAddress() + ri->Mat->MatCBIndex * matCBByteSize;
 			D3D12_GPU_VIRTUAL_ADDRESS lightCBAddress = lightCB->GetGPUVirtualAddress() + i->LightCBIndex * lightCBByteSize;
 
-			mCommandList->SetGraphicsRootDescriptorTable(0, TextureDescs);
-			mCommandList->SetGraphicsRootConstantBufferView(1, objCBAddress);
-			mCommandList->SetGraphicsRootConstantBufferView(2, lightCBAddress);
-			mCommandList->SetGraphicsRootConstantBufferView(3, matCBAddress);
+			auto diffuseSrv = GetGpuSrv(ri->Mat->DiffuseSrvHeapIndex);
+			auto normalSrv = GetGpuSrv(ri->Mat->NormalSrvHeapIndex);
+			auto heightSrv = GetGpuSrv(ri->Mat->HeightSrvHeapIndex);
+
+			mCommandList->SetGraphicsRootDescriptorTable(0, diffuseSrv);
+			mCommandList->SetGraphicsRootDescriptorTable(1, normalSrv);
+			mCommandList->SetGraphicsRootDescriptorTable(2, heightSrv);
+
+			mCommandList->SetGraphicsRootConstantBufferView(3, objCBAddress);
+			mCommandList->SetGraphicsRootConstantBufferView(4, lightCBAddress);
+			mCommandList->SetGraphicsRootConstantBufferView(5, matCBAddress);
 
 
 			std::string subMeshName = "LOD" + std::to_string(ri->currentLOD);
@@ -1706,7 +1699,7 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 	D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
 	srvHeapDesc.NumDescriptors = TexDescs.size() + MPRTextures.size() + 1 + mAllLights.size();
 	srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-	srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+	srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	ThrowIfFailed(md3dDevice->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&mSrvDescriptorHeap)));
 
 	//

@@ -160,7 +160,7 @@ public:
 
     ~RenderingSystem()
     {
-        delete mOctTree;
+           delete mOctTree;
 
         for (auto& pair : mGeometries)
             delete pair.second;
@@ -199,7 +199,6 @@ public:
     void CreateSwapChain();
     void CreateRtvAndDsvDescriptorHeaps();
     void BuildRootSignatures();
-    void BuildDescriptorHeap(Material* t);
 
     void UpdateObjectCBs(const GameTimer& gt);
 

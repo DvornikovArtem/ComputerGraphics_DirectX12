@@ -277,9 +277,6 @@ struct Material
 
     std::unordered_map<std::string, Microsoft::WRL::ComPtr<ID3D12PipelineState>> PSOs;
 
-    //Descriptor Heap, containing all current Texture Descs
-    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> mSrvDescriptorHeap = nullptr;
-
 };
 
 struct Texture
