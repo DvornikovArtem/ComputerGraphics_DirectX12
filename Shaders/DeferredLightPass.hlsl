@@ -7,6 +7,8 @@ Texture2D   gNormalMap      : register(t2);
 Texture2D   gMaterialAlbedoMap : register(t3);
 Texture2D   gMaterialFresnelRoughnessMap : register(t4);
 
+Texture2D gShadowMap : register(t5);
+
 // Constant data that varies per frame.
 cbuffer cbPass : register(b0)
 {

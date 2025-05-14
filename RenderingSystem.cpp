@@ -102,8 +102,10 @@ void RenderingSystem::FinishInitialize()
 {
 	CreateRtvAndDsvDescriptorHeaps();
 
+	mGbuffer->Channel0SRVHeapIndex = TexDescsLength + MPRTextures.size() + 1 + 1;
+
 	//copy GBuffer SRVs into main SRVHeap
-	md3dDevice->CopyDescriptorsSimple(mGbuffer->NumBuffers, GetCpuSrv(TexDescsLength + MPRTextures.size() + 1),
+	md3dDevice->CopyDescriptorsSimple(mGbuffer->NumBuffers, GetCpuSrv(mGbuffer->Channel0SRVHeapIndex),
 		mGbuffer->m_SRVDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
 		D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
@@ -221,6 +223,12 @@ void RenderingSystem::OnResize() {
 
 	mGbuffer->Resize(mClientWidth, mClientHeight, md3dDevice.Get());
 
+	if (mSrvDescriptorHeap)
+	{
+		md3dDevice->CopyDescriptorsSimple(mGbuffer->NumBuffers, GetCpuSrv(mGbuffer->Channel0SRVHeapIndex),
+			mGbuffer->m_SRVDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
+			D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	}
 
 }
 
@@ -670,17 +678,29 @@ void RenderingSystem::BuildRootSignatures()
 
 	// for deferred light pass
 
-	CD3DX12_DESCRIPTOR_RANGE lightPassTexTable;
-	lightPassTexTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 5, 0);
+	CD3DX12_DESCRIPTOR_RANGE texTable4;
+	texTable4.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3);
 
-	CD3DX12_ROOT_PARAMETER lightPassSlotRootParameter[3];
+	CD3DX12_DESCRIPTOR_RANGE texTable5;
+	texTable5.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 4);
 
-	// Perfomance TIP: Order from most frequent to least frequent.
-	lightPassSlotRootParameter[0].InitAsDescriptorTable(1, &lightPassTexTable, D3D12_SHADER_VISIBILITY_PIXEL);
-	lightPassSlotRootParameter[1].InitAsConstantBufferView(0); //MainPassCB
-	lightPassSlotRootParameter[2].InitAsConstantBufferView(1); //LightCB
+	CD3DX12_DESCRIPTOR_RANGE texTable6;
+	texTable6.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 5);
 
-	CD3DX12_ROOT_SIGNATURE_DESC lightPassRootSigDesc(3, lightPassSlotRootParameter,
+	CD3DX12_ROOT_PARAMETER lightPassSlotRootParameter[8];
+
+	lightPassSlotRootParameter[0].InitAsConstantBufferView(0); //MainPassCB
+	lightPassSlotRootParameter[1].InitAsConstantBufferView(1); //LightCB
+
+	lightPassSlotRootParameter[2].InitAsDescriptorTable(1, &texTable1, D3D12_SHADER_VISIBILITY_ALL); //GBufferChannels
+	lightPassSlotRootParameter[3].InitAsDescriptorTable(1, &texTable2, D3D12_SHADER_VISIBILITY_ALL);
+	lightPassSlotRootParameter[4].InitAsDescriptorTable(1, &texTable3, D3D12_SHADER_VISIBILITY_ALL);
+	lightPassSlotRootParameter[5].InitAsDescriptorTable(1, &texTable4, D3D12_SHADER_VISIBILITY_ALL);
+	lightPassSlotRootParameter[6].InitAsDescriptorTable(1, &texTable5, D3D12_SHADER_VISIBILITY_ALL);
+
+	lightPassSlotRootParameter[7].InitAsDescriptorTable(1, &texTable6, D3D12_SHADER_VISIBILITY_ALL); //ShadowMap
+
+	CD3DX12_ROOT_SIGNATURE_DESC lightPassRootSigDesc(8, lightPassSlotRootParameter,
 		0, nullptr,
 		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
@@ -1450,11 +1470,16 @@ void RenderingSystem::GBufferLightPass()
 	auto lightCB = mCurrFrameResource->LightCB->Resource();
 	auto passCB = mCurrFrameResource->PassCB->Resource();
 
-	ID3D12DescriptorHeap* descriptorHeaps[] = { mGbuffer->getSRVDescriptorHeap().Get() };
+	ID3D12DescriptorHeap* descriptorHeaps[] = { mSrvDescriptorHeap.Get() };
 	mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
-	CD3DX12_GPU_DESCRIPTOR_HANDLE tex(mGbuffer->getSRVDescriptorHeap()->GetGPUDescriptorHandleForHeapStart());
-	mCommandList->SetGraphicsRootDescriptorTable(0, tex);
-	mCommandList->SetGraphicsRootConstantBufferView(1, passCB->GetGPUVirtualAddress());
+
+	mCommandList->SetGraphicsRootDescriptorTable(2, GetGpuSrv(mGbuffer->Channel0SRVHeapIndex));
+	mCommandList->SetGraphicsRootDescriptorTable(3, GetGpuSrv(mGbuffer->Channel0SRVHeapIndex + 1));
+	mCommandList->SetGraphicsRootDescriptorTable(4, GetGpuSrv(mGbuffer->Channel0SRVHeapIndex + 2));
+	mCommandList->SetGraphicsRootDescriptorTable(5, GetGpuSrv(mGbuffer->Channel0SRVHeapIndex + 3));
+	mCommandList->SetGraphicsRootDescriptorTable(6, GetGpuSrv(mGbuffer->Channel0SRVHeapIndex + 4));
+
+	mCommandList->SetGraphicsRootConstantBufferView(0, passCB->GetGPUVirtualAddress());
 	mCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
 	// For each light item...
@@ -1463,10 +1488,9 @@ void RenderingSystem::GBufferLightPass()
 		auto& li = mAllLights[i];
 
 		D3D12_GPU_VIRTUAL_ADDRESS lightCBAddress = lightCB->GetGPUVirtualAddress() + li->LightCBIndex * lightCBByteSize;
-		mCommandList->SetGraphicsRootConstantBufferView(2, lightCBAddress);
+		mCommandList->SetGraphicsRootConstantBufferView(1, lightCBAddress);
 
-		//D3D12_GPU_VIRTUAL_ADDRESS ShadowMap = mSrvDescriptorHeap->GetGPUDescriptorHandleForHeapStart().ptr + li->shadowMap->SRVHeapIndex * mCbvSrvDescriptorSize;
-		//mCommandList->SetGraphicsRootShaderResourceView(3, ShadowMap);
+		mCommandList->SetGraphicsRootDescriptorTable(7, GetGpuSrv(li->shadowMap->SRVHeapIndex));
 		
 		if (li->LightType == LightType::Directional)
 		{

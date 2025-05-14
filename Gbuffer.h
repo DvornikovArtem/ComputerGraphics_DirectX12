@@ -46,6 +46,7 @@ public:
     ComPtr<ID3D12DescriptorHeap> m_SRVDescriptorHeap;
 
     const int NumBuffers = 7;
+    int Channel0SRVHeapIndex;
 
     Gbuffer(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device> device);
 
