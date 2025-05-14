@@ -101,12 +101,16 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 void RenderingSystem::FinishInitialize()
 {
 	CreateRtvAndDsvDescriptorHeaps();
+
+	mGbuffer.get()->CopySRVDescriptors(GetCpuSrv(TexDescsLength + MPRTextures.size() + 1));
+
 	int k = 0;
 	for (auto& litem : mAllLights) {
-		litem->shadowMap->BuildDescriptors(GetCpuSrv(TexDescsLength + MPRTextures.size() + 1 + k), GetGpuSrv(TexDescsLength + MPRTextures.size() + 1 + k), GetDsv(1 + k));
+		litem->shadowMap->BuildDescriptors(GetCpuSrv(TexDescsLength + MPRTextures.size() + 1 + mGbuffer->NumBuffers + k), GetGpuSrv(TexDescsLength + MPRTextures.size() + 1 + mGbuffer->NumBuffers + k), GetDsv(1 + k));
 		litem->shadowMap->SRVHeapIndex = TexDescsLength + MPRTextures.size() + 1 + k;
 		k++;
 	}
+
 	BuildFrameResources();
 }
 
@@ -1686,7 +1690,7 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 	// Create the SRV heap.
 	//
 	D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
-	srvHeapDesc.NumDescriptors = TexDescs.size() + MPRTextures.size() + 1 + mAllLights.size();
+	srvHeapDesc.NumDescriptors = TexDescs.size() + MPRTextures.size() + 1 + mAllLights.size() + mGbuffer->NumBuffers;
 	srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 	srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	ThrowIfFailed(md3dDevice->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&mSrvDescriptorHeap)));
@@ -1772,6 +1776,11 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 		md3dDevice->CreateShaderResourceView(tex.Get(), &srvDesc, hDescriptor);
 
 		hDescriptor.Offset(1, mCbvSrvDescriptorSize);
+	}
+
+	for (int i = 0; i < mGbuffer->NumBuffers; i++) {
+		md3dDevice->CreateShaderResourceView(nullptr, &srvDesc, hDescriptor);
+		hDescriptor.Offset(1, mCbvSrvUavDescriptorSize);
 	}
 
 	for (int i = 0; i < mAllLights.size(); i++) {

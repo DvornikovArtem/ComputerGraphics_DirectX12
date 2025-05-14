@@ -45,12 +45,15 @@ public:
     ComPtr<ID3D12DescriptorHeap> m_RTVDescriptorHeap;
     ComPtr<ID3D12DescriptorHeap> m_SRVDescriptorHeap;
 
-public:
+    const int NumBuffers = 7;
+
     Gbuffer(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device> device);
 
     ComPtr<ID3D12DescriptorHeap> getSRVDescriptorHeap() const { return m_SRVDescriptorHeap; }
 
     void CopyDescriptors(D3D12_CPU_DESCRIPTOR_HANDLE otherStart);
+
+    void CopySRVDescriptors(D3D12_CPU_DESCRIPTOR_HANDLE otherStart);
 
     void TransitToOpaqueRenderingState(ComPtr<ID3D12GraphicsCommandList>& c);
     void TransitToLightsRenderingState(ComPtr<ID3D12GraphicsCommandList>& c);

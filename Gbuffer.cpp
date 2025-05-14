@@ -8,19 +8,18 @@
 // Конструктор создает ресурсы (текстуры) и дескрипторные кучи для RTV и SRV.
 Gbuffer::Gbuffer(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device> device)
 {
-    //ID3D12Device* device = md3dDevice.Get(); // Получаем указатель на устройство
 
     // Создаем дескрипторную кучу для RTV (5 дескрипторов: Diffuse, Emissive, Normal, Accumulation, Bloom)
     D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc = {};
-    rtvHeapDesc.NumDescriptors = 7;
+    rtvHeapDesc.NumDescriptors = NumBuffers;
     rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
     rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
     if (FAILED(device->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(&m_RTVDescriptorHeap))))
         throw std::runtime_error("Failed to create RTV Descriptor Heap");
 
-    // Создаем дескрипторную кучу для SRV (5 дескрипторов) – с флагом видимости для шейдеров.
+    // Создаем дескрипторную кучу для SRV
     D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
-    srvHeapDesc.NumDescriptors = 7;
+    srvHeapDesc.NumDescriptors = NumBuffers;
     srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
     if (FAILED(device->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&m_SRVDescriptorHeap))))
@@ -236,6 +235,8 @@ Gbuffer::Gbuffer(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device> dev
     srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
     device->CreateShaderResourceView(BloomTex.Get(), &srvDesc, srvHandle);
     BloomSRV = srvHandle;
+
+    md3dDevice = device;
 }
 
 // Копирование дескрипторов RTV в заданное расположение (например, в объединенную дескрипторную кучу).
@@ -244,10 +245,19 @@ void Gbuffer::CopyDescriptors(D3D12_CPU_DESCRIPTOR_HANDLE otherStart)
 {
     ID3D12Device* device = md3dDevice.Get();
     UINT rtvDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-    // Копируем все 5 RTV-дескрипторов из нашей кучки в предоставленное место.
+    // Копируем все 7 RTV-дескрипторов из нашей кучки в предоставленное место.
     device->CopyDescriptorsSimple(7, otherStart,
         m_RTVDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
         D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+}
+
+void Gbuffer::CopySRVDescriptors(D3D12_CPU_DESCRIPTOR_HANDLE otherStart)
+{
+    ID3D12Device* device = md3dDevice.Get();
+    // Копируем все 7 RTV-дескрипторов из нашей кучки в предоставленное место.
+    device->CopyDescriptorsSimple(7, otherStart,
+        m_SRVDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
+        D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 }
 
 // Переход к состоянию для отрисовки непрозрачных объектов.
