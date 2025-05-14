@@ -1381,13 +1381,9 @@ void RenderingSystem::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const 
 		D3D12_GPU_VIRTUAL_ADDRESS objCBAddress = objectCB->GetGPUVirtualAddress() + ri->ObjCBIndex * objCBByteSize;
 		D3D12_GPU_VIRTUAL_ADDRESS matCBAddress = matCB->GetGPUVirtualAddress() + ri->Mat->MatCBIndex * matCBByteSize;
 
-		auto diffuseSrv = GetGpuSrv(ri->Mat->DiffuseSrvHeapIndex);
-		auto normalSrv = GetGpuSrv(ri->Mat->NormalSrvHeapIndex);
-		auto heightSrv = GetGpuSrv(ri->Mat->HeightSrvHeapIndex);
-
-		cmdList->SetGraphicsRootDescriptorTable(0, diffuseSrv);
-		cmdList->SetGraphicsRootDescriptorTable(1, normalSrv);
-		cmdList->SetGraphicsRootDescriptorTable(2, heightSrv);
+		cmdList->SetGraphicsRootDescriptorTable(0, GetGpuSrv(ri->Mat->DiffuseSrvHeapIndex));
+		cmdList->SetGraphicsRootDescriptorTable(1, GetGpuSrv(ri->Mat->NormalSrvHeapIndex));
+		cmdList->SetGraphicsRootDescriptorTable(2, GetGpuSrv(ri->Mat->HeightSrvHeapIndex));
 
 		cmdList->SetGraphicsRootConstantBufferView(3, objCBAddress);
 		//cmdList->SetGraphicsRootConstantBufferView(4, passCBAddress);
@@ -1522,10 +1518,7 @@ void RenderingSystem::DrawSkyBox()
 		D3D12_GPU_VIRTUAL_ADDRESS objCBAddress = objectCB->GetGPUVirtualAddress() + ri->ObjCBIndex * objCBByteSize;
 		D3D12_GPU_VIRTUAL_ADDRESS matCBAddress = matCB->GetGPUVirtualAddress() + ri->Mat->MatCBIndex * matCBByteSize;
 
-
-		auto diffuseSrv = GetGpuSrv(ri->Mat->DiffuseSrvHeapIndex);
-
-		mCommandList->SetGraphicsRootDescriptorTable(0, diffuseSrv);
+		mCommandList->SetGraphicsRootDescriptorTable(0, GetGpuSrv(ri->Mat->DiffuseSrvHeapIndex));
 		mCommandList->SetGraphicsRootConstantBufferView(3, objCBAddress);
 		mCommandList->SetGraphicsRootConstantBufferView(5, matCBAddress);
 
@@ -1587,13 +1580,9 @@ void RenderingSystem::DrawShadowMaps()
 			D3D12_GPU_VIRTUAL_ADDRESS matCBAddress = matCB->GetGPUVirtualAddress() + ri->Mat->MatCBIndex * matCBByteSize;
 			D3D12_GPU_VIRTUAL_ADDRESS lightCBAddress = lightCB->GetGPUVirtualAddress() + i->LightCBIndex * lightCBByteSize;
 
-			auto diffuseSrv = GetGpuSrv(ri->Mat->DiffuseSrvHeapIndex);
-			auto normalSrv = GetGpuSrv(ri->Mat->NormalSrvHeapIndex);
-			auto heightSrv = GetGpuSrv(ri->Mat->HeightSrvHeapIndex);
-
-			mCommandList->SetGraphicsRootDescriptorTable(0, diffuseSrv);
-			mCommandList->SetGraphicsRootDescriptorTable(1, normalSrv);
-			mCommandList->SetGraphicsRootDescriptorTable(2, heightSrv);
+			mCommandList->SetGraphicsRootDescriptorTable(0, GetGpuSrv(ri->Mat->DiffuseSrvHeapIndex));
+			mCommandList->SetGraphicsRootDescriptorTable(1, GetGpuSrv(ri->Mat->NormalSrvHeapIndex));
+			mCommandList->SetGraphicsRootDescriptorTable(2, GetGpuSrv(ri->Mat->HeightSrvHeapIndex));
 
 			mCommandList->SetGraphicsRootConstantBufferView(3, objCBAddress);
 			mCommandList->SetGraphicsRootConstantBufferView(4, lightCBAddress);
