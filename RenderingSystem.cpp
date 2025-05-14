@@ -622,9 +622,10 @@ void RenderingSystem::BuildRootSignatures()
 	CD3DX12_ROOT_PARAMETER slotRootParameter[4];
 
 	slotRootParameter[0].InitAsDescriptorTable(1, &texTable, D3D12_SHADER_VISIBILITY_ALL);
-	slotRootParameter[1].InitAsConstantBufferView(0);
-	slotRootParameter[2].InitAsConstantBufferView(1);
-	slotRootParameter[3].InitAsConstantBufferView(2);
+
+	slotRootParameter[1].InitAsConstantBufferView(0); //ObjectCB
+	slotRootParameter[2].InitAsConstantBufferView(1); //MainPassCB
+	slotRootParameter[3].InitAsConstantBufferView(2); //MaterialCB
 
 	auto staticSamplers = GetStaticSamplers();
 
@@ -655,21 +656,17 @@ void RenderingSystem::BuildRootSignatures()
 	CD3DX12_DESCRIPTOR_RANGE lightPassTexTable;
 	lightPassTexTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 5, 0);
 
-	// Root parameter can be a table, root descriptor or root constants.
-	CD3DX12_ROOT_PARAMETER lightPassSlotRootParameter[4];
+	CD3DX12_ROOT_PARAMETER lightPassSlotRootParameter[3];
 
 	// Perfomance TIP: Order from most frequent to least frequent.
 	lightPassSlotRootParameter[0].InitAsDescriptorTable(1, &lightPassTexTable, D3D12_SHADER_VISIBILITY_PIXEL);
-	lightPassSlotRootParameter[1].InitAsConstantBufferView(0); //for MainPassCB
-	lightPassSlotRootParameter[2].InitAsConstantBufferView(1); //for LightItems
-	lightPassSlotRootParameter[3].InitAsShaderResourceView(5);
+	lightPassSlotRootParameter[1].InitAsConstantBufferView(0); //MainPassCB
+	lightPassSlotRootParameter[2].InitAsConstantBufferView(1); //LightCB
 
-	// A root signature is an array of root parameters.
-	CD3DX12_ROOT_SIGNATURE_DESC lightPassRootSigDesc(4, lightPassSlotRootParameter,
+	CD3DX12_ROOT_SIGNATURE_DESC lightPassRootSigDesc(3, lightPassSlotRootParameter,
 		0, nullptr,
 		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
-	// create a root signature with a single slot which points to a descriptor range consisting of a single constant buffer
 	ComPtr<ID3DBlob> serializedLightPassRootSig = nullptr;
 	ComPtr<ID3DBlob> lightPassErrorBlob = nullptr;
 	HRESULT lightPassHr = D3D12SerializeRootSignature(&lightPassRootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1,
@@ -677,7 +674,7 @@ void RenderingSystem::BuildRootSignatures()
 
 	if (lightPassErrorBlob != nullptr)
 	{
-		::OutputDebugStringA((char*)lightPassErrorBlob->GetBufferPointer());
+		OutputDebugStringA((char*)lightPassErrorBlob->GetBufferPointer());
 	}
 	ThrowIfFailed(lightPassHr);
 
@@ -687,35 +684,6 @@ void RenderingSystem::BuildRootSignatures()
 		serializedLightPassRootSig->GetBufferSize(),
 		IID_PPV_ARGS(RootSignatures["DeferredLightPass"].GetAddressOf())));
 
-	// For skyboxes
-
-
-	CD3DX12_ROOT_PARAMETER SkyBoxSlotRootParameter[3];
-
-	SkyBoxSlotRootParameter[0].InitAsShaderResourceView(0, 1); // for skybox texture
-	SkyBoxSlotRootParameter[1].InitAsConstantBufferView(0); // for objectCB
-	SkyBoxSlotRootParameter[2].InitAsConstantBufferView(1); //for MainPassCB
-
-	CD3DX12_ROOT_SIGNATURE_DESC SkyBoxRootSigDesc(3, SkyBoxSlotRootParameter,
-		(UINT)staticSamplers.size(), staticSamplers.data(),
-		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
-
-	ComPtr<ID3DBlob> serializedSkyBoxRootSig = nullptr;
-	ComPtr<ID3DBlob> SkyBoxErrorBlob = nullptr;
-	HRESULT SkyBoxHr = D3D12SerializeRootSignature(&SkyBoxRootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1,
-		serializedSkyBoxRootSig.GetAddressOf(), SkyBoxErrorBlob.GetAddressOf());
-
-	if (SkyBoxErrorBlob != nullptr)
-	{
-		::OutputDebugStringA((char*)SkyBoxErrorBlob->GetBufferPointer());
-	}
-	ThrowIfFailed(SkyBoxHr);
-
-	ThrowIfFailed(md3dDevice->CreateRootSignature(
-		0,
-		serializedSkyBoxRootSig->GetBufferPointer(),
-		serializedSkyBoxRootSig->GetBufferSize(),
-		IID_PPV_ARGS(RootSignatures["SkyBox"].GetAddressOf())));
 }
 
 void RenderingSystem::BuildDescriptorHeap(Material* t)

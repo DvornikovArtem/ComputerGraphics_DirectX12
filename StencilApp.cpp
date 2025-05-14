@@ -15,7 +15,7 @@ public:
     StencilApp(const StencilApp& rhs) = delete;
     StencilApp& operator=(const StencilApp& rhs) = delete;
     ~StencilApp() {
-        for (auto& pair : mAllObjects)
+        for (auto& pair : mAllDrawableObjects)
             delete pair.second;
     };
 
@@ -88,7 +88,7 @@ bool StencilApp::Initialize()
     mRenderingSystem->FinishInitialize();
 
     //init update of all objects
-    for (auto& i : mAllObjects) { DrawableObjectUpdateList.push_back(i.second); }
+    for (auto& i : mAllDrawableObjects) { DrawableObjectUpdateList.push_back(i.second); }
     for (auto& i : mAllLightObjects) { LightObjectUpdateList.push_back(i.second); }
 
 
@@ -107,8 +107,8 @@ void StencilApp::Update(const GameTimer& gt)
 
     //Set NeedsUpdate for every object that changes its values at runtime
 
-    mAllObjects["Head"]->WorldRotation.y = gt.TotalTime();
-    DrawableObjectUpdateList.push_back(mAllObjects["Head"]);
+    mAllDrawableObjects["Head"]->WorldRotation.y = gt.TotalTime();
+    DrawableObjectUpdateList.push_back(mAllDrawableObjects["Head"]);
 
     mAllLightObjects["Spot1"]->Color = { 0.5f + 0.5f * cos(gt.TotalTime()) , 0.5f + 0.5f * cos(gt.TotalTime() + 1) , 0.5f + 0.5f * cos(gt.TotalTime() + 4) };
     LightObjectUpdateList.push_back(mAllLightObjects["Spot1"]);
@@ -295,7 +295,7 @@ void StencilApp::MakeDrawableObjects()
     Svidetel->WorldLocation = XMFLOAT3(1.5f, 0.f, 0.f);
     Svidetel->Scale = XMFLOAT3(2.f, 2.f, 2.f);
 
-    mAllObjects[Svidetel->Name] = Svidetel;
+    mAllDrawableObjects[Svidetel->Name] = Svidetel;
 
     DrawableObject* SkyBoxSphere = new DrawableObject();
     SkyBoxSphere->Name = "SkyBoxSphere";
@@ -304,7 +304,7 @@ void StencilApp::MakeDrawableObjects()
     SkyBoxSphere->renderLayer = RenderLayer::Sky;
     SkyBoxSphere->Scale = XMFLOAT3(5000.0f, 5000.0f, 5000.0f);
 
-    mAllObjects[SkyBoxSphere->Name] = SkyBoxSphere;
+    mAllDrawableObjects[SkyBoxSphere->Name] = SkyBoxSphere;
 
     DrawableObject* TesselationTestSphere = new DrawableObject();
     TesselationTestSphere->Name = "TesselationTestSphere";
@@ -315,7 +315,7 @@ void StencilApp::MakeDrawableObjects()
     TesselationTestSphere->Scale = XMFLOAT3(2.5f, 2.5f, 2.5f);
     TesselationTestSphere->TexTransform = XMMatrixScaling(5.0f, 5.0f, 1.0f);
 
-    mAllObjects[TesselationTestSphere->Name] = TesselationTestSphere;
+    mAllDrawableObjects[TesselationTestSphere->Name] = TesselationTestSphere;
 
     DrawableObject* DecalTestCylinder = new DrawableObject();
     DecalTestCylinder->Name = "DecalTestCylinder";
@@ -326,7 +326,7 @@ void StencilApp::MakeDrawableObjects()
     DecalTestCylinder->Scale = XMFLOAT3(5.0f, 5.0f, 5.0f);
     DecalTestCylinder->TexTransform = XMMatrixScaling(5.0f, 5.0f, 1.0f);
 
-    mAllObjects[DecalTestCylinder->Name] = DecalTestCylinder;
+    mAllDrawableObjects[DecalTestCylinder->Name] = DecalTestCylinder;
 
 
     DrawableObject* Floor = new DrawableObject();
@@ -337,7 +337,7 @@ void StencilApp::MakeDrawableObjects()
     Floor->Scale = XMFLOAT3(5.0f, 1.0f, 5.0f);
     Floor->TexTransform = XMMatrixScaling(50.0f, 50.0f, 1.0f);
 
-    mAllObjects[Floor->Name] = Floor;
+    mAllDrawableObjects[Floor->Name] = Floor;
 
     DrawableObject* Head = new DrawableObject();
     Head->Name = "Head";
@@ -346,7 +346,7 @@ void StencilApp::MakeDrawableObjects()
     Head->renderLayer = RenderLayer::Opaque;
     Head->WorldLocation = XMFLOAT3(0.f, 2.f, 0.f);
 
-    mAllObjects[Head->Name] = Head;
+    mAllDrawableObjects[Head->Name] = Head;
 
     DrawableObject* Patrick = new DrawableObject();
     Patrick->Name = "Patrick";
@@ -355,9 +355,9 @@ void StencilApp::MakeDrawableObjects()
     Patrick->renderLayer = RenderLayer::Opaque;
     Patrick->WorldLocation = XMFLOAT3(-4.0f, 2.0f, 0.0f);
 
-    mAllObjects[Patrick->Name] = Patrick;
+    mAllDrawableObjects[Patrick->Name] = Patrick;
 
-    mRenderingSystem->BuildRenderItems(mAllObjects);
+    mRenderingSystem->BuildRenderItems(mAllDrawableObjects);
 }
 
 void StencilApp::MakeLights()

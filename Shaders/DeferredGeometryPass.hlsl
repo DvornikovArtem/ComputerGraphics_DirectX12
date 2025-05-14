@@ -9,7 +9,7 @@ SamplerState gsamLinearClamp      : register(s3);
 SamplerState gsamAnisotropicWrap  : register(s4);
 SamplerState gsamAnisotropicClamp : register(s5);
 
-// Constant data that varies per frame.
+// Constant data that varies per object
 cbuffer cbPerObject : register(b0)
 {
     float4x4 gWorld;
@@ -17,7 +17,7 @@ cbuffer cbPerObject : register(b0)
     float gTesselationFactor;
 };
 
-// Constant data that varies per material.
+// Constant data that varies per frame
 cbuffer cbPass : register(b1)
 {
     float4x4 gView;
@@ -44,6 +44,7 @@ cbuffer cbPass : register(b1)
     float4 Decals[3];
 };
 
+// Constant data that varies per material
 cbuffer cbMaterial : register(b2)
 {
 	float4   gDiffuseAlbedo;
