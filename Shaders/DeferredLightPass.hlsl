@@ -107,7 +107,7 @@ float CalcShadowFactor(float4 shadowPosH)
 {
     // Complete projection by doing division by w.
     shadowPosH.xyz /= shadowPosH.w;
-
+    
     // Depth in NDC space.
     float depth = shadowPosH.z;
 
@@ -125,14 +125,15 @@ float CalcShadowFactor(float4 shadowPosH)
         float2(-dx, +dx), float2(0.0f, +dx), float2(dx, +dx)
     };
 
+    //lowered PCF sample count here to avoid jittered shadows
     [unroll]
-    for (int i = 0; i < 9; ++i)
+    for (int i = 0; i < 6; ++i)
     {
         percentLit += gShadowMap.SampleCmpLevelZero(gShadowSampler,
             shadowPosH.xy + offsets[i], depth).r;
     }
     
-    return percentLit / 9.0f;
+    return percentLit / 6.0f;
 }
 
 float4 PS(VertexOut pin) : SV_Target
@@ -151,7 +152,7 @@ float4 PS(VertexOut pin) : SV_Target
     float MatRoughness = MatParams.w;
     float3 Normal = NormalChannel.rgb;
     
-    
+    float4 ShadowPos = mul(float4(WorldPosition, 1.f), ShadowTransform);
     
     // Vector from point being lit to eye.
     float3 toEyeW = gEyePosW - WorldPosition;
@@ -162,8 +163,11 @@ float4 PS(VertexOut pin) : SV_Target
     Material mat = { Diffuse, MatFresnelR0, shininess };
     
     float3 shadowFactor = float3(1.0f, 1.0f, 1.0f);
-    //shadowFactor[0] = CalcShadowFactor(ShadowPos);
-
+    shadowFactor.x = shadowFactor.y = shadowFactor.z = CalcShadowFactor(ShadowPos);
+    
+    if (CurrentLight.LightType == 1)
+        shadowFactor = 1.f;
+    
     float3 directLight;
     
     //discard if there is no geometry in Gbuffer at current pixel

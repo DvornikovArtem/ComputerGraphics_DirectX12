@@ -102,7 +102,7 @@ void RenderingSystem::FinishInitialize()
 {
 	CreateRtvAndDsvDescriptorHeaps();
 
-	mGbuffer->Channel0SRVHeapIndex = TexDescsLength + MPRTextures.size() + 1 + 1;
+	mGbuffer->Channel0SRVHeapIndex = TexDescsLength + MPRTextures.size() + 1;
 
 	//copy GBuffer SRVs into main SRVHeap
 	md3dDevice->CopyDescriptorsSimple(mGbuffer->NumBuffers, GetCpuSrv(mGbuffer->Channel0SRVHeapIndex),
@@ -112,7 +112,7 @@ void RenderingSystem::FinishInitialize()
 	int k = 0;
 	for (auto& litem : mAllLights) {
 		litem->shadowMap->BuildDescriptors(GetCpuSrv(TexDescsLength + MPRTextures.size() + 1 + mGbuffer->NumBuffers + k), GetGpuSrv(TexDescsLength + MPRTextures.size() + 1 + mGbuffer->NumBuffers + k), GetDsv(1 + k));
-		litem->shadowMap->SRVHeapIndex = TexDescsLength + MPRTextures.size() + 1 + k;
+		litem->shadowMap->SRVHeapIndex = TexDescsLength + MPRTextures.size() + 1 + mGbuffer->NumBuffers + k;
 		k++;
 	}
 
@@ -847,7 +847,7 @@ void RenderingSystem::UpdateLightCBs(const GameTimer& gt)
 {
 	auto currObjectCB = mCurrFrameResource->LightCB.get();
 
-	float SphereRadius = 10;
+	float SphereRadius = 100;
 	float lightAngle;
 
 	XMVECTOR lightDir;
