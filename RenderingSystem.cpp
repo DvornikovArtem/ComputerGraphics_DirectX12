@@ -1238,6 +1238,9 @@ void RenderingSystem::BuildPSOs(MaterialDesc& MDesc, std::unordered_map<std::str
 		reinterpret_cast<BYTE*>(mShaders["ShadowOpaquePS"]->GetBufferPointer()),
 		mShaders["ShadowOpaquePS"]->GetBufferSize()
 	};
+	ShadowMapPSODesc.HS = { nullptr, 0 };
+	ShadowMapPSODesc.DS = { nullptr, 0 };
+	ShadowMapPSODesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 
 	// Shadow map pass does not have a render target.
 	ShadowMapPSODesc.NumRenderTargets = 0;
@@ -1600,7 +1603,8 @@ void RenderingSystem::DrawShadowMaps()
 		// Note the active PSO also must specify a render target count of 0.
 		mCommandList->OMSetRenderTargets(0, nullptr, false, &i->shadowMap->Dsv());
 
-		// Bind the pass constant buffer for the shadow map pass.
+		mCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
 		UINT lightCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(Light));
 		auto lightCB = mCurrFrameResource->LightCB->Resource();
 
@@ -1612,10 +1616,9 @@ void RenderingSystem::DrawShadowMaps()
 		for (size_t j = 0; j < mRitemLayer[(int)RenderLayer::Opaque].size(); ++j)
 		{
 			auto& ri = mRitemLayer[(int)RenderLayer::Opaque][j];
-			if (!ri->IsInViewFrustum) continue;
+
 			mCommandList->IASetVertexBuffers(0, 1, &ri->Geo->VertexBufferView());
 			mCommandList->IASetIndexBuffer(&ri->Geo->IndexBufferView());
-			mCommandList->IASetPrimitiveTopology(ri->Mat->UseTesselation ? D3D_PRIMITIVE_TOPOLOGY_3_CONTROL_POINT_PATCHLIST : D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 			mCommandList->SetPipelineState(ri->Mat->PSOs["ShadowOpaque"].Get());
 
 			ID3D12DescriptorHeap* descriptorHeaps[] = { mSrvDescriptorHeap.Get() };
