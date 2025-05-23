@@ -24,9 +24,10 @@ cbuffer cbPerLight : register(b1)
 {
     Light CurrentLight;
     float4x4 World;
-    float4x4 View;
-    float4x4 Proj;
-    float4x4 ShadowTransform;
+    float4x4 View[6];
+    float4x4 Proj[6];
+    float4x4 ShadowTransform[6];
+    float4 CascadeDistances;
 }
 
 cbuffer cbMaterial : register(b2)
@@ -68,7 +69,7 @@ DS_VS_OUTPUT_PS_INPUT VS(VS_INPUT vin)
     vout.Tangent = normalize(mul(vin.Tangent, (float3x3) gWorld));
 
     // Transform to homogeneous clip space.
-    vout.PosCS = mul(posW, mul(View, Proj));
+    vout.PosCS = mul(posW, mul(View[0], Proj[0]));
 	
 	// Output vertex attributes for interpolation across triangle.
 	float4 texC = mul(float4(vin.TexC, 0.0f, 1.0f), gTexTransform);

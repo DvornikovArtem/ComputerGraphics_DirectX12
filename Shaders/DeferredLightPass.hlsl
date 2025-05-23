@@ -7,7 +7,7 @@ Texture2D   gNormalMap      : register(t2);
 Texture2D   gMaterialAlbedoMap : register(t3);
 Texture2D   gMaterialFresnelRoughnessMap : register(t4);
 
-Texture2D gShadowMap : register(t5);
+Texture2DArray gShadowMap : register(t5);
 
 SamplerComparisonState gShadowSampler : register(s0);
 
@@ -43,9 +43,10 @@ cbuffer cbPerLight : register(b1)
 {
     Light CurrentLight;
     float4x4 gWorld;
-    float4x4 View;
-    float4x4 Proj;
-    float4x4 ShadowTransform;
+    float4x4 View[6];
+    float4x4 Proj[6];
+    float4x4 ShadowTransform[6];
+    float4 CascadeDistances;
 }
 
 
@@ -111,8 +112,8 @@ float CalcShadowFactor(float4 shadowPosH)
     // Depth in NDC space.
     float depth = shadowPosH.z;
 
-    uint width, height, numMips;
-    gShadowMap.GetDimensions(0, width, height, numMips);
+    uint width, height, numLayers, numMips;
+    gShadowMap.GetDimensions(0, width, height, numLayers, numMips);
 
     // Texel size.
     float dx = 1.0f / (float) width;
@@ -130,7 +131,7 @@ float CalcShadowFactor(float4 shadowPosH)
     for (int i = 0; i < 6; ++i)
     {
         percentLit += gShadowMap.SampleCmpLevelZero(gShadowSampler,
-            shadowPosH.xy + offsets[i], depth).r;
+            float3(shadowPosH.xy + offsets[i], 0), depth).r;
     }
     
     return percentLit / 6.0f;
@@ -152,7 +153,7 @@ float4 PS(VertexOut pin) : SV_Target
     float MatRoughness = MatParams.w;
     float3 Normal = NormalChannel.rgb;
     
-    float4 ShadowPos = mul(float4(WorldPosition, 1.f), ShadowTransform);
+    float4 ShadowPos = mul(float4(WorldPosition, 1.f), ShadowTransform[0]);
     
     // Vector from point being lit to eye.
     float3 toEyeW = gEyePosW - WorldPosition;

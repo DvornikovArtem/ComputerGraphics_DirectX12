@@ -45,6 +45,7 @@ public:
 	void OnResize(UINT newWidth, UINT newHeight);
 
 	int SRVHeapIndex = 0;
+	int BufferCount = 6;
 
 private:
 	void BuildDescriptors();

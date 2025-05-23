@@ -81,19 +81,22 @@ void ShadowMap::BuildDescriptors()
 	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
 	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 	srvDesc.Format = DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
-	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-	srvDesc.Texture2D.MostDetailedMip = 0;
-	srvDesc.Texture2D.MipLevels = 1;
-	srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
-	srvDesc.Texture2D.PlaneSlice = 0;
+	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DARRAY;
+	srvDesc.Texture2DArray.MostDetailedMip = 0;
+	srvDesc.Texture2DArray.MipLevels = 1;
+	srvDesc.Texture2DArray.ResourceMinLODClamp = 0.0f;
+	srvDesc.Texture2DArray.PlaneSlice = 0;
+	srvDesc.Texture2DArray.ArraySize = BufferCount;
 	md3dDevice->CreateShaderResourceView(mShadowMapResource.Get(), &srvDesc, mhCpuSrv);
 
 	// Create DSV to resource so we can render to the shadow map.
 	D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc;
 	dsvDesc.Flags = D3D12_DSV_FLAG_NONE;
-	dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+	dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2DARRAY;
 	dsvDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
-	dsvDesc.Texture2D.MipSlice = 0;
+	dsvDesc.Texture2DArray.MipSlice = 0;
+	dsvDesc.Texture2DArray.ArraySize = BufferCount;
+	dsvDesc.Texture2DArray.FirstArraySlice = 0;
 	md3dDevice->CreateDepthStencilView(mShadowMapResource.Get(), &dsvDesc, mhCpuDsv);
 }
 
@@ -111,7 +114,7 @@ void ShadowMap::BuildResource()
 	texDesc.Alignment = 0;
 	texDesc.Width = mWidth;
 	texDesc.Height = mHeight;
-	texDesc.DepthOrArraySize = 1;
+	texDesc.DepthOrArraySize = BufferCount;
 	texDesc.MipLevels = 1;
 	texDesc.Format = mFormat;
 	texDesc.SampleDesc.Count = 1;

@@ -196,9 +196,9 @@ void StencilApp::LoadShaders()
     std::vector<ShaderDesc> ShaderDescs = 
     {
         //has prebuilt shaders "standardVS(PS/HS/DS)", "SkyBoxVS(PS)"
-        ShaderDesc("RotatingTilesPS", L"../Shaders/DeferredGeometryPass.hlsl", "PS", defines, "ps_5_0"),
-        ShaderDesc("HSForDecals", L"../Shaders/DeferredGeometryPass.hlsl", "HSForDecals", nullptr, "hs_5_0"),
-        ShaderDesc("DSForDecals", L"../Shaders/DeferredGeometryPass.hlsl", "DSForDecals", nullptr, "ds_5_0"),
+        ShaderDesc("RotatingTilesPS", L"../Shaders/DeferredGeometryPass.hlsl", "PS", defines, "ps_5_1"),
+        ShaderDesc("HSForDecals", L"../Shaders/DeferredGeometryPass.hlsl", "HSForDecals", nullptr, "hs_5_1"),
+        ShaderDesc("DSForDecals", L"../Shaders/DeferredGeometryPass.hlsl", "DSForDecals", nullptr, "ds_5_1"),
     };
 
     mRenderingSystem->BuildShaders(ShaderDescs);

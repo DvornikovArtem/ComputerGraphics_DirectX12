@@ -883,26 +883,88 @@ void RenderingSystem::UpdateLightCBs(const GameTimer& gt)
 			switch (e->LightType)
 			{
 			case LightType::Directional:
-				lightDir = XMLoadFloat3(&e->WorldDirection);
-				lightPos = -2.0f * SphereRadius * lightDir;
-				targetPos = XMVectorZero();
-				lightView = XMMatrixLookAtLH(lightPos, targetPos, lightUp);
+			{
+				float cascadeDistances[4] = { 10.0f, 30.0f, 100.0f, 300.0f };
+				float cameraNearZ = mCamera.GetNearZ();
+				float cameraFarZ = mCamera.GetFarZ();
+				int shadowMapSize = 2048;
 
-				// Transform bounding sphere to light space.
-				sphereCenterLS;
-				XMStoreFloat3(&sphereCenterLS, XMVector3TransformCoord(targetPos, lightView));
+				XMMATRIX cameraView = mCamera.GetView();
 
-				// Ortho frustum in light space encloses scene.
-				l = sphereCenterLS.x - SphereRadius;
-				b = sphereCenterLS.y - SphereRadius;
-				n = sphereCenterLS.z - SphereRadius;
-				r = sphereCenterLS.x + SphereRadius;
-				t = sphereCenterLS.y + SphereRadius;
-				f = sphereCenterLS.z + SphereRadius;
+				for (int cascadeIndex = 0; cascadeIndex < 4; ++cascadeIndex)
+				{
+					// Вычисляем ближнюю и дальнюю плоскости для текущего каскада
+					float nearPlane = (cascadeIndex == 0) ? cameraNearZ : cascadeDistances[cascadeIndex - 1];
+					float farPlane = cascadeDistances[cascadeIndex];
 
-				lightProj = XMMatrixOrthographicOffCenterLH(l, r, b, t, n, f);
+					// 1. Создаём модифицированную матрицу проекции для текущего каскада
+					XMMATRIX cameraProj = XMMatrixPerspectiveFovLH(
+						mCamera.GetFovY(), mCamera.GetAspect(), nearPlane, farPlane);
 
-				S = lightView * lightProj * T;
+					// 2. Вычисляем frustum corners в мировом пространстве
+					XMVECTOR frustumCornersWS[8];
+					XMMATRIX invViewProj = XMMatrixInverse(nullptr, cameraView * cameraProj);
+
+					static const XMVECTOR ndcCorners[8] = {
+						{-1, -1, 0, 1}, { 1, -1, 0, 1}, { 1,  1, 0, 1}, {-1,  1, 0, 1}, // near plane
+						{-1, -1, 1, 1}, { 1, -1, 1, 1}, { 1,  1, 1, 1}, {-1,  1, 1, 1}  // far plane
+					};
+
+					for (int i = 0; i < 8; ++i)
+					{
+						XMVECTOR v = XMVector4Transform(ndcCorners[i], invViewProj);
+						frustumCornersWS[i] = v / XMVectorGetW(v);
+					}
+
+					// 3. Находим центр и радиус AABB (лучше чем сфера)
+					XMVECTOR minPt = XMVectorSet(FLT_MAX, FLT_MAX, FLT_MAX, FLT_MAX);
+					XMVECTOR maxPt = XMVectorSet(-FLT_MAX, -FLT_MAX, -FLT_MAX, -FLT_MAX);
+
+					for (int i = 0; i < 8; ++i)
+					{
+						minPt = XMVectorMin(minPt, frustumCornersWS[i]);
+						maxPt = XMVectorMax(maxPt, frustumCornersWS[i]);
+					}
+
+					XMVECTOR centerWS = (minPt + maxPt) * 0.5f;
+					XMVECTOR radiusVec = (maxPt - minPt) * 0.5f;
+					float radius = max(XMVectorGetX(radiusVec), max(XMVectorGetY(radiusVec), XMVectorGetZ(radiusVec)));
+
+					// 4. Вычисляем позицию источника света с выравниванием по текселям
+					lightDir = XMLoadFloat3(&e->WorldDirection);
+					lightPos = centerWS - lightDir * radius;
+					lightUp = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+					lightView = XMMatrixLookAtLH(lightPos, centerWS, lightUp);
+
+					// 5. Создаем ортографическую проекцию с небольшим запасом
+					float worldUnitsPerTexel = radius * 2.0f / shadowMapSize;
+					XMMATRIX lightProj = XMMatrixOrthographicOffCenterLH(
+						-radius, radius,
+						-radius, radius,
+						-radius, radius);
+
+					// 6. Выравнивание по текселям для стабилизации теней
+					XMVECTOR shadowOrigin = XMVector3TransformCoord(XMVectorZero(), lightView * lightProj);
+					shadowOrigin *= (shadowMapSize / 2.0f);
+
+					XMVECTOR roundedOrigin = XMVectorRound(shadowOrigin);
+					XMVECTOR roundOffset = roundedOrigin - shadowOrigin;
+					roundOffset *= (2.0f / shadowMapSize);
+					roundOffset = XMVectorSetZ(roundOffset, 0.0f);
+					roundOffset = XMVectorSetW(roundOffset, 0.0f);
+
+					lightProj.r[3] = XMVectorAdd(lightProj.r[3], roundOffset);
+
+					// Сохраняем матрицы
+					XMStoreFloat4x4(&LightConstants.View[4 - cascadeIndex], XMMatrixTranspose(lightView));
+					XMStoreFloat4x4(&LightConstants.Proj[4 - cascadeIndex], XMMatrixTranspose(lightProj));
+
+					XMMATRIX S = lightView * lightProj * T;
+					XMStoreFloat4x4(&LightConstants.ShadowTransform[4 - cascadeIndex], XMMatrixTranspose(S));
+
+					//LightConstants.CascadeDistances[cascadeIndex] = farPlane;
+				}
+			}
 				break;
 
 			case LightType::Spotlight:
@@ -915,6 +977,10 @@ void RenderingSystem::UpdateLightCBs(const GameTimer& gt)
 				lightProj = XMMatrixPerspectiveFovLH(XM_PI/6, 1.0f, 10.f, e->FalloffEnd);
 
 				S = lightView * lightProj * T;
+
+				XMStoreFloat4x4(&LightConstants.View[0], XMMatrixTranspose(lightView));
+				XMStoreFloat4x4(&LightConstants.Proj[0], XMMatrixTranspose(lightProj));
+				XMStoreFloat4x4(&LightConstants.ShadowTransform[0], XMMatrixTranspose(S));
 				break;
 
 			case LightType::Pointlight:
@@ -946,14 +1012,14 @@ void RenderingSystem::UpdateLightCBs(const GameTimer& gt)
 				{
 					targetPos = lightPos + directions[i];
 					lightView = XMMatrixLookAtLH(lightPos, targetPos, ups[i]);
+					S = lightView * lightProj * T;
+					XMStoreFloat4x4(&LightConstants.View[i], XMMatrixTranspose(lightView));
+					XMStoreFloat4x4(&LightConstants.Proj[i], XMMatrixTranspose(lightProj));
+					XMStoreFloat4x4(&LightConstants.ShadowTransform[i], XMMatrixTranspose(S));
 				}
-				S = lightView * lightProj * T;
 				break;
 			}
 
-			XMStoreFloat4x4(&LightConstants.View, XMMatrixTranspose(lightView));
-			XMStoreFloat4x4(&LightConstants.Proj, XMMatrixTranspose(lightProj));
-			XMStoreFloat4x4(&LightConstants.ShadowTransform, XMMatrixTranspose(S));
 			XMStoreFloat4x4(&LightConstants.World, XMMatrixTranspose(XMLoadFloat4x4(&e->World)));
 
 			currObjectCB->CopyData(e->LightCBIndex, LightConstants);
@@ -2029,24 +2095,24 @@ void RenderingSystem::BuildShaders(std::vector<ShaderDesc>& ShaderDescs)
 	}
 
 	//standard shaders for deferred geometry rendering
-	mShaders["standardVS"] = d3dUtil::CompileShader(L"../Shaders/DeferredGeometryPass.hlsl", nullptr, "VS", "vs_5_0");
-	mShaders["standardPS"] = d3dUtil::CompileShader(L"../Shaders/DeferredGeometryPass.hlsl", nullptr, "PS", "ps_5_0");
-	mShaders["standardHS"] = d3dUtil::CompileShader(L"../Shaders/DeferredGeometryPass.hlsl", nullptr, "HSMain", "hs_5_0");
-	mShaders["standardDS"] = d3dUtil::CompileShader(L"../Shaders/DeferredGeometryPass.hlsl", nullptr, "DSMain", "ds_5_0");
+	mShaders["standardVS"] = d3dUtil::CompileShader(L"../Shaders/DeferredGeometryPass.hlsl", nullptr, "VS", "vs_5_1");
+	mShaders["standardPS"] = d3dUtil::CompileShader(L"../Shaders/DeferredGeometryPass.hlsl", nullptr, "PS", "ps_5_1");
+	mShaders["standardHS"] = d3dUtil::CompileShader(L"../Shaders/DeferredGeometryPass.hlsl", nullptr, "HSMain", "hs_5_1");
+	mShaders["standardDS"] = d3dUtil::CompileShader(L"../Shaders/DeferredGeometryPass.hlsl", nullptr, "DSMain", "ds_5_1");
 
 	//standard shaders for deferred light rendering
-	mShaders["DeferredLightPassVS_FSQuad"] = d3dUtil::CompileShader(L"../Shaders/DeferredLightPass.hlsl", nullptr, "VS_FSQuad", "vs_5_0");
-	mShaders["DeferredLightPassVS_Bounded"] = d3dUtil::CompileShader(L"../Shaders/DeferredLightPass.hlsl", nullptr, "VS_Bounded", "vs_5_0");
-	mShaders["DeferredLightPassPS"] = d3dUtil::CompileShader(L"../Shaders/DeferredLightPass.hlsl", nullptr, "PS", "ps_5_0");
-	mShaders["DeferredLightPassPS_AddAmbient"] = d3dUtil::CompileShader(L"../Shaders/DeferredLightPass.hlsl", nullptr, "PS_AddAmbient", "ps_5_0");
+	mShaders["DeferredLightPassVS_FSQuad"] = d3dUtil::CompileShader(L"../Shaders/DeferredLightPass.hlsl", nullptr, "VS_FSQuad", "vs_5_1");
+	mShaders["DeferredLightPassVS_Bounded"] = d3dUtil::CompileShader(L"../Shaders/DeferredLightPass.hlsl", nullptr, "VS_Bounded", "vs_5_1");
+	mShaders["DeferredLightPassPS"] = d3dUtil::CompileShader(L"../Shaders/DeferredLightPass.hlsl", nullptr, "PS", "ps_5_1");
+	mShaders["DeferredLightPassPS_AddAmbient"] = d3dUtil::CompileShader(L"../Shaders/DeferredLightPass.hlsl", nullptr, "PS_AddAmbient", "ps_5_1");
 
 	//for skybox rendering
-	mShaders["SkyBoxVS"] = d3dUtil::CompileShader(L"../Shaders/SkyBox.hlsl", nullptr, "VS", "vs_5_0");
-	mShaders["SkyBoxPS"] = d3dUtil::CompileShader(L"../Shaders/SkyBox.hlsl", nullptr, "PS", "ps_5_0");
+	mShaders["SkyBoxVS"] = d3dUtil::CompileShader(L"../Shaders/SkyBox.hlsl", nullptr, "VS", "vs_5_1");
+	mShaders["SkyBoxPS"] = d3dUtil::CompileShader(L"../Shaders/SkyBox.hlsl", nullptr, "PS", "ps_5_1");
 
 	//for shadowmap geometry generation
-	mShaders["ShadowOpaqueVS"] = d3dUtil::CompileShader(L"../Shaders/Shadows.hlsl", nullptr, "VS", "vs_5_0");
-	mShaders["ShadowOpaquePS"] = d3dUtil::CompileShader(L"../Shaders/Shadows.hlsl", nullptr, "PS", "ps_5_0");
+	mShaders["ShadowOpaqueVS"] = d3dUtil::CompileShader(L"../Shaders/Shadows.hlsl", nullptr, "VS", "vs_5_1");
+	mShaders["ShadowOpaquePS"] = d3dUtil::CompileShader(L"../Shaders/Shadows.hlsl", nullptr, "PS", "ps_5_1");
 }
 
 void RenderingSystem::BuildBasicGeometry()
