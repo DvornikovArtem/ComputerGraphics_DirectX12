@@ -228,6 +228,10 @@ struct Light
     DirectX::XMFLOAT3 Color = { 1.f, 1.f, 1.f };
     int LightType = 1; //0 - directional; 1 - point; 2 - spot
     DirectX::XMFLOAT4X4 World = MathHelper::Identity4x4();
+    DirectX::XMFLOAT4X4 View[6];
+    DirectX::XMFLOAT4X4 Proj[6];
+    DirectX::XMFLOAT4X4 ShadowTransform[6];
+    DirectX::XMFLOAT4 CascadeDistances;
 };
 
 struct MaterialConstants
@@ -273,9 +277,6 @@ struct Material
 	DirectX::XMFLOAT4X4 MatTransform = MathHelper::Identity4x4();
 
     std::unordered_map<std::string, Microsoft::WRL::ComPtr<ID3D12PipelineState>> PSOs;
-
-    //Descriptor Heap, containing all current Texture Descs
-    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> mSrvDescriptorHeap = nullptr;
 
 };
 

@@ -1,6 +1,4 @@
 TextureCube gDiffuseMap : register(t0);
-Texture2D gNormalMap : register(t1);
-Texture2D gHeightMap : register(t2);
 
 SamplerState gsamPointWrap : register(s0);
 SamplerState gsamPointClamp : register(s1);
@@ -42,14 +40,6 @@ cbuffer cbPass : register(b1)
     float2 cbPerObjectPad2;
     
     float4 Decals[3];
-};
-
-cbuffer cbMaterial : register(b2)
-{
-    float4 gDiffuseAlbedo;
-    float3 gFresnelR0;
-    float gRoughness;
-    float4x4 gMatTransform;
 };
 
 struct VertexIn

@@ -160,7 +160,7 @@ public:
 
     ~RenderingSystem()
     {
-        delete mOctTree;
+           delete mOctTree;
 
         for (auto& pair : mGeometries)
             delete pair.second;
@@ -190,6 +190,7 @@ public:
 
 
     void Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer* gt);
+    void FinishInitialize();
     void OnResize();
 
     void LogAdapters();
@@ -198,7 +199,6 @@ public:
     void CreateSwapChain();
     void CreateRtvAndDsvDescriptorHeaps();
     void BuildRootSignatures();
-    void BuildDescriptorHeap(Material* t);
 
     void UpdateObjectCBs(const GameTimer& gt);
 
@@ -233,6 +233,11 @@ public:
     void GBufferGeometryPass();
     void GBufferLightPass();
 
+    CD3DX12_CPU_DESCRIPTOR_HANDLE GetCpuSrv(int index)const;
+    CD3DX12_GPU_DESCRIPTOR_HANDLE RenderingSystem::GetGpuSrv(int index)const;
+    CD3DX12_CPU_DESCRIPTOR_HANDLE RenderingSystem::GetDsv(int index)const;
+    CD3DX12_CPU_DESCRIPTOR_HANDLE RenderingSystem::GetRtv(int index)const;
+
     // For Debug System ===============================================================================
     D3D12_CPU_DESCRIPTOR_HANDLE GetCurrentRTV() const override { return CurrentBackBufferView(); }
     D3D12_CPU_DESCRIPTOR_HANDLE GetDSV() const override { return DepthStencilView(); }
@@ -241,6 +246,8 @@ public:
     // =================================================================================================
 
     void DrawSkyBox();
+
+    void DrawShadowMaps();
 
     void Render();
 
@@ -353,6 +360,8 @@ protected:
 
     //holds generated textures to be added in main texture pipeline later
     std::vector<Texture*> MPRTextures;
+
+    UINT TexDescsLength;
 };
 
 

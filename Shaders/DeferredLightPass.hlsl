@@ -7,6 +7,10 @@ Texture2D   gNormalMap      : register(t2);
 Texture2D   gMaterialAlbedoMap : register(t3);
 Texture2D   gMaterialFresnelRoughnessMap : register(t4);
 
+Texture2DArray gShadowMaps : register(t5);
+
+SamplerComparisonState gShadowSampler : register(s0);
+
 // Constant data that varies per frame.
 cbuffer cbPass : register(b0)
 {
@@ -39,6 +43,10 @@ cbuffer cbPerLight : register(b1)
 {
     Light CurrentLight;
     float4x4 gWorld;
+    float4x4 View[6];
+    float4x4 Proj[6];
+    float4x4 ShadowTransform[6];
+    float4 CascadeDistances;
 }
 
 
@@ -96,6 +104,64 @@ float3 ReconstructWorldPosition(float2 UV, float depth)
     return viewPos.xyz;
 }
 
+float CalcShadowFactor(float3 WorldPosition, float3 Normal, uint ShadowMapIndex)
+{
+    float4 shadowPosH = mul(float4(WorldPosition, 1.f), ShadowTransform[ShadowMapIndex]);
+    
+    // Complete projection by doing division by w.
+    shadowPosH.xyz /= shadowPosH.w;
+    
+    // Depth in NDC space.
+    float depth = shadowPosH.z;
+
+    uint width, height, numLayers, numMips;
+    gShadowMaps.GetDimensions(0, width, height, numLayers, numMips);
+
+    // Slope-Scaled Depth Bias
+    float3 lightDir = normalize(-CurrentLight.Direction);
+    float slopeBias = 0.005 * tan(acos(saturate(dot(Normal, lightDir))));
+    slopeBias = clamp(slopeBias, 0.001, 0.05);
+    float biasedDepth = depth - (0.001 + slopeBias);
+    
+    //PCF
+    float dx = 1.f / (float) width;
+
+    float percentLit = 0.0f;
+    float totalWeight = 0.0f;
+    const float2 offsets[9] =
+    {
+        float2(-dx, -dx), float2(0.0f, -dx), float2(dx, -dx),
+        float2(-dx, 0.0f), float2(0.0f, 0.0f), float2(dx, 0.0f),
+        float2(-dx, +dx), float2(0.0f, +dx), float2(dx, +dx)
+    };
+
+    // Weights for smoother filtering
+    const float weights[9] =
+    {
+        0.0625, 0.125, 0.0625,
+        0.125, 0.25, 0.125,
+        0.0625, 0.125, 0.0625
+    };
+
+    [unroll]
+    for (int i = 0; i < 9; ++i)
+    {
+        float2 sampleCoord = shadowPosH.xy + offsets[i];
+        
+        // Skip samples outside the shadow map
+        if (sampleCoord.x >= 0.f && sampleCoord.x <= 1.f &&
+            sampleCoord.y >= 0.f && sampleCoord.y <= 1.f)
+        {
+            percentLit += gShadowMaps.SampleCmpLevelZero(gShadowSampler,
+                float3(sampleCoord, ShadowMapIndex), biasedDepth).r * weights[i];
+            totalWeight += weights[i];
+        }
+    }
+    
+    // Normalize by actual weight sum (in case some samples were skipped)
+    return totalWeight > 0 ? percentLit / totalWeight : 1.0f;
+}
+
 float4 PS(VertexOut pin) : SV_Target
 {
     float2 UV = pin.PosH.xy / gRenderTargetSize;
@@ -119,33 +185,62 @@ float4 PS(VertexOut pin) : SV_Target
 
     const float shininess = 1.0f - MatRoughness;
     Material mat = { Diffuse, MatFresnelR0, shininess };
-    float3 shadowFactor = 1.0f;
-    float3 directLight;
     
     //discard if there is no geometry in Gbuffer at current pixel
     if (length(Normal) < 0.01f)
         discard;
     
+    float3 Lighting;
+    
     //calculate light based on its type
-    if(CurrentLight.LightType == 0)
+    if (CurrentLight.LightType == 0)
     {
-        directLight = shadowFactor * ComputeDirectionalLight(CurrentLight, mat, Normal, toEyeW) * CurrentLight.Color;
+        //using cascaded shadow maps
+        
+        // finding first cascade with that casts a shadow
+        float shadowFactor = 1.f;
+        float distanceFromEye = length(WorldPosition - gEyePosW);
+    
+        for (uint cascade = 0; cascade < 4; cascade++)
+        {
+            float factor = CalcShadowFactor(WorldPosition, Normal, cascade);
+            if(factor < 0.3f)
+            {
+                shadowFactor = factor;
+                break;
+            }     
+        }
+    
+        Lighting = shadowFactor * ComputeDirectionalLight(CurrentLight, mat, Normal, toEyeW) * CurrentLight.Color;
     }
     else if (CurrentLight.LightType == 1)
     {
-        if (length(CurrentLight.Position - WorldPosition) > (CurrentLight.Strength.x * 7))
+        if (length(CurrentLight.Position - WorldPosition) > (CurrentLight.Strength.x * 10))
             discard;
         
-        directLight = shadowFactor * ComputePointLight(CurrentLight, mat, WorldPosition, Normal, toEyeW) * CurrentLight.Color;
-        //return float4(UV, 0.f, 1.f);
+        float3 lightToPixel = WorldPosition - CurrentLight.Position;
+        float distToLight = length(lightToPixel);
+        lightToPixel /= distToLight;
+    
+        // determine shadow map cube face index
+        float3 absDir = abs(lightToPixel);
+        uint faceIndex = 0;
+        if (absDir.x >= absDir.y && absDir.x >= absDir.z)
+            faceIndex = (lightToPixel.x > 0) ? 0 : 1;
+        else if (absDir.y >= absDir.z)
+            faceIndex = (lightToPixel.y > 0) ? 2 : 3;
+        else
+            faceIndex = (lightToPixel.z > 0) ? 4 : 5;
+        
+        Lighting = CalcShadowFactor(WorldPosition, Normal, faceIndex) * ComputePointLight(CurrentLight, mat, WorldPosition, Normal, toEyeW) * CurrentLight.Color;
     }
     else if(CurrentLight.LightType == 2)
     {
-        directLight = shadowFactor * ComputeSpotLight(CurrentLight, mat, WorldPosition, Normal, toEyeW) * CurrentLight.Color;
-        //return float4(UV, 0.f, 1.f);
+        // no cascades or complex maps here. using shadow map 0
+        Lighting = CalcShadowFactor(WorldPosition, Normal, 0) * ComputeSpotLight(CurrentLight, mat, WorldPosition, Normal, toEyeW) * CurrentLight.Color;
     }
 
-    float4 litColor = float4(directLight, 0.f);
+    float4 litColor = float4(Lighting, 0.f);
 
     litColor.a = Diffuse.a;
 
