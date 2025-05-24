@@ -215,7 +215,7 @@ float4 PS(VertexOut pin) : SV_Target
     }
     else if (CurrentLight.LightType == 1)
     {
-        if (length(CurrentLight.Position - WorldPosition) > (CurrentLight.Strength.x * 7))
+        if (length(CurrentLight.Position - WorldPosition) > (CurrentLight.Strength.x * 10))
             discard;
         
         float3 lightToPixel = WorldPosition - CurrentLight.Position;

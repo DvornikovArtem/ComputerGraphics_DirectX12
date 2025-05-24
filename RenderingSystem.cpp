@@ -808,7 +808,7 @@ void RenderingSystem::UpdateLightItems(std::vector<LightObject*>& mAllLightObjec
 		switch (e->LightType)
 		{
 		case LightType::Pointlight:
-			SphereRadius = 7.f * e->Strength;
+			SphereRadius = 10.f * e->Strength;
 			XMStoreFloat4x4(&e->World, XMMatrixScaling(SphereRadius, SphereRadius, SphereRadius) *
 				XMMatrixTranslation(e->WorldLocation.x, e->WorldLocation.y, e->WorldLocation.z));
 			break;
