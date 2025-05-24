@@ -48,7 +48,6 @@ struct VS_INPUT
 
 struct DS_VS_OUTPUT_PS_INPUT
 {
-    float4 PosCS   : SV_POSITION;
     float3 PosW    : POSITION;
     float2 TexC    : TEXCOORD;
     float3 Normal  : NORMAL;
@@ -67,9 +66,6 @@ DS_VS_OUTPUT_PS_INPUT VS(VS_INPUT vin)
     vout.Normal = normalize(mul(vin.Normal, (float3x3) gWorld));
     
     vout.Tangent = normalize(mul(vin.Tangent, (float3x3) gWorld));
-
-    // Transform to homogeneous clip space.
-    vout.PosCS = mul(posW, mul(View[0], Proj[0]));
 	
 	// Output vertex attributes for interpolation across triangle.
 	float4 texC = mul(float4(vin.TexC, 0.0f, 1.0f), gTexTransform);
@@ -78,8 +74,67 @@ DS_VS_OUTPUT_PS_INPUT VS(VS_INPUT vin)
     return vout;
 }
 
+struct GS_OUT
+{
+    float4 PosCS : SV_Position;
+    uint ArrInd : SV_RenderTargetArrayIndex;
+    float2 TexC : TEXCOORD;
+};
+
+[instance(6)]
+[maxvertexcount(3)]
+void GS(triangle DS_VS_OUTPUT_PS_INPUT p[3], in uint id : SV_GSInstanceID, inout TriangleStream<GS_OUT> stream)
+{
+    if(CurrentLight.LightType == 0)
+    {
+        // draw 4 cascades for directional lights
+        
+        //first 4 instances only
+        if (id > 3)
+            return;
+        
+        for (int i = 0; i < 3; i++)
+        {
+            GS_OUT Out;
+            Out.PosCS = mul(float4(p[i].PosW.xyz, 1.f), mul(View[id], Proj[id]));
+            Out.TexC = p[i].TexC;
+            Out.ArrInd = id;
+            stream.Append(Out);
+        }
+    }
+    else if (CurrentLight.LightType == 1)
+    {
+        // draw 6 sides of shadow map cube for point lights
+        for (int i = 0; i < 3; i++)
+        {
+            GS_OUT Out;
+            Out.PosCS = mul(float4(p[i].PosW.xyz, 1.f), mul(View[id], Proj[id]));
+            Out.TexC = p[i].TexC;
+            Out.ArrInd = id;
+            stream.Append(Out);
+        }
+    }
+    else if (CurrentLight.LightType == 2)
+    {
+        //no cascades for spot lights
+        
+        //first instance only
+        if (id != 0)
+            return;
+        
+        for (int i = 0; i < 3; i++)
+        {
+            GS_OUT Out;
+            Out.PosCS = mul(float4(p[i].PosW.xyz, 1.f), mul(View[0], Proj[0]));
+            Out.TexC = p[i].TexC;
+            Out.ArrInd = 0;
+            stream.Append(Out);
+        }
+    }
+}
+
 //might need to add proper PS here
-void PS(DS_VS_OUTPUT_PS_INPUT pin)
+void PS(GS_OUT pin)
 {
     
     float2 uv = pin.TexC;

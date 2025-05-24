@@ -231,7 +231,7 @@ struct Light
     DirectX::XMFLOAT4X4 View[6];
     DirectX::XMFLOAT4X4 Proj[6];
     DirectX::XMFLOAT4X4 ShadowTransform[6];
-    DirectX::XMFLOAT4 CascadeDistances = { 10.0f, 30.0f, 100.0f, 300.0f };
+    DirectX::XMFLOAT4 CascadeDistances;
 };
 
 struct MaterialConstants

@@ -584,6 +584,7 @@ void RenderingSystem::CreateRtvAndDsvDescriptorHeaps()
 
 	CD3DX12_CPU_DESCRIPTOR_HANDLE hDescriptor(DepthStencilView());
 	
+
 	D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc;
 	dsvDesc.Flags = D3D12_DSV_FLAG_NONE;
 	dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
@@ -846,8 +847,6 @@ void RenderingSystem::UpdateLightItems(std::vector<LightObject*>& mAllLightObjec
 void RenderingSystem::UpdateLightCBs(const GameTimer& gt)
 {
 	auto currObjectCB = mCurrFrameResource->LightCB.get();
-
-	float SphereRadius = 100;
 	float lightAngle;
 
 	XMVECTOR lightDir;
@@ -884,85 +883,34 @@ void RenderingSystem::UpdateLightCBs(const GameTimer& gt)
 			{
 			case LightType::Directional:
 			{
-				float cascadeDistances[4] = { 10.0f, 30.0f, 100.0f, 300.0f };
-				float cameraNearZ = mCamera.GetNearZ();
-				float cameraFarZ = mCamera.GetFarZ();
-				int shadowMapSize = 2048;
-
-				XMMATRIX cameraView = mCamera.GetView();
-
-				for (int cascadeIndex = 0; cascadeIndex < 4; ++cascadeIndex)
+				float SphereRadiuses[4] = { 400, 150, 50, 10 };
+				//for each cascade
+				for (int i = 0; i < 4; i++)
 				{
-					// Вычисляем ближнюю и дальнюю плоскости для текущего каскада
-					float nearPlane = (cascadeIndex == 0) ? cameraNearZ : cascadeDistances[cascadeIndex - 1];
-					float farPlane = cascadeDistances[cascadeIndex];
-
-					// 1. Создаём модифицированную матрицу проекции для текущего каскада
-					XMMATRIX cameraProj = XMMatrixPerspectiveFovLH(
-						mCamera.GetFovY(), mCamera.GetAspect(), nearPlane, farPlane);
-
-					// 2. Вычисляем frustum corners в мировом пространстве
-					XMVECTOR frustumCornersWS[8];
-					XMMATRIX invViewProj = XMMatrixInverse(nullptr, cameraView * cameraProj);
-
-					static const XMVECTOR ndcCorners[8] = {
-						{-1, -1, 0, 1}, { 1, -1, 0, 1}, { 1,  1, 0, 1}, {-1,  1, 0, 1}, // near plane
-						{-1, -1, 1, 1}, { 1, -1, 1, 1}, { 1,  1, 1, 1}, {-1,  1, 1, 1}  // far plane
-					};
-
-					for (int i = 0; i < 8; ++i)
-					{
-						XMVECTOR v = XMVector4Transform(ndcCorners[i], invViewProj);
-						frustumCornersWS[i] = v / XMVectorGetW(v);
-					}
-
-					// 3. Находим центр и радиус AABB (лучше чем сфера)
-					XMVECTOR minPt = XMVectorSet(FLT_MAX, FLT_MAX, FLT_MAX, FLT_MAX);
-					XMVECTOR maxPt = XMVectorSet(-FLT_MAX, -FLT_MAX, -FLT_MAX, -FLT_MAX);
-
-					for (int i = 0; i < 8; ++i)
-					{
-						minPt = XMVectorMin(minPt, frustumCornersWS[i]);
-						maxPt = XMVectorMax(maxPt, frustumCornersWS[i]);
-					}
-
-					XMVECTOR centerWS = (minPt + maxPt) * 0.5f;
-					XMVECTOR radiusVec = (maxPt - minPt) * 0.5f;
-					float radius = max(XMVectorGetX(radiusVec), max(XMVectorGetY(radiusVec), XMVectorGetZ(radiusVec)));
-
-					// 4. Вычисляем позицию источника света с выравниванием по текселям
 					lightDir = XMLoadFloat3(&e->WorldDirection);
-					lightPos = centerWS - lightDir * radius;
-					lightUp = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
-					lightView = XMMatrixLookAtLH(lightPos, centerWS, lightUp);
+					lightPos = mCamera.GetPosition() - 2.0f * SphereRadiuses[i] * lightDir;
+					targetPos = mCamera.GetPosition();
+					lightView = XMMatrixLookAtLH(lightPos, targetPos, lightUp);
 
-					// 5. Создаем ортографическую проекцию с небольшим запасом
-					float worldUnitsPerTexel = radius * 2.0f / shadowMapSize;
-					XMMATRIX lightProj = XMMatrixOrthographicOffCenterLH(
-						-radius, radius,
-						-radius, radius,
-						-radius, radius);
+					// Transform bounding sphere to light space.
+					sphereCenterLS;
+					XMStoreFloat3(&sphereCenterLS, XMVector3TransformCoord(targetPos, lightView));
 
-					// 6. Выравнивание по текселям для стабилизации теней
-					XMVECTOR shadowOrigin = XMVector3TransformCoord(XMVectorZero(), lightView * lightProj);
-					shadowOrigin *= (shadowMapSize / 2.0f);
+					// Ortho frustum in light space encloses cascade.
+					l = sphereCenterLS.x - SphereRadiuses[i];
+					b = sphereCenterLS.y - SphereRadiuses[i];
+					n = sphereCenterLS.z - SphereRadiuses[i];
+					r = sphereCenterLS.x + SphereRadiuses[i];
+					t = sphereCenterLS.y + SphereRadiuses[i];
+					f = sphereCenterLS.z + SphereRadiuses[i];
 
-					XMVECTOR roundedOrigin = XMVectorRound(shadowOrigin);
-					XMVECTOR roundOffset = roundedOrigin - shadowOrigin;
-					roundOffset *= (2.0f / shadowMapSize);
-					roundOffset = XMVectorSetZ(roundOffset, 0.0f);
-					roundOffset = XMVectorSetW(roundOffset, 0.0f);
+					lightProj = XMMatrixOrthographicOffCenterLH(l, r, b, t, n, f);
 
-					lightProj.r[3] = XMVectorAdd(lightProj.r[3], roundOffset);
-
-					// Сохраняем матрицы
-					XMStoreFloat4x4(&LightConstants.View[4 - cascadeIndex], XMMatrixTranspose(lightView));
-					XMStoreFloat4x4(&LightConstants.Proj[4 - cascadeIndex], XMMatrixTranspose(lightProj));
-
-					XMMATRIX S = lightView * lightProj * T;
-					XMStoreFloat4x4(&LightConstants.ShadowTransform[4 - cascadeIndex], XMMatrixTranspose(S));
-
-					//LightConstants.CascadeDistances[cascadeIndex] = farPlane;
+					S = lightView * lightProj * T;
+					XMStoreFloat4x4(&LightConstants.View[i], XMMatrixTranspose(lightView));
+					XMStoreFloat4x4(&LightConstants.Proj[i], XMMatrixTranspose(lightProj));
+					XMStoreFloat4x4(&LightConstants.ShadowTransform[i], XMMatrixTranspose(S));
+					XMStoreFloat4(&LightConstants.CascadeDistances, XMVectorSet(SphereRadiuses[0], SphereRadiuses[1], SphereRadiuses[2], SphereRadiuses[3]));
 				}
 			}
 				break;
@@ -986,7 +934,7 @@ void RenderingSystem::UpdateLightCBs(const GameTimer& gt)
 			case LightType::Pointlight:
 				lightPos = XMLoadFloat3(&e->WorldLocation);
 
-				lightProj = XMMatrixPerspectiveFovLH(XM_PIDIV2, 1.0f, 0.1f, e->FalloffEnd);
+				lightProj = XMMatrixPerspectiveFovLH(XM_PIDIV2, 1.0f, 0.1f, e->FalloffEnd / 4);
 
 				static const XMVECTOR directions[6] =
 				{
@@ -1303,6 +1251,11 @@ void RenderingSystem::BuildPSOs(MaterialDesc& MDesc, std::unordered_map<std::str
 	{
 		reinterpret_cast<BYTE*>(mShaders["ShadowOpaquePS"]->GetBufferPointer()),
 		mShaders["ShadowOpaquePS"]->GetBufferSize()
+	};
+	ShadowMapPSODesc.GS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["ShadowOpaqueGS"]->GetBufferPointer()),
+		mShaders["ShadowOpaqueGS"]->GetBufferSize()
 	};
 	ShadowMapPSODesc.HS = { nullptr, 0 };
 	ShadowMapPSODesc.DS = { nullptr, 0 };
@@ -2113,6 +2066,7 @@ void RenderingSystem::BuildShaders(std::vector<ShaderDesc>& ShaderDescs)
 	//for shadowmap geometry generation
 	mShaders["ShadowOpaqueVS"] = d3dUtil::CompileShader(L"../Shaders/Shadows.hlsl", nullptr, "VS", "vs_5_1");
 	mShaders["ShadowOpaquePS"] = d3dUtil::CompileShader(L"../Shaders/Shadows.hlsl", nullptr, "PS", "ps_5_1");
+	mShaders["ShadowOpaqueGS"] = d3dUtil::CompileShader(L"../Shaders/Shadows.hlsl", nullptr, "GS", "gs_5_1");
 }
 
 void RenderingSystem::BuildBasicGeometry()

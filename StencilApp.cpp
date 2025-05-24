@@ -113,6 +113,8 @@ void StencilApp::Update(const GameTimer& gt)
     mAllLightObjects["Spot1"]->Color = { 0.5f + 0.5f * cos(gt.TotalTime()) , 0.5f + 0.5f * cos(gt.TotalTime() + 1) , 0.5f + 0.5f * cos(gt.TotalTime() + 4) };
     LightObjectUpdateList.push_back(mAllLightObjects["Spot1"]);
 
+    LightObjectUpdateList.push_back(mAllLightObjects["Direct1"]);
+
     mRenderingSystem->Update(DrawableObjectUpdateList, LightObjectUpdateList);
 }
 
