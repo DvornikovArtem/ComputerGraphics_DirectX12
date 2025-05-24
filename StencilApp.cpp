@@ -115,6 +115,9 @@ void StencilApp::Update(const GameTimer& gt)
 
     LightObjectUpdateList.push_back(mAllLightObjects["Direct1"]);
 
+    mAllLightObjects["Point1"]->WorldLocation = { 1.f + sin(gt.TotalTime()) * 3, 2.f, 1.f + cos(gt.TotalTime()) * 3 };
+    LightObjectUpdateList.push_back(mAllLightObjects["Point1"]);
+
     mRenderingSystem->Update(DrawableObjectUpdateList, LightObjectUpdateList);
 }
 

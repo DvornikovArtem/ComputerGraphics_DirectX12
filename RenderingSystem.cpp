@@ -883,7 +883,7 @@ void RenderingSystem::UpdateLightCBs(const GameTimer& gt)
 			{
 			case LightType::Directional:
 			{
-				float SphereRadiuses[4] = { 400, 150, 50, 10 };
+				float SphereRadiuses[4] = { 10, 50, 150, 400 };
 				//for each cascade
 				for (int i = 0; i < 4; i++)
 				{
@@ -934,7 +934,7 @@ void RenderingSystem::UpdateLightCBs(const GameTimer& gt)
 			case LightType::Pointlight:
 				lightPos = XMLoadFloat3(&e->WorldLocation);
 
-				lightProj = XMMatrixPerspectiveFovLH(XM_PIDIV2, 1.0f, 0.1f, e->FalloffEnd / 4);
+				lightProj = XMMatrixPerspectiveFovLH(XM_PIDIV2, 1.0f, 0.1f, e->FalloffEnd);
 
 				static const XMVECTOR directions[6] =
 				{

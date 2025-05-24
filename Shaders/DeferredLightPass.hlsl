@@ -201,7 +201,7 @@ float4 PS(VertexOut pin) : SV_Target
         float shadowFactor = 1.f;
         float distanceFromEye = length(WorldPosition - gEyePosW);
     
-        for (uint cascade = 3; cascade > 0; cascade--)
+        for (uint cascade = 0; cascade < 4; cascade++)
         {
             float factor = CalcShadowFactor(WorldPosition, Normal, cascade);
             if(factor < 0.3f)
@@ -218,7 +218,21 @@ float4 PS(VertexOut pin) : SV_Target
         if (length(CurrentLight.Position - WorldPosition) > (CurrentLight.Strength.x * 7))
             discard;
         
-        Lighting = 1.f * ComputePointLight(CurrentLight, mat, WorldPosition, Normal, toEyeW) * CurrentLight.Color;
+        float3 lightToPixel = WorldPosition - CurrentLight.Position;
+        float distToLight = length(lightToPixel);
+        lightToPixel /= distToLight;
+    
+        // determine shadow map cube face index
+        float3 absDir = abs(lightToPixel);
+        uint faceIndex = 0;
+        if (absDir.x >= absDir.y && absDir.x >= absDir.z)
+            faceIndex = (lightToPixel.x > 0) ? 0 : 1;
+        else if (absDir.y >= absDir.z)
+            faceIndex = (lightToPixel.y > 0) ? 2 : 3;
+        else
+            faceIndex = (lightToPixel.z > 0) ? 4 : 5;
+        
+        Lighting = CalcShadowFactor(WorldPosition, Normal, faceIndex) * ComputePointLight(CurrentLight, mat, WorldPosition, Normal, toEyeW) * CurrentLight.Color;
     }
     else if(CurrentLight.LightType == 2)
     {
