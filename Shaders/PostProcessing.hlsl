@@ -73,6 +73,45 @@ float3 ReconstructWorldPosition(float2 UV, float depth)
     return viewPos.xyz;
 }
 
+float4 ChromaticAbberation(float2 UV)
+{
+    float2 gDistortionCenter = float2(0.5, 0.5);
+    float gAberrationStrength = 0.025f;
+    float gRadialScale = 2.f;
+    
+    float2 dir = UV - gDistortionCenter;
+    float distanceFromCenter = length(dir);
+    dir = normalize(dir);
+    
+    float distortion = gAberrationStrength * distanceFromCenter * gRadialScale;
+    
+    float edgeFade = 1.0 - smoothstep(0.7, 1.0, distanceFromCenter);
+    distortion *= edgeFade;
+    
+    // —мещение с ограничением координат
+    float2 uvRed = clamp(UV - dir * distortion * 1.0, 0.0, 1.0);
+    float2 uvGreen = clamp(UV - dir * distortion * 0.5, 0.0, 1.0);
+    float2 uvBlue = clamp(UV + dir * distortion * 1.0, 0.0, 1.0);
+    
+    // ѕреобразование в текстурные координаты с проверкой границ
+    uint2 texCoordRed = uint2(uvRed * gRenderTargetSize);
+    uint2 texCoordGreen = uint2(uvGreen * gRenderTargetSize);
+    uint2 texCoordBlue = uint2(uvBlue * gRenderTargetSize);
+    
+    // ѕроверка на выход за пределы текстуры
+    int3 coordRed = int3(clamp(texCoordRed, 0, gRenderTargetSize - 1), 0);
+    int3 coordGreen = int3(clamp(texCoordGreen, 0, gRenderTargetSize - 1), 0);
+    int3 coordBlue = int3(clamp(texCoordBlue, 0, gRenderTargetSize - 1), 0);
+    
+    // «агрузка данных с защитой от выхода за границы
+    float red = gDiffuseMap.Load(coordRed).r;
+    float green = gDiffuseMap.Load(coordGreen).g;
+    float blue = gDiffuseMap.Load(coordBlue).b;
+   
+    
+    return float4(red, green, blue, 1.0);
+}
+
 float4 PS(VertexOut pin) : SV_Target
 {
     uint2 TexelCoord = pin.PosH.xy;
@@ -86,6 +125,7 @@ float4 PS(VertexOut pin) : SV_Target
     float3 Normal = NormalChannel.rgb;
 
     //Do your cool post-processing here
+   
     
     return Color;
 }
