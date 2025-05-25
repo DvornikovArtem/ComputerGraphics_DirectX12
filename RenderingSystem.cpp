@@ -261,6 +261,7 @@ void RenderingSystem::Render()
 	// 1. Geometry: draw scene into G-buffer.
 	//
 	mGbuffer->TransitToOpaqueRenderingState(mCommandList);
+	mGbuffer->ClearRTVs(mCommandList);
 	GBufferGeometryPass();
 
 	//
@@ -269,12 +270,17 @@ void RenderingSystem::Render()
 	mGbuffer->TransitToLightsRenderingState(mCommandList);
 	GBufferLightPass();
 
-	mGbuffer->TransitFromShaderResourceToCommon(mCommandList);
 
 	//
 	//Draw SkyBox
 	//
 	DrawSkyBox();
+
+	//
+	// Post-Processing
+	//
+	mGbuffer->TransitToTonemappingState(mCommandList);
+	PostProcessingPass();
 
 	// Draw debug primitives
 	mDebugDrawer->Draw(
@@ -290,6 +296,8 @@ void RenderingSystem::Render()
 
 	// Clear
 	mDebugDrawer->Clear();
+
+	mGbuffer->TransitFromShaderResourceToCommon(mCommandList);
 
 
 	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
@@ -737,6 +745,36 @@ void RenderingSystem::BuildRootSignatures()
 		serializedLightPassRootSig->GetBufferSize(),
 		IID_PPV_ARGS(RootSignatures["DeferredLightPass"].GetAddressOf())));
 
+
+	//for post-processing
+
+	CD3DX12_ROOT_PARAMETER PPSlotRootParameter[4];
+
+	PPSlotRootParameter[0].InitAsConstantBufferView(0); //MainPassCB
+	PPSlotRootParameter[1].InitAsDescriptorTable(1, &texTable1, D3D12_SHADER_VISIBILITY_ALL); //GBufferChannels
+	PPSlotRootParameter[2].InitAsDescriptorTable(1, &texTable2, D3D12_SHADER_VISIBILITY_ALL);
+	PPSlotRootParameter[3].InitAsDescriptorTable(1, &texTable3, D3D12_SHADER_VISIBILITY_ALL);
+
+	CD3DX12_ROOT_SIGNATURE_DESC PPRootSigDesc(4, PPSlotRootParameter,
+		0, nullptr,
+		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+
+	ComPtr<ID3DBlob> serializedPProotSig = nullptr;
+	ComPtr<ID3DBlob> PPErrorBlob = nullptr;
+	HRESULT PPHr = D3D12SerializeRootSignature(&PPRootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1,
+		serializedPProotSig.GetAddressOf(), PPErrorBlob.GetAddressOf());
+
+	if (PPErrorBlob != nullptr)
+	{
+		OutputDebugStringA((char*)PPErrorBlob->GetBufferPointer());
+	}
+	ThrowIfFailed(PPHr);
+
+	ThrowIfFailed(md3dDevice->CreateRootSignature(
+		0,
+		serializedPProotSig->GetBufferPointer(),
+		serializedPProotSig->GetBufferSize(),
+		IID_PPV_ARGS(RootSignatures["PostProcessing"].GetAddressOf())));
 }
 
 void RenderingSystem::Update(std::vector<DrawableObject*>& mAllObjectsToUpdate, std::vector<LightObject*>& mAllLightObjectsToUpdate)
@@ -1277,14 +1315,12 @@ void RenderingSystem::BuildGlobalPSOs()
 	// PSO for GBuffer Light Pass
 	//
 
-	// Здесь можно создать дополнительные PSO для отложенного освещения и тонемаппинга.
-	// Например, PSO для расчёта освещения на основе G-buffer:
+
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC deferredPsoDesc = {};
 	// Поскольку для полноэкранного квадрата не нужен входной layout, оставляем его пустым:
 	deferredPsoDesc.InputLayout = { nullptr, 0 };
-	deferredPsoDesc.pRootSignature = RootSignatures["DeferredLightPass"].Get(); // либо создайте отдельную корневую сигнатуру для deferred рендера
+	deferredPsoDesc.pRootSignature = RootSignatures["DeferredLightPass"].Get();
 
-	// Загрузка шейдеров deferred освещения (предварительно скомпилированных, например, "DeferredLightVS.cso" и "DeferredLightPS.cso")
 	deferredPsoDesc.VS =
 	{
 		reinterpret_cast<BYTE*>(mShaders["DeferredLightPassVS_FSQuad"]->GetBufferPointer()),
@@ -1384,6 +1420,38 @@ void RenderingSystem::BuildGlobalPSOs()
 		mShaders["SkyBoxPS"]->GetBufferSize()
 	};
 	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&skyPsoDesc, IID_PPV_ARGS(&GlobalPSOs["SkyBox"])));
+
+	//
+	// PSO for Post-Processing
+	//
+
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC PPPsoDesc;
+
+	ZeroMemory(&PPPsoDesc, sizeof(D3D12_GRAPHICS_PIPELINE_STATE_DESC));
+	PPPsoDesc.InputLayout = { nullptr, 0 };
+	PPPsoDesc.pRootSignature = RootSignatures["PostProcessing"].Get();
+	PPPsoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+	PPPsoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+	PPPsoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+	PPPsoDesc.SampleMask = UINT_MAX;
+	PPPsoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	PPPsoDesc.NumRenderTargets = 1;
+	PPPsoDesc.RTVFormats[0] = mBackBufferFormat;
+	PPPsoDesc.SampleDesc.Count = 1;
+	PPPsoDesc.SampleDesc.Quality = 0;
+	PPPsoDesc.DSVFormat = mDepthStencilFormat;
+
+	PPPsoDesc.VS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["PPVS"]->GetBufferPointer()),
+		mShaders["PPVS"]->GetBufferSize()
+	};
+	PPPsoDesc.PS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["PPPS"]->GetBufferPointer()),
+		mShaders["PPPS"]->GetBufferSize()
+	};
+	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&PPPsoDesc, IID_PPV_ARGS(&GlobalPSOs["PostProcessing"])));
 
 }
 
@@ -1499,7 +1567,7 @@ void RenderingSystem::GBufferGeometryPass()
 void RenderingSystem::GBufferLightPass()
 {
 	mCommandList->SetGraphicsRootSignature(RootSignatures["DeferredLightPass"].Get());
-	mCommandList->OMSetRenderTargets(1, &CurrentBackBufferView(), false, &DepthStencilView());
+	mCommandList->OMSetRenderTargets(1, &mGbuffer->BloomRTV, false, &DepthStencilView());
 
 	UINT lightCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(Light));
 	UINT passCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(PassConstants));
@@ -1566,7 +1634,6 @@ void RenderingSystem::DrawSkyBox()
 	auto objectCB = mCurrFrameResource->ObjectCB->Resource();
 	auto matCB = mCurrFrameResource->MaterialCB->Resource();
 	auto passCB = mCurrFrameResource->PassCB->Resource();
-	mCommandList->OMSetRenderTargets(1, &CurrentBackBufferView(), true, &DepthStencilView());
 	mCommandList->SetGraphicsRootSignature(RootSignatures["Default"].Get());
 	mCommandList->SetPipelineState(GlobalPSOs["SkyBox"].Get());
 	mCommandList->SetGraphicsRootConstantBufferView(4, passCB->GetGPUVirtualAddress());
@@ -1671,6 +1738,29 @@ void RenderingSystem::DrawShadowMaps()
 		mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(i->shadowMap->Resource(),
 			D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_GENERIC_READ));
 	}
+}
+
+void RenderingSystem::PostProcessingPass()
+{
+	mCommandList->SetGraphicsRootSignature(RootSignatures["PostProcessing"].Get());
+	mCommandList->OMSetRenderTargets(1, &CurrentBackBufferView(), false, &DepthStencilView());
+	mCommandList->SetPipelineState(GlobalPSOs["PostProcessing"].Get());
+	mCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+	UINT passCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(PassConstants));
+	auto passCB = mCurrFrameResource->PassCB->Resource();
+
+	ID3D12DescriptorHeap* descriptorHeaps[] = { mSrvDescriptorHeap.Get() };
+	mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
+
+	mCommandList->SetGraphicsRootConstantBufferView(0, passCB->GetGPUVirtualAddress());
+
+	mCommandList->SetGraphicsRootDescriptorTable(1, GetGpuSrv(mGbuffer->Channel0SRVHeapIndex + 6));
+	mCommandList->SetGraphicsRootDescriptorTable(2, GetGpuSrv(mGbuffer->Channel0SRVHeapIndex + 1));
+	mCommandList->SetGraphicsRootDescriptorTable(3, GetGpuSrv(mGbuffer->Channel0SRVHeapIndex + 2));
+
+
+	mCommandList->DrawInstanced(6, 1, 0, 0);
 }
 
 void RenderingSystem::UpdateMaterialCBs(const GameTimer& gt)
@@ -2069,6 +2159,10 @@ void RenderingSystem::BuildShaders(std::vector<ShaderDesc>& ShaderDescs)
 	mShaders["ShadowOpaqueVS"] = d3dUtil::CompileShader(L"../Shaders/Shadows.hlsl", nullptr, "VS", "vs_5_1");
 	mShaders["ShadowOpaquePS"] = d3dUtil::CompileShader(L"../Shaders/Shadows.hlsl", nullptr, "PS", "ps_5_1");
 	mShaders["ShadowOpaqueGS"] = d3dUtil::CompileShader(L"../Shaders/Shadows.hlsl", nullptr, "GS", "gs_5_1");
+
+	//for post-processing
+	mShaders["PPVS"] = d3dUtil::CompileShader(L"../Shaders/PostProcessing.hlsl", nullptr, "VS_FSQuad", "vs_5_1");
+	mShaders["PPPS"] = d3dUtil::CompileShader(L"../Shaders/PostProcessing.hlsl", nullptr, "PS", "ps_5_1");
 }
 
 void RenderingSystem::BuildBasicGeometry()

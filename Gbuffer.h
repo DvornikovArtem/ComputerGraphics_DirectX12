@@ -52,16 +52,13 @@ public:
 
     ComPtr<ID3D12DescriptorHeap> getSRVDescriptorHeap() const { return m_SRVDescriptorHeap; }
 
-    void CopyDescriptors(D3D12_CPU_DESCRIPTOR_HANDLE otherStart);
-
-    void CopySRVDescriptors(D3D12_CPU_DESCRIPTOR_HANDLE otherStart);
-
     void TransitToOpaqueRenderingState(ComPtr<ID3D12GraphicsCommandList>& c);
     void TransitToLightsRenderingState(ComPtr<ID3D12GraphicsCommandList>& c);
     void TransitToTonemappingState(ComPtr<ID3D12GraphicsCommandList>& c);
     void TransitToCommon(ComPtr<ID3D12GraphicsCommandList>& c);
     void TransitFromRenderTargetToCommon(ComPtr<ID3D12GraphicsCommandList>& c);
     void TransitFromShaderResourceToCommon(ComPtr<ID3D12GraphicsCommandList>& c);
+    void ClearRTVs(ComPtr<ID3D12GraphicsCommandList>& cmdList);
 
     void Resize(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device> device);
 

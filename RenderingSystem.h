@@ -160,7 +160,7 @@ public:
 
     ~RenderingSystem()
     {
-           delete mOctTree;
+        if (mOctTree) delete mOctTree;
 
         for (auto& pair : mGeometries)
             delete pair.second;
@@ -185,7 +185,7 @@ public:
 
         mFrameResources.clear();
 
-        delete mDebugDrawer;
+        if(mDebugDrawer) delete mDebugDrawer;
     }
 
 
@@ -242,12 +242,12 @@ public:
     D3D12_CPU_DESCRIPTOR_HANDLE GetCurrentRTV() const override { return CurrentBackBufferView(); }
     D3D12_CPU_DESCRIPTOR_HANDLE GetDSV() const override { return DepthStencilView(); }
 
-    gfw::DebugRenderSysImpl* mDebugDrawer;
+    gfw::DebugRenderSysImpl* mDebugDrawer = nullptr;
     // =================================================================================================
 
     void DrawSkyBox();
-
     void DrawShadowMaps();
+    void PostProcessingPass();
 
     void Render();
 
@@ -356,7 +356,7 @@ protected:
 
     BoundingFrustum ViewFrustum;
 
-    OctTree* mOctTree;
+    OctTree* mOctTree = nullptr;
 
     //holds generated textures to be added in main texture pipeline later
     std::vector<Texture*> MPRTextures;

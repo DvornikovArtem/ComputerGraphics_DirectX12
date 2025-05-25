@@ -239,30 +239,11 @@ Gbuffer::Gbuffer(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device> dev
     md3dDevice = device;
 }
 
-// Копирование дескрипторов RTV в заданное расположение (например, в объединенную дескрипторную кучу).
-// В этом примере копируются только RTV-дескрипторы.
-void Gbuffer::CopyDescriptors(D3D12_CPU_DESCRIPTOR_HANDLE otherStart)
-{
-    ID3D12Device* device = md3dDevice.Get();
-    UINT rtvDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-    // Копируем все 7 RTV-дескрипторов из нашей кучки в предоставленное место.
-    device->CopyDescriptorsSimple(7, otherStart,
-        m_RTVDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
-        D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-}
-
-void Gbuffer::CopySRVDescriptors(D3D12_CPU_DESCRIPTOR_HANDLE otherStart)
-{
-    md3dDevice.Get()->CopyDescriptorsSimple(NumBuffers, otherStart,
-        m_SRVDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
-        D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-}
-
 // Переход к состоянию для отрисовки непрозрачных объектов.
 // Здесь переводим текстуры G-buffer (Diffuse, Emissive, Normal) в состояние RENDER_TARGET.
 void Gbuffer::TransitToOpaqueRenderingState(ComPtr<ID3D12GraphicsCommandList>& cmdList)
 {
-    CD3DX12_RESOURCE_BARRIER barriers[5];
+    CD3DX12_RESOURCE_BARRIER barriers[7];
     barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
         DiffuseTex.Get(),
         D3D12_RESOURCE_STATE_COMMON,
@@ -286,7 +267,15 @@ void Gbuffer::TransitToOpaqueRenderingState(ComPtr<ID3D12GraphicsCommandList>& c
         MaterialFresnelRoughnessTex.Get(),
         D3D12_RESOURCE_STATE_COMMON,
         D3D12_RESOURCE_STATE_RENDER_TARGET);
-    cmdList->ResourceBarrier(5, barriers);
+    barriers[5] = CD3DX12_RESOURCE_BARRIER::Transition(
+        AccumulationBuf.Get(),
+        D3D12_RESOURCE_STATE_COMMON,
+        D3D12_RESOURCE_STATE_RENDER_TARGET);
+    barriers[6] = CD3DX12_RESOURCE_BARRIER::Transition(
+        BloomTex.Get(),
+        D3D12_RESOURCE_STATE_COMMON,
+        D3D12_RESOURCE_STATE_RENDER_TARGET);
+    cmdList->ResourceBarrier(7, barriers);
 }
 
 // Переход к состоянию для отрисовки освещения.
@@ -294,7 +283,7 @@ void Gbuffer::TransitToOpaqueRenderingState(ComPtr<ID3D12GraphicsCommandList>& c
 // а также подготавливаем буферы Accumulation и Bloom для записи (RENDER_TARGET).
 void Gbuffer::TransitToLightsRenderingState(ComPtr<ID3D12GraphicsCommandList>& cmdList)
 {
-    CD3DX12_RESOURCE_BARRIER barriers[7];
+    CD3DX12_RESOURCE_BARRIER barriers[5];
     barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
         DiffuseTex.Get(),
         D3D12_RESOURCE_STATE_RENDER_TARGET,
@@ -315,15 +304,7 @@ void Gbuffer::TransitToLightsRenderingState(ComPtr<ID3D12GraphicsCommandList>& c
         MaterialFresnelRoughnessTex.Get(),
         D3D12_RESOURCE_STATE_RENDER_TARGET,
         D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-    barriers[5] = CD3DX12_RESOURCE_BARRIER::Transition(
-        AccumulationBuf.Get(),
-        D3D12_RESOURCE_STATE_COMMON,
-        D3D12_RESOURCE_STATE_RENDER_TARGET);
-    barriers[6] = CD3DX12_RESOURCE_BARRIER::Transition(
-        BloomTex.Get(),
-        D3D12_RESOURCE_STATE_COMMON,
-        D3D12_RESOURCE_STATE_RENDER_TARGET);
-    cmdList->ResourceBarrier(7, barriers);
+    cmdList->ResourceBarrier(5, barriers);
 }
 
 // Переход к состоянию для тонемаппинга.
@@ -427,13 +408,25 @@ void Gbuffer::TransitFromShaderResourceToCommon(ComPtr<ID3D12GraphicsCommandList
         D3D12_RESOURCE_STATE_PRESENT);
     barriers[5] = CD3DX12_RESOURCE_BARRIER::Transition(
         AccumulationBuf.Get(),
-        D3D12_RESOURCE_STATE_RENDER_TARGET,
+        D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
         D3D12_RESOURCE_STATE_PRESENT);
     barriers[6] = CD3DX12_RESOURCE_BARRIER::Transition(
         BloomTex.Get(),
-        D3D12_RESOURCE_STATE_RENDER_TARGET,
+        D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
         D3D12_RESOURCE_STATE_PRESENT);
     cmdList->ResourceBarrier(7, barriers);
+}
+
+void Gbuffer::ClearRTVs(ComPtr<ID3D12GraphicsCommandList>& cmdList)
+{
+    const FLOAT clearColor[] = { 0.0f, 0.0f, 0.0f, 1.0f };
+    cmdList->ClearRenderTargetView(DiffuseRTV, clearColor, 0, nullptr);
+    cmdList->ClearRenderTargetView(EmissiveRTV, clearColor, 0, nullptr);
+    cmdList->ClearRenderTargetView(NormalRTV, clearColor, 0, nullptr);
+    cmdList->ClearRenderTargetView(MaterialAlbedoRTV, clearColor, 0, nullptr);
+    cmdList->ClearRenderTargetView(MaterialFresnelRoughnessRTV, clearColor, 0, nullptr);
+    cmdList->ClearRenderTargetView(AccumulationRTV, clearColor, 0, nullptr);
+    cmdList->ClearRenderTargetView(BloomRTV, clearColor, 0, nullptr);
 }
 
 // Функция изменения размеров: освобождает текущие ресурсы и воссоздает их с новыми размерами.
