@@ -1885,6 +1885,33 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
 		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 		srvDesc.Format = tex->GetDesc().Format;
+		if (i.UseSRGB)
+		{
+			switch (srvDesc.Format)
+			{
+			case DXGI_FORMAT_R8G8B8A8_UNORM:
+				srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+				break;
+			case DXGI_FORMAT_BC1_UNORM:
+				srvDesc.Format = DXGI_FORMAT_BC1_UNORM_SRGB;
+				break;
+			case DXGI_FORMAT_BC2_UNORM:
+				srvDesc.Format = DXGI_FORMAT_BC2_UNORM_SRGB;
+				break;
+			case DXGI_FORMAT_BC3_UNORM:
+				srvDesc.Format = DXGI_FORMAT_BC3_UNORM_SRGB;
+				break;
+			case DXGI_FORMAT_B8G8R8A8_UNORM:
+				srvDesc.Format = DXGI_FORMAT_B8G8R8A8_UNORM_SRGB;
+				break;
+			case DXGI_FORMAT_B8G8R8X8_UNORM:
+				srvDesc.Format = DXGI_FORMAT_B8G8R8X8_UNORM_SRGB;
+				break;
+			case DXGI_FORMAT_BC7_UNORM:
+				srvDesc.Format = DXGI_FORMAT_BC7_UNORM_SRGB;
+				break;
+			}
+		}
 		switch (i.TexType)
 		{
 		case TextureDesc::Texture2D:
@@ -1923,6 +1950,30 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
 		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 		srvDesc.Format = tex->GetDesc().Format;
+		switch (srvDesc.Format)
+		{
+		case DXGI_FORMAT_R8G8B8A8_UNORM:
+			srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+			break;
+		case DXGI_FORMAT_BC1_UNORM:
+			srvDesc.Format = DXGI_FORMAT_BC1_UNORM_SRGB;
+			break;
+		case DXGI_FORMAT_BC2_UNORM:
+			srvDesc.Format = DXGI_FORMAT_BC2_UNORM_SRGB;
+			break;
+		case DXGI_FORMAT_BC3_UNORM:
+			srvDesc.Format = DXGI_FORMAT_BC3_UNORM_SRGB;
+			break;
+		case DXGI_FORMAT_B8G8R8A8_UNORM:
+			srvDesc.Format = DXGI_FORMAT_B8G8R8A8_UNORM_SRGB;
+			break;
+		case DXGI_FORMAT_B8G8R8X8_UNORM:
+			srvDesc.Format = DXGI_FORMAT_B8G8R8X8_UNORM_SRGB;
+			break;
+		case DXGI_FORMAT_BC7_UNORM:
+			srvDesc.Format = DXGI_FORMAT_BC7_UNORM_SRGB;
+			break;
+		}
 		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
 		srvDesc.Texture2D.MostDetailedMip = 0;
 		srvDesc.Texture2D.MipLevels = tex->GetDesc().MipLevels;

@@ -242,21 +242,21 @@ void StencilApp::LoadTextures()
     // DDS textures only
     std::vector<TextureDesc> TexDescs = 
     {
-        TextureDesc("bricksTex", L"../Textures/bricks3.dds", TextureDesc::Texture2D),
-        TextureDesc("checkboardTex", L"../Textures/checkboard.dds", TextureDesc::Texture2D),
-        TextureDesc("iceTex", L"../Textures/ice.dds", TextureDesc::Texture2D),
-        TextureDesc("white1x1Tex", L"../Textures/white1x1.dds", TextureDesc::Texture2D),
-        TextureDesc("AH_Diffuse", L"../Textures/african_head_diffuse.dds", TextureDesc::Texture2D),
-        TextureDesc("redTex", L"../Textures/rsq.dds", TextureDesc::Texture2D),
-        TextureDesc("woodCrateTex", L"../Textures/WoodCrate01.dds", TextureDesc::Texture2D),
-        TextureDesc("PatrickTex", L"../Textures/patrickstar.dds", TextureDesc::Texture2D),
-        TextureDesc("Semechki_Diffuse", L"../Textures/semente_BaseColor.dds", TextureDesc::Texture2D),
-        TextureDesc("Semechki_NormalMap", L"../Textures/semente_Normal.dds", TextureDesc::Texture2D),
-        TextureDesc("Semechki_HeightMap", L"../Textures/semente_Height.dds", TextureDesc::Texture2D),
-        TextureDesc("ShinyStones_Diffuse", L"../Textures/ShinyStones_Diffuse.dds", TextureDesc::Texture2D),
-        TextureDesc("ShinyStones_NormalMap", L"../Textures/ShinyStones_NormalMap.dds", TextureDesc::Texture2D),
-        TextureDesc("ShinyStones_HeightMap", L"../Textures/ShinyStones_HeightMap.dds", TextureDesc::Texture2D),
-        TextureDesc("SkyCubeMap", L"../Textures/snowcube1024.dds", TextureDesc::CubeMap),
+        TextureDesc("bricksTex", L"../Textures/bricks3.dds", TextureDesc::Texture2D, true),
+        TextureDesc("checkboardTex", L"../Textures/checkboard.dds", TextureDesc::Texture2D, true),
+        TextureDesc("iceTex", L"../Textures/ice.dds", TextureDesc::Texture2D, true),
+        TextureDesc("white1x1Tex", L"../Textures/white1x1.dds", TextureDesc::Texture2D, true),
+        TextureDesc("AH_Diffuse", L"../Textures/african_head_diffuse.dds", TextureDesc::Texture2D, true),
+        TextureDesc("redTex", L"../Textures/rsq.dds", TextureDesc::Texture2D, true),
+        TextureDesc("woodCrateTex", L"../Textures/WoodCrate01.dds", TextureDesc::Texture2D, true),
+        TextureDesc("PatrickTex", L"../Textures/patrickstar.dds", TextureDesc::Texture2D, true),
+        TextureDesc("Semechki_Diffuse", L"../Textures/semente_BaseColor.dds", TextureDesc::Texture2D, true),
+        TextureDesc("Semechki_NormalMap", L"../Textures/semente_Normal.dds", TextureDesc::Texture2D, false),
+        TextureDesc("Semechki_HeightMap", L"../Textures/semente_Height.dds", TextureDesc::Texture2D, false),
+        TextureDesc("ShinyStones_Diffuse", L"../Textures/ShinyStones_Diffuse.dds", TextureDesc::Texture2D, true),
+        TextureDesc("ShinyStones_NormalMap", L"../Textures/ShinyStones_NormalMap.dds", TextureDesc::Texture2D, false),
+        TextureDesc("ShinyStones_HeightMap", L"../Textures/ShinyStones_HeightMap.dds", TextureDesc::Texture2D, false),
+        TextureDesc("SkyCubeMap", L"../Textures/snowcube1024.dds", TextureDesc::CubeMap, true),
     };
 
     mRenderingSystem->LoadTextures(TexDescs);
@@ -379,7 +379,7 @@ void StencilApp::MakeLights()
     Point1->Name = "Point1";
     Point1->LightType = LightType::Pointlight;
     Point1->WorldLocation = { 1.f, 1.f, 1.f };
-    Point1->Strength = 1.f;
+    Point1->Strength = 2.f;
     Point1->Color = { 1.f, 0.f, 0.92f };
     Point1->FalloffStart = 1.f;
     Point1->FalloffEnd = 9.f;

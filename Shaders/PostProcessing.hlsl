@@ -121,11 +121,12 @@ float4 PS(VertexOut pin) : SV_Target
     float4 NormalChannel = gNormalMap.Load(int3(TexelCoord, 0));
     float4 Color = gDiffuseMap.Load(int3(TexelCoord, 0));
     
+    
     float3 WorldPosition = ReconstructWorldPosition(UV, Emissive.w);
     float3 Normal = NormalChannel.rgb;
 
     //Do your cool post-processing here
    
-    
+    Color.xyz = pow(saturate(Color.xyz), 1.0 / 2.2);
     return Color;
 }

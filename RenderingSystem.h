@@ -68,11 +68,12 @@ struct TextureDesc
     enum TextureType { Texture2D, CubeMap };
     TextureDesc() {}
 
-    TextureDesc(std::string Name, std::wstring Path, TextureType TexType)
+    TextureDesc(std::string Name, std::wstring Path, TextureType TexType, bool UseSRGB)
     {
         this->Name = Name;
         this->Path = Path;
         this->TexType = TexType;
+        this->UseSRGB = UseSRGB;
     }
 
     ~TextureDesc() = default;
@@ -80,6 +81,7 @@ struct TextureDesc
     std::string Name;
     std::wstring Path;
     TextureType TexType;
+    bool UseSRGB;
 };
 
 struct MaterialDesc

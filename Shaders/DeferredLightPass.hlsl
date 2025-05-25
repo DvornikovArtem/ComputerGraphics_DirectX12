@@ -172,7 +172,7 @@ float4 PS(VertexOut pin) : SV_Target
     float4 Emissive = gEmissiveMap.Load(int3(TexelCoord, 0));
     float4 NormalChannel = gNormalMap.Load(int3(TexelCoord, 0));
     float4 Diffuse = gDiffuseMap.Load(int3(TexelCoord, 0)) * MatAlbedo;
-    
+
     float3 WorldPosition = ReconstructWorldPosition(UV, Emissive.w);
     float3 MatFresnelR0 = MatParams.xyz;
     float MatRoughness = MatParams.w;
