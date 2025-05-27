@@ -756,7 +756,7 @@ void RenderingSystem::BuildRootSignatures()
 	PPSlotRootParameter[3].InitAsDescriptorTable(1, &texTable3, D3D12_SHADER_VISIBILITY_ALL);
 
 	CD3DX12_ROOT_SIGNATURE_DESC PPRootSigDesc(4, PPSlotRootParameter,
-		0, nullptr,
+		(UINT)staticSamplers.size(), staticSamplers.data(),
 		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
 	ComPtr<ID3DBlob> serializedPProotSig = nullptr;
@@ -1433,6 +1433,8 @@ void RenderingSystem::BuildGlobalPSOs()
 	PPPsoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
 	PPPsoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
 	PPPsoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+	PPPsoDesc.DepthStencilState.DepthEnable = false;
+	PPPsoDesc.DepthStencilState.StencilEnable = false;
 	PPPsoDesc.SampleMask = UINT_MAX;
 	PPPsoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 	PPPsoDesc.NumRenderTargets = 1;
