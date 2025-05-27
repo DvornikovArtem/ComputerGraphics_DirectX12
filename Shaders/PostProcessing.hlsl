@@ -173,27 +173,22 @@ float4 DepthOfField(float depth, float2 TexelCoord, float4 Color)
     return Color;
 }
 
-float2 WorldToUV(float3 worldPos)
-{
-    float4 clipPos = mul(float4(worldPos, 1.0), gViewProj);
-    clipPos.xyz /= clipPos.w;
-    float2 uv = 0.5 * clipPos.xy + float2(0.5, 0.5);
-    uv.y = 1.0 - uv.y;
-    return uv;
-}
-
 float4 GodRays(float2 UV, float3 worldPos, float depth)
 {
-    float3 gSunPosW = float3(577.35, -577.35, 577.35); // Позиция солнца в мире
-    float gGodRaysIntensity = 0.1f; // Сила эффекта
-    float gGodRaysDensity = 0.2f; // Плотность лучей
-    float gGodRaysWeight = 0.25f; // Вес каждого шага
-    float gGodRaysDecay = 0.95f; // Затухание
-    int gGodRaysSamples = 50; // Качество/производительность
+    float3 gSunPosW = float3(577.35, -577.35, 577.35);
+    float gGodRaysIntensity = 0.1f;
+    float gGodRaysDensity = 0.2f;
+    float gGodRaysWeight = 0.25f;
+    float gGodRaysDecay = 0.95f;
+    int gGodRaysSamples = 25;
     
-    float2 sunUV = WorldToUV(gSunPosW);
-    float2 deltaUV = (sunUV - UV) * gGodRaysDensity / gGodRaysSamples;
-    
+    float4 clipPos = mul(float4(gSunPosW, 1.0), gViewProj);
+    clipPos.xyz /= clipPos.w * (clipPos.w > 0 ? -1 : 1);
+    float2 sunUV = 0.5 * clipPos.xy + float2(0.5, 0.5);
+    sunUV.y = 1.0 - sunUV.y;
+   
+    float2 dir = normalize(sunUV - UV);
+    float2 deltaUV = dir * gGodRaysDensity / gGodRaysSamples;
     float4 color = float4(0, 0, 0, 0);
     float illuminationDecay = 1.0;
     
@@ -202,6 +197,7 @@ float4 GodRays(float2 UV, float3 worldPos, float depth)
     {
         UV += deltaUV;
         float2 sampleUV = clamp(UV, 0.0, 1.0);
+        
         
         float4 emissive = gEmissiveMap.SampleLevel(gsamLinearClamp, sampleUV, 0);
         float sampleDepth = emissive.w;
