@@ -184,52 +184,37 @@ float2 WorldToUV(float3 worldPos)
 
 float4 GodRays(float2 UV, float3 worldPos, float depth)
 {
-    float3 gSunPosW = float3(577.35, -577.35, 777.35); // Позиция солнца в мире
+    float3 gSunPosW = float3(577.35, -577.35, 577.35); // Позиция солнца в мире
     float gGodRaysIntensity = 0.1f; // Сила эффекта
     float gGodRaysDensity = 0.2f; // Плотность лучей
     float gGodRaysWeight = 0.25f; // Вес каждого шага
     float gGodRaysDecay = 0.95f; // Затухание
     int gGodRaysSamples = 50; // Качество/производительность
     
-    // Параметры эффекта по умолчанию
-    float raysIntensity = gGodRaysIntensity;
-    float raysDensity = gGodRaysDensity;
-    float raysWeight = gGodRaysWeight;
-    float raysDecay = gGodRaysDecay;
-    int raysSamples = gGodRaysSamples;
-    
-    // Преобразуем позицию солнца в UV-координаты
     float2 sunUV = WorldToUV(gSunPosW);
-    float2 deltaUV = (sunUV - UV) * raysDensity / raysSamples;
+    float2 deltaUV = (sunUV - UV) * gGodRaysDensity / gGodRaysSamples;
     
     float4 color = float4(0, 0, 0, 0);
     float illuminationDecay = 1.0;
     
-
     [loop]
-    for (int i = 0; i < raysSamples; i++)
+    for (int i = 0; i < gGodRaysSamples; i++)
     {
         UV += deltaUV;
         float2 sampleUV = clamp(UV, 0.0, 1.0);
         
-        // Получаем глубину для текущего сэмпла
         float4 emissive = gEmissiveMap.SampleLevel(gsamLinearClamp, sampleUV, 0);
         float sampleDepth = emissive.w;
-        
-        // Если луч перекрыт объектом - пропускаем сэмпл
+       
         if (sampleDepth < depth)
             break;
         
-        // Получаем цвет и добавляем в аккумулятор
         float4 sampleColor = gDiffuseMap.SampleLevel(gsamLinearClamp, sampleUV, 0);
-        color += sampleColor * illuminationDecay * raysWeight;
-        
-        // Обновляем затухание
-        illuminationDecay *= raysDecay;
+        color += sampleColor * illuminationDecay * gGodRaysWeight;
+        illuminationDecay *= gGodRaysDecay;
     }
     
-    // Применяем интенсивность и ограничиваем цвет
-    color *= raysIntensity;
+    color *= gGodRaysIntensity;
     return saturate(color);
 }
 
@@ -249,9 +234,9 @@ float4 PS(VertexOut pin) : SV_Target
     //Do your cool post-processing here
    
     //Color = ChromaticAbberation(UV);
-    //Color = DepthOfField(Emissive.w, TexelCoord, Color);
+    Color = DepthOfField(Emissive.w, TexelCoord, Color);
 
-    //Color += GodRays(UV, WorldPosition, Emissive.w);
+    Color += GodRays(UV, WorldPosition, Emissive.w);
     
     //gamma 2.2 correction
     Color.xyz = pow(saturate(Color.xyz), 1.0 / 2.2);

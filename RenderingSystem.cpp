@@ -426,6 +426,15 @@ void RenderingSystem::BuildRenderItems(std::unordered_map<std::string, DrawableO
 		k++;
 
 	}
+
+	//generate OctTree
+	OctTreeDesc octTreeDesc;
+	octTreeDesc.ritems = &mAllRitems;
+	octTreeDesc.litems = &mAllLights;
+	octTreeDesc.numDivisions = 4;
+	octTreeDesc.autoFitBox = true;
+
+	mOctTree = new OctTree(octTreeDesc);
 }
 
 void RenderingSystem::BuildLightItems(std::unordered_map<std::string, LightObject*>& Objects)
@@ -479,17 +488,6 @@ void RenderingSystem::BuildLightItems(std::unordered_map<std::string, LightObjec
 
 		k++;
 	}
-
-	//generate OctTree
-	OctTreeDesc octTreeDesc;
-	octTreeDesc.ritems = &mAllRitems;
-	octTreeDesc.litems = &mAllLights;
-	octTreeDesc.numDivisions = 4;
-	octTreeDesc.autoFitBox = true;
-	//octTreeDesc.center = { 0.f, 0.f, 0.f };
-	//octTreeDesc.cubeSize = 1000.0f;
-
-	mOctTree = new OctTree(octTreeDesc);
 }
 
 void RenderingSystem::LogAdapterOutputs(IDXGIAdapter* adapter)
