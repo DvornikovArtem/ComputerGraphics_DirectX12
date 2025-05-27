@@ -353,14 +353,23 @@ void StencilApp::MakeDrawableObjects()
 
     mAllDrawableObjects[Head->Name] = Head;
 
-    DrawableObject* Patrick = new DrawableObject();
-    Patrick->Name = "Patrick";
-    Patrick->GeometryName = MeshParsingResults["PatrickStar"][0].GeometryName;
-    Patrick->MaterialName = "PatrickMat";
-    Patrick->renderLayer = RenderLayer::Opaque;
-    Patrick->WorldLocation = XMFLOAT3(-4.0f, 2.0f, 0.0f);
+    DrawableObject* Patrick1 = new DrawableObject();
+    Patrick1->Name = "Patrick";
+    Patrick1->GeometryName = MeshParsingResults["PatrickStar"][0].GeometryName;
+    Patrick1->MaterialName = "PatrickMat";
+    Patrick1->renderLayer = RenderLayer::Opaque;
+    Patrick1->WorldLocation = XMFLOAT3(-4.0f, 2.0f, 0.0f);
 
-    mAllDrawableObjects[Patrick->Name] = Patrick;
+    mAllDrawableObjects[Patrick1->Name] = Patrick1;
+
+    DrawableObject* Patrick2 = new DrawableObject();
+    Patrick2->Name = "Patrick2";
+    Patrick2->GeometryName = MeshParsingResults["PatrickStar"][0].GeometryName;
+    Patrick2->MaterialName = "PatrickMat";
+    Patrick2->renderLayer = RenderLayer::Opaque;
+    Patrick2->WorldLocation = XMFLOAT3(-4.0f, 2.0f, -10.0f);
+
+    mAllDrawableObjects[Patrick2->Name] = Patrick2;
 
     mRenderingSystem->BuildRenderItems(mAllDrawableObjects);
 }
@@ -390,7 +399,7 @@ void StencilApp::MakeLights()
     Spot1->Name = "Spot1";
     Spot1->LightType = LightType::Spotlight;
     Spot1->WorldLocation = { 4.f, 20.f, 5.f };
-    Spot1->Strength = 0.3f; //0.3 //probably defines the brightness
+    Spot1->Strength = 0.6f; //0.3 //probably defines the brightness
     Spot1->Color = { 0.f, 1.f, 0.f };
     Spot1->FalloffStart = 1.f;
     Spot1->FalloffEnd = 100.f; //100 //defines how far it lights

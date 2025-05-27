@@ -112,6 +112,60 @@ float4 ChromaticAbberation(float2 UV)
     return float4(red, green, blue, 1.0);
 }
 
+float4 DepthOfField(float depth, float2 TexelCoord, float4 Color)
+{
+    float gFocalDistance = 0.2f; // Фокус на ближних объектах (0.0-0.3)
+    float gFocalRange = 0.1f; // Узкая зона резкости для четкого разделения
+    float gBlurRadius = 8.f; // Сильное размытие для дальних объектов
+    float gDOFIntensity = 1.f; // Полная интенсивность эффекта
+    float gNearCutoff = 0.9f; // Граница, до которой объекты остаются резкими
+
+
+    float blurAmount = 0.0f;
+
+    if (depth > gNearCutoff)
+    {
+        float adjustedDepth = (depth - gNearCutoff) / (1.0 - gNearCutoff);
+        float depthDifference = abs(adjustedDepth - gFocalDistance);
+    
+        blurAmount = smoothstep(0.0, gFocalRange, depthDifference);
+        blurAmount = pow(blurAmount, 3.0) * gDOFIntensity;
+    }
+
+    if (blurAmount > 0.001f)
+    {
+        float2 texelSize = 1.0 / gRenderTargetSize;
+        float radius = blurAmount * gBlurRadius;
+    
+        float4 blurredColor = float4(0, 0, 0, 0);
+        float weightSum = 0.0;
+    
+        // 7x7 blurring
+        const int kernelSize = 3;
+        for (int y = -kernelSize; y <= kernelSize; y++)
+        {
+            for (int x = -kernelSize; x <= kernelSize; x++)
+            {
+                float2 offset = float2(x, y) * texelSize * radius;
+                float distanceSq = dot(offset, offset);
+                float weight = exp(-distanceSq / (2.0 * radius * radius));
+            
+                // Sample with offset
+                int3 sampleCoord = int3(clamp(TexelCoord + int2(x, y), int2(0, 0), int2(gRenderTargetSize) - int2(1, 1)), 0);
+                blurredColor += gDiffuseMap.Load(sampleCoord) * weight;
+                weightSum += weight;
+            }
+        }
+    
+        blurredColor /= weightSum;
+    
+        // Blend with original and blurred image
+        Color = lerp(Color, blurredColor, blurAmount);
+    }
+    
+    return Color;
+}
+
 float4 PS(VertexOut pin) : SV_Target
 {
     uint2 TexelCoord = pin.PosH.xy;
@@ -127,6 +181,10 @@ float4 PS(VertexOut pin) : SV_Target
 
     //Do your cool post-processing here
    
+    //Color = ChromaticAbberation(UV);
+    Color = DepthOfField(Emissive.w, TexelCoord, Color);
+    
+    //gamma 2.2 correction
     Color.xyz = pow(saturate(Color.xyz), 1.0 / 2.2);
     return Color;
 }
