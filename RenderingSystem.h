@@ -88,7 +88,7 @@ struct MaterialDesc
 {
     MaterialDesc() {}
 
-    MaterialDesc(std::string Name, std::string VertexShaderName, std::string PixelShaderName, std::string HullShaderName, std::string DomainShaderName, std::string DiffuseTexName, std::string NormalMapName, std::string HeightMapName, XMFLOAT4 DiffuseAlbedo, XMFLOAT3 FresnelR0, float Roughness, bool UseTesselation)
+    MaterialDesc(std::string Name, std::string VertexShaderName, std::string PixelShaderName, std::string HullShaderName, std::string DomainShaderName, std::string DiffuseTexName, std::string NormalMapName, std::string HeightMapName, XMFLOAT4 DiffuseAlbedo, XMFLOAT3 FresnelR0, float Roughness, float Metallic, bool UseTesselation)
     {
         this->Name = Name;
         this->VertexShaderName = VertexShaderName;
@@ -101,6 +101,7 @@ struct MaterialDesc
         this->DiffuseAlbedo = DiffuseAlbedo;
         this->FresnelR0 = FresnelR0;
         this->Roughness = Roughness;
+        this->Metallic = Metallic;
         this->UseTesselation = UseTesselation;
     }
 
@@ -113,6 +114,7 @@ struct MaterialDesc
     XMFLOAT4 DiffuseAlbedo = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
     XMFLOAT3 FresnelR0 = XMFLOAT3(0.05f, 0.05f, 0.05f);
     float Roughness = 0.f;
+    float Metallic = 0.f;
     std::string PixelShaderName = "standardPS";
     std::string VertexShaderName = "standardVS";
     std::string HullShaderName = "standardHS";

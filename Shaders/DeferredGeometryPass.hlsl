@@ -50,6 +50,10 @@ cbuffer cbMaterial : register(b2)
 	float4   gDiffuseAlbedo;
     float3   gFresnelR0;
     float    gRoughness;
+    float    gMetallic;
+    float    Pad1;
+    float    Pad2;
+    float    Pad3;
 	float4x4 gMatTransform;
 };
 
@@ -430,7 +434,7 @@ GBufferData PS(DS_VS_OUTPUT_PS_INPUT pin)
 
     pout.diffuse = diffuseAlbedo;
     pout.emissive = float4(0.f, 0.f, 0.f, pin.PosCS.z); //xyz is free for now
-    pout.normal = float4(WorldNormal, 1.0f); //w is free for now
+    pout.normal = float4(WorldNormal, gMetallic); //w is free for now
     pout.materialAlbedo = gDiffuseAlbedo;
     pout.MaterialFresnelRoughness = float4(gFresnelR0, gRoughness);
 

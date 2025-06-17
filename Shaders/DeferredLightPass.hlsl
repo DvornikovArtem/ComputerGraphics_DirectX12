@@ -9,7 +9,12 @@ Texture2D   gMaterialFresnelRoughnessMap : register(t4);
 
 Texture2DArray gShadowMaps : register(t5);
 
+TextureCube IrradianceMap   : register(t6);
+TextureCube PrefilterEnvMap : register(t7);
+Texture2D BRDF_LUT          : register(t8);
+
 SamplerComparisonState gShadowSampler : register(s0);
+SamplerState gsamLinearClamp          : register(s1);
 
 // Constant data that varies per frame.
 cbuffer cbPass : register(b0)
@@ -162,6 +167,48 @@ float CalcShadowFactor(float3 WorldPosition, float3 Normal, uint ShadowMapIndex)
     return totalWeight > 0 ? percentLit / totalWeight : 1.0f;
 }
 
+#define PI 3.14159265359
+
+float DistributionGGX(float3 N, float3 H, float roughness)
+{
+    float a = roughness * roughness;
+    float a2 = a * a;
+    float NdotH = max(dot(N, H), 0.0);
+    float NdotH2 = NdotH * NdotH;
+
+    float num = a2;
+    float denom = (NdotH2 * (a2 - 1.0) + 1.0);
+    denom = PI * denom * denom;
+
+    return num / denom;
+}
+
+float GeometrySchlickGGX(float NdotV, float roughness)
+{
+    float r = (roughness + 1.0);
+    float k = (r * r) / 8.0;
+
+    float num = NdotV;
+    float denom = NdotV * (1.0 - k) + k;
+
+    return num / denom;
+}
+
+float GeometrySmith(float3 N, float3 V, float3 L, float roughness)
+{
+    float NdotV = max(dot(N, V), 0.0);
+    float NdotL = max(dot(N, L), 0.0);
+    float ggx2 = GeometrySchlickGGX(NdotV, roughness);
+    float ggx1 = GeometrySchlickGGX(NdotL, roughness);
+
+    return ggx1 * ggx2;
+}
+
+float3 FresnelSchlick(float cosTheta, float3 F0)
+{
+    return F0 + (1.0 - F0) * pow(saturate(1.0 - cosTheta), 5.0);
+}
+
 float4 PS(VertexOut pin) : SV_Target
 {
     float2 UV = pin.PosH.xy / gRenderTargetSize;
@@ -172,6 +219,7 @@ float4 PS(VertexOut pin) : SV_Target
     float4 Emissive = gEmissiveMap.Load(int3(TexelCoord, 0));
     float4 NormalChannel = gNormalMap.Load(int3(TexelCoord, 0));
     float4 Diffuse = gDiffuseMap.Load(int3(TexelCoord, 0)) * MatAlbedo;
+    float Metallic = NormalChannel.w;
 
     float3 WorldPosition = ReconstructWorldPosition(UV, Emissive.w);
     float3 MatFresnelR0 = MatParams.xyz;
@@ -182,6 +230,7 @@ float4 PS(VertexOut pin) : SV_Target
     float3 toEyeW = gEyePosW - WorldPosition;
     float distToEye = length(toEyeW);
     toEyeW /= distToEye; // normalize
+    float NdotV = max(dot(Normal, toEyeW), 0.0);
 
     const float shininess = 1.0f - MatRoughness;
     Material mat = { Diffuse, MatFresnelR0, shininess };
@@ -195,23 +244,52 @@ float4 PS(VertexOut pin) : SV_Target
     //calculate light based on its type
     if (CurrentLight.LightType == 0)
     {
-        //using cascaded shadow maps
-        
-        // finding first cascade with that casts a shadow
+        // Расчет теней (оставляем существующую логику)
         float shadowFactor = 1.f;
         float distanceFromEye = length(WorldPosition - gEyePosW);
-    
+        
         for (uint cascade = 0; cascade < 4; cascade++)
         {
             float factor = CalcShadowFactor(WorldPosition, Normal, cascade);
-            if(factor < 0.3f)
+            if (factor < 0.3f)
             {
                 shadowFactor = factor;
                 break;
-            }     
+            }
         }
-    
-        Lighting = shadowFactor * ComputeDirectionalLight(CurrentLight, mat, Normal, toEyeW) * CurrentLight.Color;
+        
+        // PBR расчет для Directional Light
+        float3 lightDir = normalize(-CurrentLight.Direction);
+        float3 halfVec = normalize(toEyeW + lightDir);
+        float NdotL = max(dot(Normal, lightDir), 0.0);
+        
+        // Френель
+        float3 F0 = lerp(0.04.xxx, Diffuse.rgb, Metallic);
+        float3 F = FresnelSchlick(max(dot(halfVec, toEyeW), 0.0), F0);
+        
+        // Распределение нормалей (NDF)
+        float NDF = DistributionGGX(Normal, halfVec, MatRoughness);
+        
+        // Геометрия
+        float G = GeometrySmith(Normal, toEyeW, lightDir, MatRoughness);
+        
+        // Cook-Torrance BRDF
+        float3 numerator = NDF * G * F;
+        float denominator = 4.0 * NdotV * NdotL + 0.001;
+        float3 specular = numerator / denominator;
+        
+        // Коэффициенты
+        float3 kS = F;
+        float3 kD = 1.0 - kS;
+        kD *= (1.0 - Metallic);
+        
+        // Радианс света
+        float3 radiance = CurrentLight.Strength * CurrentLight.Color;
+        
+        // Финальный вклад света
+        float3 Lo = (kD * Diffuse.rgb / PI + specular) * radiance * NdotL;
+        
+        Lighting = shadowFactor * Lo;
     }
     else if (CurrentLight.LightType == 1)
     {
@@ -247,17 +325,56 @@ float4 PS(VertexOut pin) : SV_Target
     return litColor;    
 }
 
+float3 FresnelSchlickRoughness(float cosTheta, float3 F0, float
+roughness)
+{
+    return F0 + (max(1.0 - roughness, F0) - F0) * pow(saturate(1.0 -
+cosTheta), 5.0);
+}
+
 float4 PS_AddAmbient(VertexOut pin) : SV_Target
 {
-    //same as PS but only adds ambient light
-    float4 MatAlbedo = gMaterialAlbedoMap.Load(int3(pin.PosH.xy, 0));
-    float4 DiffuseAlbedo = gDiffuseMap.Load(int3(pin.PosH.xy, 0)) * MatAlbedo;
-
-    float4 ambient = gAmbientLight * DiffuseAlbedo;
-
-    float4 litColor = ambient;
-
-    litColor.a = DiffuseAlbedo.a;
-
-    return litColor;
+    uint2 TexelCoord = pin.PosH.xy;
+    
+    float4 MatAlbedo = gMaterialAlbedoMap.Load(int3(TexelCoord, 0));
+    float4 MatParams = gMaterialFresnelRoughnessMap.Load(int3(TexelCoord, 0));
+    float4 Emissive = gEmissiveMap.Load(int3(TexelCoord, 0));
+    float4 NormalChannel = gNormalMap.Load(int3(TexelCoord, 0));
+    float4 Diffuse = gDiffuseMap.Load(int3(TexelCoord, 0)) * MatAlbedo;
+    
+    float3 albedo = Diffuse.rgb;
+    float roughness = MatParams.w;
+    float metallic = NormalChannel.w;
+    float3 normal = normalize(NormalChannel.rgb);
+    
+    if(length(normal) < 0.01f)
+        discard;
+    
+    float2 UV = pin.PosH.xy / gRenderTargetSize;
+    float3 worldPos = ReconstructWorldPosition(UV, Emissive.w);
+    float3 viewDir = normalize(gEyePosW - worldPos);
+    float NdotV = max(dot(normal, viewDir), 0.0);
+    
+    // --- PBR IBL ---
+    float3 F0 = lerp(0.04.xxx, albedo, metallic);
+    float3 F = FresnelSchlickRoughness(NdotV, F0, roughness);
+    
+    float3 kS = F;
+    float3 kD = 1.0 - kS;
+    kD *= (1.0 - metallic);
+    
+    float3 irradiance = IrradianceMap.Sample(gsamLinearClamp, normal).rgb;
+    float3 diffuse = irradiance * albedo;
+    
+    const float MAX_REFLECTION_LOD = 7.0;
+    float3 R = reflect(-viewDir, normal);
+    float3 prefilteredColor = PrefilterEnvMap.SampleLevel(gsamLinearClamp, R, roughness * MAX_REFLECTION_LOD).rgb;
+    float2 brdf = BRDF_LUT.Sample(gsamLinearClamp, float2(NdotV, roughness)).rg;
+    float3 specular = prefilteredColor * (F * brdf.x + brdf.y);
+    
+    // Финальное ambient освещение
+    float ao = 1.0f; // Можно добавить Ambient Occlusion если есть в G-буфере
+    float3 ambient = (kD * diffuse + specular) * ao * 0.1f.xxx;
+    
+    return float4(ambient, Diffuse.a);
 }

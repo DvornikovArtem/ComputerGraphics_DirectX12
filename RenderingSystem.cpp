@@ -694,7 +694,16 @@ void RenderingSystem::BuildRootSignatures()
 	CD3DX12_DESCRIPTOR_RANGE texTable6;
 	texTable6.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 5);
 
-	CD3DX12_ROOT_PARAMETER lightPassSlotRootParameter[8];
+	CD3DX12_DESCRIPTOR_RANGE texTable7;
+	texTable7.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 6);
+
+	CD3DX12_DESCRIPTOR_RANGE texTable8;
+	texTable8.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 7);
+
+	CD3DX12_DESCRIPTOR_RANGE texTable9;
+	texTable9.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 8);
+
+	CD3DX12_ROOT_PARAMETER lightPassSlotRootParameter[11];
 
 	lightPassSlotRootParameter[0].InitAsConstantBufferView(0); //MainPassCB
 	lightPassSlotRootParameter[1].InitAsConstantBufferView(1); //LightCB
@@ -707,8 +716,12 @@ void RenderingSystem::BuildRootSignatures()
 
 	lightPassSlotRootParameter[7].InitAsDescriptorTable(1, &texTable6, D3D12_SHADER_VISIBILITY_ALL); //ShadowMap
 
+	lightPassSlotRootParameter[8].InitAsDescriptorTable(1, &texTable7, D3D12_SHADER_VISIBILITY_ALL); //IBL SkyMaps
+	lightPassSlotRootParameter[9].InitAsDescriptorTable(1, &texTable8, D3D12_SHADER_VISIBILITY_ALL); 
+	lightPassSlotRootParameter[10].InitAsDescriptorTable(1, &texTable9, D3D12_SHADER_VISIBILITY_ALL); 
+
 	//ShadowMap ComparisonSampler
-	const CD3DX12_STATIC_SAMPLER_DESC StaticSamplers[1] = 
+	const CD3DX12_STATIC_SAMPLER_DESC StaticSamplers[2] = 
 	{
 		CD3DX12_STATIC_SAMPLER_DESC(
 		0, // register(s0)
@@ -719,11 +732,18 @@ void RenderingSystem::BuildRootSignatures()
 		0.0f,
 		16,
 		D3D12_COMPARISON_FUNC_LESS_EQUAL,
-		D3D12_STATIC_BORDER_COLOR_OPAQUE_WHITE)
+		D3D12_STATIC_BORDER_COLOR_OPAQUE_WHITE),
+
+		CD3DX12_STATIC_SAMPLER_DESC(
+		1, // register(s1)
+		D3D12_FILTER_MIN_MAG_MIP_LINEAR, 
+		D3D12_TEXTURE_ADDRESS_MODE_CLAMP,  
+		D3D12_TEXTURE_ADDRESS_MODE_CLAMP,
+		D3D12_TEXTURE_ADDRESS_MODE_CLAMP) 
 	};
 
-	CD3DX12_ROOT_SIGNATURE_DESC lightPassRootSigDesc(8, lightPassSlotRootParameter,
-		1, StaticSamplers,
+	CD3DX12_ROOT_SIGNATURE_DESC lightPassRootSigDesc(11, lightPassSlotRootParameter,
+		2, StaticSamplers,
 		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 	
 	ComPtr<ID3DBlob> serializedLightPassRootSig = nullptr;
@@ -773,6 +793,7 @@ void RenderingSystem::BuildRootSignatures()
 		serializedPProotSig->GetBufferPointer(),
 		serializedPProotSig->GetBufferSize(),
 		IID_PPV_ARGS(RootSignatures["PostProcessing"].GetAddressOf())));
+
 }
 
 void RenderingSystem::Update(std::vector<DrawableObject*>& mAllObjectsToUpdate, std::vector<LightObject*>& mAllLightObjectsToUpdate)
@@ -1477,6 +1498,7 @@ void RenderingSystem::BuildMaterials(std::vector<MaterialDesc>& MaterialDescs)
 		t->DiffuseAlbedo = MaterialDescs[i].DiffuseAlbedo;
 		t->FresnelR0 = MaterialDescs[i].FresnelR0;
 		t->Roughness = MaterialDescs[i].Roughness;
+		t->Metallic = MaterialDescs[i].Metallic;
 		t->UseTesselation = MaterialDescs[i].UseTesselation;
 
 		BuildPSOs(MaterialDescs[i], t->PSOs);
@@ -1583,6 +1605,10 @@ void RenderingSystem::GBufferLightPass()
 	mCommandList->SetGraphicsRootDescriptorTable(4, GetGpuSrv(mGbuffer->Channel0SRVHeapIndex + 2));
 	mCommandList->SetGraphicsRootDescriptorTable(5, GetGpuSrv(mGbuffer->Channel0SRVHeapIndex + 3));
 	mCommandList->SetGraphicsRootDescriptorTable(6, GetGpuSrv(mGbuffer->Channel0SRVHeapIndex + 4));
+
+	mCommandList->SetGraphicsRootDescriptorTable(8, GetGpuSrv(mTextures["SkyIrradiance"]->srvHeapIndex));
+	mCommandList->SetGraphicsRootDescriptorTable(9, GetGpuSrv(mTextures["SkyPref"]->srvHeapIndex));
+	mCommandList->SetGraphicsRootDescriptorTable(10, GetGpuSrv(mTextures["SkyBRDF"]->srvHeapIndex));
 
 	mCommandList->SetGraphicsRootConstantBufferView(0, passCB->GetGPUVirtualAddress());
 	mCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -1779,6 +1805,7 @@ void RenderingSystem::UpdateMaterialCBs(const GameTimer& gt)
 			matConstants.DiffuseAlbedo = mat->DiffuseAlbedo;
 			matConstants.FresnelR0 = mat->FresnelR0;
 			matConstants.Roughness = mat->Roughness;
+			matConstants.Metallic = mat->Metallic;
 			XMStoreFloat4x4(&matConstants.MatTransform, XMMatrixTranspose(matTransform));
 
 			currMaterialCB->CopyData(mat->MatCBIndex, matConstants);

@@ -230,9 +230,9 @@ float4 PS(VertexOut pin) : SV_Target
     //Do your cool post-processing here
    
     //Color = ChromaticAbberation(UV);
-    Color = DepthOfField(Emissive.w, TexelCoord, Color);
+    //Color = DepthOfField(Emissive.w, TexelCoord, Color);
 
-    Color += GodRays(UV, WorldPosition, Emissive.w);
+    //Color += GodRays(UV, WorldPosition, Emissive.w);
     
     //gamma 2.2 correction
     Color.xyz = pow(saturate(Color.xyz), 1.0 / 2.2);
