@@ -303,16 +303,16 @@ void StencilApp::MakeMaterials()
 
             MaterialDesc sphereMat(
                 matName,
-                "standardVS",    // Vertex shader
-                "standardPS",    // Pixel shader
-                "", "",          // Без тесселяции
-                "white1x1Tex",   // Одноцветная текстура
-                "", "",          // Нет normal/height map
+                "standardVS",
+                "standardPS",
+                "", "",
+                "white1x1Tex",
+                "", "",
                 XMFLOAT4(1, 1, 1, 1),            // Albedo
                 XMFLOAT3(0.05f, 0.05f, 0.05f),  // FresnelR0
                 roughness,
                 metallic,
-                false           // UseTesselation
+                false
             );
 
             MaterialDescs.push_back(sphereMat);
@@ -415,9 +415,9 @@ void StencilApp::MakeDrawableObjects()
             sphere->renderLayer = RenderLayer::Opaque;
             sphere->Scale = XMFLOAT3(1.0f, 1.0f, 1.0f);
             sphere->WorldLocation = XMFLOAT3(
-                (col - 5) * spacing,  // X-координата
-                1.0f,                  // Y-координата (радиус сферы = 1)
-                -30.f + (row - 5) * spacing   // Z-координата
+                (col - 5) * spacing,
+                1.0f,
+                -30.f + (row - 5) * spacing
             );
 
             mAllDrawableObjects[sphere->Name] = sphere;
