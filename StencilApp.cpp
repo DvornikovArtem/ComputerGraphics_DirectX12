@@ -295,6 +295,30 @@ void StencilApp::MakeMaterials()
         }
     }
 
+    for (int row = 0; row < 11; ++row) {
+        for (int col = 0; col < 11; ++col) {
+            float metallic = row / 10.0f;
+            float roughness = col / 10.0f;
+            std::string matName = "sphere_mat_" + std::to_string(row) + "_" + std::to_string(col);
+
+            MaterialDesc sphereMat(
+                matName,
+                "standardVS",    // Vertex shader
+                "standardPS",    // Pixel shader
+                "", "",          // Без тесселяции
+                "white1x1Tex",   // Одноцветная текстура
+                "", "",          // Нет normal/height map
+                XMFLOAT4(1, 1, 1, 1),            // Albedo
+                XMFLOAT3(0.05f, 0.05f, 0.05f),  // FresnelR0
+                roughness,
+                metallic,
+                false           // UseTesselation
+            );
+
+            MaterialDescs.push_back(sphereMat);
+        }
+    }
+
     mRenderingSystem->BuildMaterials(MaterialDescs);
 }
 
@@ -380,6 +404,25 @@ void StencilApp::MakeDrawableObjects()
     Patrick2->WorldLocation = XMFLOAT3(-4.0f, 2.0f, -10.0f);
 
     mAllDrawableObjects[Patrick2->Name] = Patrick2;
+
+    const float spacing = 2.0f;
+    for (int row = 0; row < 11; ++row) {
+        for (int col = 0; col < 11; ++col) {
+            auto sphere = new DrawableObject();
+            sphere->Name = "Sphere" + std::to_string(row) + "_" + std::to_string(col);
+            sphere->GeometryName = "Sphere";
+            sphere->MaterialName = "sphere_mat_" + std::to_string(row) + "_" + std::to_string(col);
+            sphere->renderLayer = RenderLayer::Opaque;
+            sphere->Scale = XMFLOAT3(1.0f, 1.0f, 1.0f);
+            sphere->WorldLocation = XMFLOAT3(
+                (col - 5) * spacing,  // X-координата
+                1.0f,                  // Y-координата (радиус сферы = 1)
+                -30.f + (row - 5) * spacing   // Z-координата
+            );
+
+            mAllDrawableObjects[sphere->Name] = sphere;
+        }
+    }
 
     mRenderingSystem->BuildRenderItems(mAllDrawableObjects);
 }

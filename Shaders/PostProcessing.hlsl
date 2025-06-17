@@ -95,22 +95,18 @@ float4 ChromaticAbberation(float2 UV)
     float edgeFade = 1.0 - smoothstep(0.7, 1.0, distanceFromCenter);
     distortion *= edgeFade;
     
-    // Смещение с ограничением координат
     float2 uvRed = clamp(UV - dir * distortion * 1.0, 0.0, 1.0);
     float2 uvGreen = clamp(UV - dir * distortion * 0.5, 0.0, 1.0);
     float2 uvBlue = clamp(UV + dir * distortion * 1.0, 0.0, 1.0);
     
-    // Преобразование в текстурные координаты с проверкой границ
     uint2 texCoordRed = uint2(uvRed * gRenderTargetSize);
     uint2 texCoordGreen = uint2(uvGreen * gRenderTargetSize);
     uint2 texCoordBlue = uint2(uvBlue * gRenderTargetSize);
     
-    // Проверка на выход за пределы текстуры
     int3 coordRed = int3(clamp(texCoordRed, 0, gRenderTargetSize - 1), 0);
     int3 coordGreen = int3(clamp(texCoordGreen, 0, gRenderTargetSize - 1), 0);
     int3 coordBlue = int3(clamp(texCoordBlue, 0, gRenderTargetSize - 1), 0);
     
-    // Загрузка данных с защитой от выхода за границы
     float red = gDiffuseMap.Load(coordRed).r;
     float green = gDiffuseMap.Load(coordGreen).g;
     float blue = gDiffuseMap.Load(coordBlue).b;
@@ -121,11 +117,11 @@ float4 ChromaticAbberation(float2 UV)
 
 float4 DepthOfField(float depth, float2 TexelCoord, float4 Color)
 {
-    float gFocalDistance = 0.2f; // Фокус на ближних объектах (0.0-0.3)
-    float gFocalRange = 0.1f; // Узкая зона резкости для четкого разделения
-    float gBlurRadius = 8.f; // Сильное размытие для дальних объектов
-    float gDOFIntensity = 1.f; // Полная интенсивность эффекта
-    float gNearCutoff = 0.9f; // Граница, до которой объекты остаются резкими
+    float gFocalDistance = 0.2f;
+    float gFocalRange = 0.1f;
+    float gBlurRadius = 8.f;
+    float gDOFIntensity = 1.f;
+    float gNearCutoff = 0.9f;
 
 
     float blurAmount = 0.0f;
