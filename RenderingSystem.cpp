@@ -1283,7 +1283,7 @@ void RenderingSystem::BuildPSOs(MaterialDesc& MDesc, std::unordered_map<std::str
 	descPipelineState.NumRenderTargets = 5;
 	descPipelineState.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
 	descPipelineState.RTVFormats[1] = DXGI_FORMAT_R32G32B32A32_FLOAT;
-	descPipelineState.RTVFormats[2] = DXGI_FORMAT_R8G8B8A8_SNORM;
+	descPipelineState.RTVFormats[2] = DXGI_FORMAT_R16G16B16A16_SNORM;
 	descPipelineState.RTVFormats[3] = DXGI_FORMAT_R8G8B8A8_UNORM;
 	descPipelineState.RTVFormats[4] = DXGI_FORMAT_R8G8B8A8_UNORM;
 	descPipelineState.DSVFormat = mDepthStencilFormat;

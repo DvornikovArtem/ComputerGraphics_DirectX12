@@ -366,9 +366,11 @@ float4 PS_AddAmbient(VertexOut pin) : SV_Target
     float3 irradiance = IrradianceMap.Sample(gsamLinearClamp, normal).rgb;
     float3 diffuse = irradiance * albedo;
     
-    const float MAX_REFLECTION_LOD = 7.0;
+    uint width, height, NumMips;
+    PrefilterEnvMap.GetDimensions(0, width, height, NumMips);
+    
     float3 R = reflect(-viewDir, normal);
-    float3 prefilteredColor = PrefilterEnvMap.SampleLevel(gsamLinearClamp, R, roughness * MAX_REFLECTION_LOD).rgb;
+    float3 prefilteredColor = PrefilterEnvMap.SampleLevel(gsamLinearClamp, R, roughness * NumMips).rgb;
     float2 brdf = BRDF_LUT.Sample(gsamLinearClamp, float2(NdotV, roughness)).rg;
     float3 specular = prefilteredColor * (F * brdf.x + brdf.y);
     

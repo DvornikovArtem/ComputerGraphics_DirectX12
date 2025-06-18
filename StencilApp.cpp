@@ -246,6 +246,7 @@ void StencilApp::LoadTextures()
         TextureDesc("checkboardTex", L"../Textures/checkboard.dds", TextureDesc::Texture2D, true),
         TextureDesc("iceTex", L"../Textures/ice.dds", TextureDesc::Texture2D, true),
         TextureDesc("white1x1Tex", L"../Textures/white1x1.dds", TextureDesc::Texture2D, true),
+        TextureDesc("yellow1x1Tex", L"../Textures/yellow1x1.dds", TextureDesc::Texture2D, true),
         TextureDesc("AH_Diffuse", L"../Textures/african_head_diffuse.dds", TextureDesc::Texture2D, true),
         TextureDesc("redTex", L"../Textures/rsq.dds", TextureDesc::Texture2D, true),
         TextureDesc("woodCrateTex", L"../Textures/WoodCrate01.dds", TextureDesc::Texture2D, true),
@@ -258,13 +259,14 @@ void StencilApp::LoadTextures()
         TextureDesc("ShinyStones_HeightMap", L"../Textures/ShinyStones_HeightMap.dds", TextureDesc::Texture2D, false),
         TextureDesc("SkyCubeMap", L"../Textures/snowcube1024.dds", TextureDesc::CubeMap, true),
 
-        TextureDesc("SkyPref", L"../Textures/skyPrefilter.dds", TextureDesc::CubeMap, true),
-        TextureDesc("SkyBRDF", L"../Textures/skyBrdf.dds", TextureDesc::Texture2D, false),
-        TextureDesc("SkyIrradiance", L"../Textures/skyIrradiance.dds", TextureDesc::CubeMap, false),
+        //TextureDesc("SkyPref", L"../Textures/skyPrefilter.dds", TextureDesc::CubeMap, true),
+        //TextureDesc("SkyBRDF", L"../Textures/skyBrdf.dds", TextureDesc::Texture2D, false),
+        //TextureDesc("SkyIrradiance", L"../Textures/skyIrradiance.dds", TextureDesc::CubeMap, false),
 
-        //TextureDesc("SkyPref", L"../Textures/roomPrefilter.dds", TextureDesc::CubeMap, true),
-        //TextureDesc("SkyBRDF", L"../Textures/roomBrdf.dds", TextureDesc::Texture2D, false),
-        //TextureDesc("SkyIrradiance", L"../Textures/roomIrradiance.dds", TextureDesc::CubeMap, false),
+        TextureDesc("SkyPref", L"../Textures/roomPrefilter.dds", TextureDesc::CubeMap, true),
+        TextureDesc("SkyBRDF", L"../Textures/roomBrdf.dds", TextureDesc::Texture2D, false),
+        TextureDesc("SkyIrradiance", L"../Textures/roomIrradiance.dds", TextureDesc::CubeMap, false),
+
     };
 
     mRenderingSystem->LoadTextures(TexDescs);
@@ -278,7 +280,7 @@ void StencilApp::MakeMaterials()
         MaterialDesc("bricks", "standardVS", "standardPS",  "", "", "bricksTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.25f, 0.f, false),
         MaterialDesc("Bricks_DecalTesting", "standardVS", "standardPS", "HSForDecals", "DSForDecals", "bricksTex", "ShinyStones_NormalMap", "ShinyStones_HeightMap", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, 0.f, true),
         MaterialDesc("AH", "standardVS", "standardPS", "", "", "AH_Diffuse", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.99f, 0.f, false),
-        MaterialDesc("woodCrate", "standardVS", "RotatingTilesPS", "", "", "woodCrateTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.9f, 0.f, false),
+        MaterialDesc("woodCrate", "standardVS", "RotatingTilesPS", "", "", "woodCrateTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.2f, 0.05f, false),
         MaterialDesc("PatrickMat", "standardVS", "standardPS", "", "", "PatrickTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, 0.f, false),
         MaterialDesc("Semechki", "standardVS", "standardPS", "standardHS", "standardDS", "Semechki_Diffuse", "Semechki_NormalMap", "Semechki_HeightMap", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, 0.f, true),
         MaterialDesc("ShinyStones", "standardVS", "standardPS", "standardHS", "standardDS", "ShinyStones_Diffuse", "ShinyStones_NormalMap", "ShinyStones_HeightMap", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, 0.f, true),
@@ -306,7 +308,7 @@ void StencilApp::MakeMaterials()
                 "standardVS",
                 "standardPS",
                 "", "",
-                "white1x1Tex",
+                "yellow1x1Tex",
                 "", "",
                 XMFLOAT4(1, 1, 1, 1),            // Albedo
                 XMFLOAT3(0.05f, 0.05f, 0.05f),  // FresnelR0
