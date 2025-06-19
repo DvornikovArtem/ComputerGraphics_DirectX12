@@ -1,4 +1,4 @@
-#include "RenderingSystem.h"
+п»ї#include "RenderingSystem.h"
 
 RenderingSystem::RenderingSystem() {}
 
@@ -67,6 +67,11 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 
 	CreateCommandObjects();
 	CreateSwapChain();
+
+	mParticleSystem = std::make_unique<ParticleSystem>(
+		md3dDevice.Get(),
+		mCommandList.Get(),
+		1000);
 
 	mGbuffer = std::make_unique<Gbuffer>(mClientWidth, mClientHeight, md3dDevice);
 
@@ -275,6 +280,19 @@ void RenderingSystem::Render()
 	//Draw SkyBox
 	//
 	DrawSkyBox();
+
+	auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(mParticleSystem->GetAliveList(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+	mCommandList->ResourceBarrier(1, &barrier);
+
+	ID3D12DescriptorHeap* descriptorHeaps[] = { mSrvDescriptorHeap.Get() };
+	mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
+
+	auto passCBAddress = mCurrFrameResource->PassCB->Resource()->GetGPUVirtualAddress();
+	mParticleSystem->Draw(mCommandList.Get(), passCBAddress);
+
+	// РџРµСЂРµС…РѕРґ Р±Р°СЂСЊРµСЂР° РѕР±СЂР°С‚РЅРѕ РґР»СЏ СЃР»РµРґСѓСЋС‰РµРіРѕ РєР°РґСЂР°
+	barrier = CD3DX12_RESOURCE_BARRIER::Transition(mParticleSystem->GetAliveList(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+	mCommandList->ResourceBarrier(1, &barrier);
 
 	//
 	// Post-Processing
@@ -820,6 +838,11 @@ void RenderingSystem::Update(std::vector<DrawableObject*>& mAllObjectsToUpdate, 
 	UpdateLightItems(mAllLightObjectsToUpdate);
 	UpdateLightCBs(*gt);
 
+	XMFLOAT3 emitterPos = { 0.0f, 5.0f, 0.0f }; // РџРѕР·РёС†РёСЏ СЌРјРёС‚С‚РµСЂР°
+	UINT numToEmit = 10; // РЎРєРѕР»СЊРєРѕ С‡Р°СЃС‚РёС† СЃРѕР·РґР°РІР°С‚СЊ РєР°Р¶РґС‹Р№ РєР°РґСЂ
+
+	mParticleSystem->Update(mCommandList.Get(), gt->DeltaTime(), mCurrFrameResource, emitterPos, numToEmit);
+
 }
 
 void RenderingSystem::UpdateObjectCBs(const GameTimer& gt)
@@ -1336,7 +1359,7 @@ void RenderingSystem::BuildGlobalPSOs()
 
 
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC deferredPsoDesc = {};
-	// Поскольку для полноэкранного квадрата не нужен входной layout, оставляем его пустым:
+	// ГЏГ®Г±ГЄГ®Г«ГјГЄГі Г¤Г«Гї ГЇГ®Г«Г­Г®ГЅГЄГ°Г Г­Г­Г®ГЈГ® ГЄГўГ Г¤Г°Г ГІГ  Г­ГҐ Г­ГіГ¦ГҐГ­ ГўГµГ®Г¤Г­Г®Г© layout, Г®Г±ГІГ ГўГ«ГїГҐГ¬ ГҐГЈГ® ГЇГіГ±ГІГ»Г¬:
 	deferredPsoDesc.InputLayout = { nullptr, 0 };
 	deferredPsoDesc.pRootSignature = RootSignatures["DeferredLightPass"].Get();
 
@@ -1897,14 +1920,14 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 	for (TextureDesc& i : TexDescs) {
 		auto it = mTextures.find(i.Name);
 		if (it == mTextures.end()) {
-			// Обработка ошибки: текстура не найдена
+			// ГЋГЎГ°Г ГЎГ®ГІГЄГ  Г®ГёГЁГЎГЄГЁ: ГІГҐГЄГ±ГІГіГ°Г  Г­ГҐ Г­Г Г©Г¤ГҐГ­Г 
 			OutputDebugStringA(("Texture not found: " + i.Name + "\n").c_str());
 			continue;
 		}
 
 		auto& tex = it->second->Resource;
 		if (!tex) {
-			// Обработка ошибки: ресурс текстуры не инициализирован
+			// ГЋГЎГ°Г ГЎГ®ГІГЄГ  Г®ГёГЁГЎГЄГЁ: Г°ГҐГ±ГіГ°Г± ГІГҐГЄГ±ГІГіГ°Г» Г­ГҐ ГЁГ­ГЁГ¶ГЁГ Г«ГЁГ§ГЁГ°Г®ГўГ Г­
 			OutputDebugStringA(("Texture resource is null: " + i.Name + "\n").c_str());
 			continue;
 		}
@@ -1962,14 +1985,14 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 	for (Texture* i : MPRTextures) {
 		auto it = mTextures.find(i->Name);
 		if (it == mTextures.end()) {
-			// Обработка ошибки: текстура не найдена
+			// ГЋГЎГ°Г ГЎГ®ГІГЄГ  Г®ГёГЁГЎГЄГЁ: ГІГҐГЄГ±ГІГіГ°Г  Г­ГҐ Г­Г Г©Г¤ГҐГ­Г 
 			OutputDebugStringA(("Texture not found: " + i->Name + "\n").c_str());
 			continue;
 		}
 
 		auto& tex = it->second->Resource;
 		if (!tex) {
-			// Обработка ошибки: ресурс текстуры не инициализирован
+			// ГЋГЎГ°Г ГЎГ®ГІГЄГ  Г®ГёГЁГЎГЄГЁ: Г°ГҐГ±ГіГ°Г± ГІГҐГЄГ±ГІГіГ°Г» Г­ГҐ ГЁГ­ГЁГ¶ГЁГ Г«ГЁГ§ГЁГ°Г®ГўГ Г­
 			OutputDebugStringA(("Texture resource is null: " + i->Name + "\n").c_str());
 			continue;
 		}

@@ -52,6 +52,15 @@ struct Vertex
     DirectX::XMFLOAT3 Tangent;
 };
 
+struct ParticleConstants
+{
+    float DeltaTime;
+    UINT NumEmit;      // Количество частиц для эмиссии в этом кадре
+    DirectX::XMFLOAT2 Pad1;
+    DirectX::XMFLOAT3 EmitterPos;
+    float Pad2;
+};
+
 // Stores the resources needed for the CPU to build the command lists
 // for a frame.  
 struct FrameResource
@@ -74,6 +83,8 @@ public:
     std::unique_ptr<UploadBuffer<MaterialConstants>> MaterialCB = nullptr;
     std::unique_ptr<UploadBuffer<ObjectConstants>> ObjectCB = nullptr;
     std::unique_ptr<UploadBuffer<Light>> LightCB = nullptr;
+
+    std::unique_ptr<UploadBuffer<ParticleConstants>> ParticleCB = nullptr;
 
     // Fence value to mark commands up to this fence point.  This lets us
     // check if these frame resources are still in use by the GPU.

@@ -29,6 +29,8 @@
 #include "old/DebugRenderSysImpl.h"
 #include "OctTree.h"
 
+#include "Particle.h"
+
 #pragma comment(lib,"d3dcompiler.lib")
 #pragma comment(lib, "D3D12.lib")
 #pragma comment(lib, "dxgi.lib")
@@ -366,6 +368,8 @@ protected:
     std::vector<Texture*> MPRTextures;
 
     UINT TexDescsLength;
+
+    std::unique_ptr<ParticleSystem> mParticleSystem;
 };
 
 
