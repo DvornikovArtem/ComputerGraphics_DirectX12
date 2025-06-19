@@ -248,6 +248,13 @@ void RenderingSystem::Render()
 	mCommandList->RSSetViewports(1, &mScreenViewport);
 	mCommandList->RSSetScissorRects(1, &mScissorRect);
 
+	mParticleSystem->Update(
+		mCommandList.Get(),
+		mDeltaTime,                 // ← прошедшее с кадра время
+		mCurrFrameResource,
+		XMFLOAT3{ 0.0f, 1.0f, 0.0f }, // позиция эмиттера
+		1000);
+
 	// Indicate a state transition on the resource usage.
 	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mSwapChainBuffer[mCurrBackBuffer].Get(),
 		D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
@@ -838,10 +845,12 @@ void RenderingSystem::Update(std::vector<DrawableObject*>& mAllObjectsToUpdate, 
 	UpdateLightItems(mAllLightObjectsToUpdate);
 	UpdateLightCBs(*gt);
 
-	XMFLOAT3 emitterPos = { 0.0f, 5.0f, 0.0f }; // Позиция эмиттера
-	UINT numToEmit = 10; // Сколько частиц создавать каждый кадр
 
-	mParticleSystem->Update(mCommandList.Get(), gt->DeltaTime(), mCurrFrameResource, emitterPos, numToEmit);
+	mDeltaTime = gt->DeltaTime();
+	//XMFLOAT3 emitterPos = { 0.0f, 5.0f, 0.0f }; // Позиция эмиттера
+	//UINT numToEmit = 10; // Сколько частиц создавать каждый кадр
+
+	//mParticleSystem->Update(mCommandList.Get(), gt->DeltaTime(), mCurrFrameResource, emitterPos, numToEmit);
 
 }
 

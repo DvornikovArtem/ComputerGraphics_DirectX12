@@ -1,8 +1,8 @@
-#include "Particle.h"
+п»ї#include "Particle.h"
 #include "d3dUtil.h"
 #include "GeometryGenerator.h"
 #include "FrameResource.h"
-#include <numeric> // Решает ошибку C3861 'iota': identifier not found
+#include <numeric> // ГђГҐГёГ ГҐГІ Г®ГёГЁГЎГЄГі C3861 'iota': identifier not found
 
 ParticleSystem::ParticleSystem(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, UINT maxParticles)
     : mMaxParticles(maxParticles)
@@ -48,7 +48,7 @@ void ParticleSystem::BuildResources(ID3D12Device* device, ID3D12GraphicsCommandL
     subData.SlicePitch = subData.RowPitch;
     cmdList->CopyBufferRegion(mDeadList[0].Get(), 0, uploadDeadList.Get(), 0, bufferDesc.Width);
 
-    // --- Создание кучи дескрипторов ---
+    // --- Г‘Г®Г§Г¤Г Г­ГЁГҐ ГЄГіГ·ГЁ Г¤ГҐГ±ГЄГ°ГЁГЇГІГ®Г°Г®Гў ---
     D3D12_DESCRIPTOR_HEAP_DESC uavHeapDesc = {};
     uavHeapDesc.NumDescriptors = 5; // Pool, Dead0, Dead1, Alive, DrawArgs
     uavHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
@@ -69,13 +69,13 @@ void ParticleSystem::BuildResources(ID3D12Device* device, ID3D12GraphicsCommandL
     uavHandle.Offset(1, uavDescriptorSize);
 
     uavDesc.Buffer.StructureByteStride = sizeof(UINT);
-    // Dead List 0 (счетчик по смещению 0)
+    // Dead List 0 (Г±Г·ГҐГІГ·ГЁГЄ ГЇГ® Г±Г¬ГҐГ№ГҐГ­ГЁГѕ 0)
     device->CreateUnorderedAccessView(mDeadList[0].Get(), mCounters.Get(), &uavDesc, uavHandle);
     uavHandle.Offset(1, uavDescriptorSize);
-    // Dead List 1 (счетчик по смещению 4)
+    // Dead List 1 (Г±Г·ГҐГІГ·ГЁГЄ ГЇГ® Г±Г¬ГҐГ№ГҐГ­ГЁГѕ 4)
     device->CreateUnorderedAccessView(mDeadList[1].Get(), mCounters.Get(), &uavDesc, uavHandle);
     uavHandle.Offset(1, uavDescriptorSize);
-    // Alive List (счетчик по смещению 8)
+    // Alive List (Г±Г·ГҐГІГ·ГЁГЄ ГЇГ® Г±Г¬ГҐГ№ГҐГ­ГЁГѕ 8)
     device->CreateUnorderedAccessView(mAliveList.Get(), mCounters.Get(), &uavDesc, uavHandle);
     uavHandle.Offset(1, uavDescriptorSize);
 
@@ -83,7 +83,7 @@ void ParticleSystem::BuildResources(ID3D12Device* device, ID3D12GraphicsCommandL
     uavDesc.Buffer.NumElements = sizeof(D3D12_DRAW_INDEXED_ARGUMENTS) / sizeof(UINT);
     device->CreateUnorderedAccessView(mDrawArgs.Get(), nullptr, &uavDesc, uavHandle);
 
-    // --- Геометрия ---
+    // --- ГѓГҐГ®Г¬ГҐГІГ°ГЁГї ---
     GeometryGenerator geoGen;
     GeometryGenerator::MeshData quad = geoGen.CreateQuad(0.0f, 0.0f, 1.0f, 1.0f, 0.0f);
 
@@ -99,7 +99,7 @@ void ParticleSystem::BuildResources(ID3D12Device* device, ID3D12GraphicsCommandL
     mQuadGeo = std::make_unique<MeshGeometry>();
     mQuadGeo->Name = "particle_quad";
 
-    // Это исправляет ошибку C2061: syntax error: identifier 'Blob'
+    // ГќГІГ® ГЁГ±ГЇГ°Г ГўГ«ГїГҐГІ Г®ГёГЁГЎГЄГі C2061: syntax error: identifier 'Blob'
     ThrowIfFailed(D3DCreateBlob(vertices.size() * sizeof(Vertex), &mQuadGeo->VertexBufferCPU));
     CopyMemory(mQuadGeo->VertexBufferCPU->GetBufferPointer(), vertices.data(), vertices.size() * sizeof(Vertex));
 
@@ -116,7 +116,7 @@ void ParticleSystem::BuildResources(ID3D12Device* device, ID3D12GraphicsCommandL
 
     mQuadGeo->DrawArgs["quad"] = { (UINT)indices.size(), 0, 0, {} };
 
-    // Это исправляет ошибку "class "MeshGeometry" has no member "InputLayout""
+    // ГќГІГ® ГЁГ±ГЇГ°Г ГўГ«ГїГҐГІ Г®ГёГЁГЎГЄГі "class "MeshGeometry" has no member "InputLayout""
     mQuadGeo->InputLayout =
     {
         { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
@@ -167,7 +167,7 @@ void ParticleSystem::BuildShadersAndPSOs(ID3D12Device* device)
 {
     wchar_t buffer[MAX_PATH];
     GetCurrentDirectory(MAX_PATH, buffer);
-    OutputDebugString(buffer); // или используйте std::wcout
+    OutputDebugString(buffer); // ГЁГ«ГЁ ГЁГ±ГЇГ®Г«ГјГ§ГіГ©ГІГҐ std::wcout
     OutputDebugString(L"\nPRIKOOOOOOOL\n");
 
     auto vsByteCode = d3dUtil::CompileShader(L"../Shaders/Particle.hlsl", nullptr, "VS", "vs_5_1");
@@ -210,7 +210,7 @@ void ParticleSystem::BuildShadersAndPSOs(ID3D12Device* device)
 
 void ParticleSystem::Update(ID3D12GraphicsCommandList* cmdList, float dt, FrameResource* frameResource, const XMFLOAT3& emitterPos, UINT numToEmit)
 {
-    // 1. Обновляем константы
+    // 1. ГЋГЎГ­Г®ГўГ«ГїГҐГ¬ ГЄГ®Г­Г±ГІГ Г­ГІГ»
     ParticleConstants pConsts;
     pConsts.DeltaTime = dt;
     pConsts.EmitterPos = emitterPos;
@@ -219,40 +219,43 @@ void ParticleSystem::Update(ID3D12GraphicsCommandList* cmdList, float dt, FrameR
 
     cmdList->SetComputeRootSignature(mRootSignatureCompute.Get());
 
-    // 2. Сбрасываем счетчик AliveList на 0.
-    //cmdList->CopyBufferRegion(mCounters.Get(), 8, frameResource->UploadCounter.Get(), 0, 4); // Смещение 8 - для AliveList
+    ID3D12DescriptorHeap* computeHeaps[] = { mUavSrvHeap.Get() };
+    cmdList->SetDescriptorHeaps(_countof(computeHeaps), computeHeaps);
 
-    // 3. Запускаем EmitCS для создания новых частиц
+    // 2. Г‘ГЎГ°Г Г±Г»ГўГ ГҐГ¬ Г±Г·ГҐГІГ·ГЁГЄ AliveList Г­Г  0.
+    //cmdList->CopyBufferRegion(mCounters.Get(), 8, frameResource->UploadCounter.Get(), 0, 4); // Г‘Г¬ГҐГ№ГҐГ­ГЁГҐ 8 - Г¤Г«Гї AliveList
+
+    // 3. Г‡Г ГЇГіГ±ГЄГ ГҐГ¬ EmitCS Г¤Г«Гї Г±Г®Г§Г¤Г Г­ГЁГї Г­Г®ГўГ»Гµ Г·Г Г±ГІГЁГ¶
     cmdList->SetPipelineState(mPSOEmit.Get());
     cmdList->SetComputeRootConstantBufferView(0, frameResource->ParticleCB->Resource()->GetGPUVirtualAddress());
     cmdList->SetComputeRootDescriptorTable(1, mUavSrvHeap->GetGPUDescriptorHandleForHeapStart());
     cmdList->Dispatch(numToEmit / 256 + 1, 1, 1);
 
-    // 4. Барьеры, чтобы завершить запись в буферы перед симуляцией
+    // 4. ГЃГ Г°ГјГҐГ°Г», Г·ГІГ®ГЎГ» Г§Г ГўГҐГ°ГёГЁГІГј Г§Г ГЇГЁГ±Гј Гў ГЎГіГґГҐГ°Г» ГЇГҐГ°ГҐГ¤ Г±ГЁГ¬ГіГ«ГїГ¶ГЁГҐГ©
     auto barriers = {
         CD3DX12_RESOURCE_BARRIER::UAV(mParticlePool.Get()),
         CD3DX12_RESOURCE_BARRIER::UAV(mDeadList[mCurrentDeadList].Get())
     };
     cmdList->ResourceBarrier(2, barriers.begin());
 
-    // 5. Запускаем SimulateCS для обновления и отбора
+    // 5. Г‡Г ГЇГіГ±ГЄГ ГҐГ¬ SimulateCS Г¤Г«Гї Г®ГЎГ­Г®ГўГ«ГҐГ­ГЁГї ГЁ Г®ГІГЎГ®Г°Г 
     cmdList->SetPipelineState(mPSOSimulate.Get());
     cmdList->Dispatch(mMaxParticles / 256 + 1, 1, 1);
 
-    // 6. Копируем количество живых частиц (счетчик из AliveList) в буфер для DrawIndirect
+    // 6. ГЉГ®ГЇГЁГ°ГіГҐГ¬ ГЄГ®Г«ГЁГ·ГҐГ±ГІГўГ® Г¦ГЁГўГ»Гµ Г·Г Г±ГІГЁГ¶ (Г±Г·ГҐГІГ·ГЁГЄ ГЁГ§ AliveList) Гў ГЎГіГґГҐГ° Г¤Г«Гї DrawIndirect
     cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
         mDrawArgs.Get(),
         D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT,
         D3D12_RESOURCE_STATE_COPY_DEST));
     cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mCounters.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE));
-    cmdList->CopyBufferRegion(mDrawArgs.Get(), 4, mCounters.Get(), 8, 4); // Смещение 4 - InstanceCount в DrawArgs
+    cmdList->CopyBufferRegion(mDrawArgs.Get(), 4, mCounters.Get(), 8, 4); // Г‘Г¬ГҐГ№ГҐГ­ГЁГҐ 4 - InstanceCount Гў DrawArgs
     cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mCounters.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS));
     cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
         mDrawArgs.Get(),
         D3D12_RESOURCE_STATE_COPY_DEST,
         D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT));
 
-    // 7. Переключаем "мертвые" списки для следующего кадра
+    // 7. ГЏГҐГ°ГҐГЄГ«ГѕГ·Г ГҐГ¬ "Г¬ГҐГ°ГІГўГ»ГҐ" Г±ГЇГЁГ±ГЄГЁ Г¤Г«Гї Г±Г«ГҐГ¤ГіГѕГ№ГҐГЈГ® ГЄГ Г¤Г°Г 
     mCurrentDeadList = 1 - mCurrentDeadList;
 }
 

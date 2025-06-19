@@ -1,8 +1,8 @@
-#pragma once
+п»ї#pragma once
 
 #include "d3dUtil.h"
 #include "DirectXMath.h"
-#include <numeric> // Для std::iota
+#include <numeric> // Г„Г«Гї std::iota
 
 using Microsoft::WRL::ComPtr;
 using namespace DirectX;
@@ -25,7 +25,7 @@ struct Particle
 //    float Pad2;
 //};
 
-// Forward-декларация
+// Forward-Г¤ГҐГЄГ«Г Г°Г Г¶ГЁГї
 struct FrameResource;
 
 class ParticleSystem

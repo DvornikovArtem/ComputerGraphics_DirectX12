@@ -370,6 +370,8 @@ protected:
     UINT TexDescsLength;
 
     std::unique_ptr<ParticleSystem> mParticleSystem;
+
+    float mDeltaTime = 0.0f;
 };
 
 
