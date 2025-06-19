@@ -68,11 +68,6 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 	CreateCommandObjects();
 	CreateSwapChain();
 
-	mParticleSystem = std::make_unique<ParticleSystem>(
-		md3dDevice.Get(),
-		mCommandList.Get(),
-		1000);
-
 	mGbuffer = std::make_unique<Gbuffer>(mClientWidth, mClientHeight, md3dDevice);
 
 	// For Debug System =========================================================
@@ -85,6 +80,11 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 
 	// Reset the command list to prep for initialization commands.
 	ThrowIfFailed(mCommandList->Reset(mDirectCmdListAlloc.Get(), nullptr));
+
+	mParticleSystem = std::make_unique<ParticleSystem>(
+		md3dDevice.Get(),
+		mCommandList.Get(),
+		1000);
 
 	// Get the increment size of a descriptor in this heap type.  This is hardware specific, 
 	// so we have to query this information.
@@ -288,18 +288,21 @@ void RenderingSystem::Render()
 	//
 	DrawSkyBox();
 
-	auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(mParticleSystem->GetAliveList(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-	mCommandList->ResourceBarrier(1, &barrier);
-
 	ID3D12DescriptorHeap* descriptorHeaps[] = { mSrvDescriptorHeap.Get() };
 	mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
 
 	auto passCBAddress = mCurrFrameResource->PassCB->Resource()->GetGPUVirtualAddress();
 	mParticleSystem->Draw(mCommandList.Get(), passCBAddress);
 
-	// Переход барьера обратно для следующего кадра
-	barrier = CD3DX12_RESOURCE_BARRIER::Transition(mParticleSystem->GetAliveList(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-	mCommandList->ResourceBarrier(1, &barrier);
+	// Переводим ресурсы частиц обратно в состояние UAV для следующего кадра.
+	// ParticleSystem::Update ожидает их в этом состоянии.
+	CD3DX12_RESOURCE_BARRIER barriers[2] = {
+		CD3DX12_RESOURCE_BARRIER::Transition(mParticleSystem->GetAliveList(),
+			D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+		CD3DX12_RESOURCE_BARRIER::Transition(mParticleSystem->GetParticlePool(),
+			D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
+	};
+	mCommandList->ResourceBarrier(_countof(barriers), barriers);
 
 	//
 	// Post-Processing
@@ -1513,7 +1516,7 @@ void RenderingSystem::BuildFrameResources()
 	for (int i = 0; i < gNumFrameResources; ++i)
 	{
 		mFrameResources.push_back(std::make_unique<FrameResource>(md3dDevice.Get(),
-			2, (UINT)mAllRitems.size(), (UINT)mMaterials.size(), (UINT)mAllLights.size()));
+			2, (UINT)mAllRitems.size(), (UINT)mMaterials.size(), (UINT)mAllLights.size(), 1));
 	}
 }
 

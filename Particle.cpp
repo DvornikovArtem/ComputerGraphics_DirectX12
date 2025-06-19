@@ -16,113 +16,118 @@ ParticleSystem::ParticleSystem(ID3D12Device* device, ID3D12GraphicsCommandList* 
 void ParticleSystem::BuildResources(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList)
 {
     auto defaultHeap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
+    auto uploadHeap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
 
-    D3D12_RESOURCE_DESC bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(0, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
-    bufferDesc.Width = mMaxParticles * sizeof(Particle);
+    // Геометрия для частиц (квадрат)
+    {
+        GeometryGenerator geoGen;
+        GeometryGenerator::MeshData quad = geoGen.CreateQuad(0.0f, 0.0f, 1.0f, 1.0f, 0.0f);
+        std::vector<Vertex> vertices(quad.Vertices.size());
+        for (size_t i = 0; i < quad.Vertices.size(); ++i)
+        {
+            vertices[i].Pos = quad.Vertices[i].Position;
+            vertices[i].Normal = quad.Vertices[i].Normal;
+            vertices[i].TexC = quad.Vertices[i].TexC;
+        }
+        std::vector<std::uint16_t> indices = quad.GetIndices16();
+        mQuadGeo = std::make_unique<MeshGeometry>();
+        mQuadGeo->Name = "particle_quad";
+        mQuadGeo->VertexBufferGPU = d3dUtil::CreateDefaultBuffer(device, cmdList, vertices.data(), (UINT)vertices.size() * sizeof(Vertex), mQuadGeo->VertexBufferUploader);
+        mQuadGeo->IndexBufferGPU = d3dUtil::CreateDefaultBuffer(device, cmdList, indices.data(), (UINT)indices.size() * sizeof(uint16_t), mQuadGeo->IndexBufferUploader);
+        mQuadGeo->VertexByteStride = sizeof(Vertex);
+        mQuadGeo->VertexBufferByteSize = (UINT)vertices.size() * sizeof(Vertex);
+        mQuadGeo->IndexFormat = DXGI_FORMAT_R16_UINT;
+        mQuadGeo->IndexBufferByteSize = (UINT)indices.size() * sizeof(uint16_t);
+        mQuadGeo->DrawArgs["quad"] = { (UINT)indices.size(), 0, 0, {} };
+        mQuadGeo->InputLayout = {
+            { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+            { "NORMAL",   0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+            { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,    0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+        };
+    }
+
+    // Создание основных буферов
+    D3D12_RESOURCE_DESC bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(mMaxParticles * sizeof(Particle), D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
     ThrowIfFailed(device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &bufferDesc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(&mParticlePool)));
 
     bufferDesc.Width = mMaxParticles * sizeof(UINT);
-    ThrowIfFailed(device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &bufferDesc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(&mDeadList[0])));
-    ThrowIfFailed(device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &bufferDesc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(&mDeadList[1])));
+    // Создаём DeadList сразу в состоянии COPY_DEST для упрощения
+    ThrowIfFailed(device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &bufferDesc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&mDeadList[0])));
+    ThrowIfFailed(device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &bufferDesc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&mDeadList[1])));
+
+    bufferDesc.Width = mMaxParticles * sizeof(UINT);
     ThrowIfFailed(device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &bufferDesc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(&mAliveList)));
 
     bufferDesc.Width = sizeof(UINT) * 4;
-    bufferDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
     ThrowIfFailed(device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &bufferDesc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(&mCounters)));
 
     bufferDesc.Width = sizeof(D3D12_DRAW_INDEXED_ARGUMENTS);
     ThrowIfFailed(device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &bufferDesc, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT, nullptr, IID_PPV_ARGS(&mDrawArgs)));
 
+    // Инициализация данных
+    // 1) DrawArgs
+    D3D12_DRAW_INDEXED_ARGUMENTS initArgs = {};
+    initArgs.IndexCountPerInstance = mQuadGeo->DrawArgs["quad"].IndexCount;
+    auto uploadDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(initArgs));
+    ThrowIfFailed(device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &uploadDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&mDrawArgsUpload)));
+    void* mapped = nullptr;
+    mDrawArgsUpload->Map(0, nullptr, &mapped);
+    memcpy(mapped, &initArgs, sizeof(initArgs));
+    mDrawArgsUpload->Unmap(0, nullptr);
+    cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mDrawArgs.Get(), D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT, D3D12_RESOURCE_STATE_COPY_DEST));
+    cmdList->CopyBufferRegion(mDrawArgs.Get(), 0, mDrawArgsUpload.Get(), 0, sizeof(initArgs));
+    cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mDrawArgs.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT));
+
+    // 2) Счётчики
+    UINT initCounters[4] = { mMaxParticles, 0, 0, 0 };
+    uploadDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(initCounters));
+    ThrowIfFailed(device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &uploadDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&mCounterUpload)));
+    mCounterUpload->Map(0, nullptr, &mapped);
+    memcpy(mapped, initCounters, sizeof(initCounters));
+    mCounterUpload->Unmap(0, nullptr);
+    cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mCounters.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_DEST));
+    cmdList->CopyBufferRegion(mCounters.Get(), 0, mCounterUpload.Get(), 0, sizeof(initCounters));
+    cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mCounters.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS));
+
+    // 3) Список мёртвых частиц
     std::vector<UINT> deadIndices(mMaxParticles);
     std::iota(deadIndices.begin(), deadIndices.end(), 0);
+    uploadDesc = CD3DX12_RESOURCE_DESC::Buffer(mMaxParticles * sizeof(UINT));
+    ThrowIfFailed(device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &uploadDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&mDeadListUpload)));
+    mDeadListUpload->Map(0, nullptr, &mapped);
+    memcpy(mapped, deadIndices.data(), uploadDesc.Width);
+    mDeadListUpload->Unmap(0, nullptr);
 
-    ComPtr<ID3D12Resource> uploadDeadList;
-    auto uploadHeap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
-    bufferDesc.Width = mMaxParticles * sizeof(UINT);
-    bufferDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
-    ThrowIfFailed(device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &bufferDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&uploadDeadList)));
+    // Копируем в mDeadList[0] (он уже в состоянии COPY_DEST)
+    cmdList->CopyBufferRegion(mDeadList[0].Get(), 0, mDeadListUpload.Get(), 0, uploadDesc.Width);
 
-    D3D12_SUBRESOURCE_DATA subData = {};
-    subData.pData = deadIndices.data();
-    subData.RowPitch = bufferDesc.Width;
-    subData.SlicePitch = subData.RowPitch;
-    cmdList->CopyBufferRegion(mDeadList[0].Get(), 0, uploadDeadList.Get(), 0, bufferDesc.Width);
+    // Переводим оба DeadList в состояние UAV для использования в шейдерах
+    CD3DX12_RESOURCE_BARRIER barriers[] = {
+        CD3DX12_RESOURCE_BARRIER::Transition(mDeadList[0].Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+        CD3DX12_RESOURCE_BARRIER::Transition(mDeadList[1].Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
+    };
+    cmdList->ResourceBarrier(_countof(barriers), barriers);
 
-    // --- Ñîçäàíèå êó÷è äåñêðèïòîðîâ ---
+    // Создание UAV дескрипторов
     D3D12_DESCRIPTOR_HEAP_DESC uavHeapDesc = {};
-    uavHeapDesc.NumDescriptors = 5; // Pool, Dead0, Dead1, Alive, DrawArgs
+    uavHeapDesc.NumDescriptors = 5;
     uavHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     uavHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
     ThrowIfFailed(device->CreateDescriptorHeap(&uavHeapDesc, IID_PPV_ARGS(&mUavSrvHeap)));
-
     CD3DX12_CPU_DESCRIPTOR_HANDLE uavHandle(mUavSrvHeap->GetCPUDescriptorHandleForHeapStart());
     UINT uavDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-
     D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
     uavDesc.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
     uavDesc.Format = DXGI_FORMAT_UNKNOWN;
     uavDesc.Buffer.NumElements = mMaxParticles;
-    uavDesc.Buffer.Flags = D3D12_BUFFER_UAV_FLAG_NONE;
-
     uavDesc.Buffer.StructureByteStride = sizeof(Particle);
-    device->CreateUnorderedAccessView(mParticlePool.Get(), nullptr, &uavDesc, uavHandle);
-    uavHandle.Offset(1, uavDescriptorSize);
-
+    device->CreateUnorderedAccessView(mParticlePool.Get(), nullptr, &uavDesc, uavHandle); uavHandle.Offset(1, uavDescriptorSize);
     uavDesc.Buffer.StructureByteStride = sizeof(UINT);
-    // Dead List 0 (ñ÷åò÷èê ïî ñìåùåíèþ 0)
-    device->CreateUnorderedAccessView(mDeadList[0].Get(), mCounters.Get(), &uavDesc, uavHandle);
-    uavHandle.Offset(1, uavDescriptorSize);
-    // Dead List 1 (ñ÷åò÷èê ïî ñìåùåíèþ 4)
-    device->CreateUnorderedAccessView(mDeadList[1].Get(), mCounters.Get(), &uavDesc, uavHandle);
-    uavHandle.Offset(1, uavDescriptorSize);
-    // Alive List (ñ÷åò÷èê ïî ñìåùåíèþ 8)
-    device->CreateUnorderedAccessView(mAliveList.Get(), mCounters.Get(), &uavDesc, uavHandle);
-    uavHandle.Offset(1, uavDescriptorSize);
-
-    uavDesc.Buffer.StructureByteStride = sizeof(UINT);
+    device->CreateUnorderedAccessView(mDeadList[0].Get(), mCounters.Get(), &uavDesc, uavHandle); uavHandle.Offset(1, uavDescriptorSize);
+    device->CreateUnorderedAccessView(mDeadList[1].Get(), mCounters.Get(), &uavDesc, uavHandle); uavHandle.Offset(1, uavDescriptorSize);
+    device->CreateUnorderedAccessView(mAliveList.Get(), mCounters.Get(), &uavDesc, uavHandle); uavHandle.Offset(1, uavDescriptorSize);
     uavDesc.Buffer.NumElements = sizeof(D3D12_DRAW_INDEXED_ARGUMENTS) / sizeof(UINT);
     device->CreateUnorderedAccessView(mDrawArgs.Get(), nullptr, &uavDesc, uavHandle);
-
-    // --- Ãåîìåòðèÿ ---
-    GeometryGenerator geoGen;
-    GeometryGenerator::MeshData quad = geoGen.CreateQuad(0.0f, 0.0f, 1.0f, 1.0f, 0.0f);
-
-    std::vector<Vertex> vertices(quad.Vertices.size());
-    for (size_t i = 0; i < quad.Vertices.size(); ++i)
-    {
-        vertices[i].Pos = quad.Vertices[i].Position;
-        vertices[i].Normal = quad.Vertices[i].Normal;
-        vertices[i].TexC = quad.Vertices[i].TexC;
-    }
-    std::vector<std::uint16_t> indices = quad.GetIndices16();
-
-    mQuadGeo = std::make_unique<MeshGeometry>();
-    mQuadGeo->Name = "particle_quad";
-
-    // Ýòî èñïðàâëÿåò îøèáêó C2061: syntax error: identifier 'Blob'
-    ThrowIfFailed(D3DCreateBlob(vertices.size() * sizeof(Vertex), &mQuadGeo->VertexBufferCPU));
-    CopyMemory(mQuadGeo->VertexBufferCPU->GetBufferPointer(), vertices.data(), vertices.size() * sizeof(Vertex));
-
-    ThrowIfFailed(D3DCreateBlob(indices.size() * sizeof(uint16_t), &mQuadGeo->IndexBufferCPU));
-    CopyMemory(mQuadGeo->IndexBufferCPU->GetBufferPointer(), indices.data(), indices.size() * sizeof(uint16_t));
-
-    mQuadGeo->VertexBufferGPU = d3dUtil::CreateDefaultBuffer(device, cmdList, vertices.data(), vertices.size() * sizeof(Vertex), mQuadGeo->VertexBufferUploader);
-    mQuadGeo->IndexBufferGPU = d3dUtil::CreateDefaultBuffer(device, cmdList, indices.data(), indices.size() * sizeof(uint16_t), mQuadGeo->IndexBufferUploader);
-
-    mQuadGeo->VertexByteStride = sizeof(Vertex);
-    mQuadGeo->VertexBufferByteSize = (UINT)vertices.size() * sizeof(Vertex);
-    mQuadGeo->IndexFormat = DXGI_FORMAT_R16_UINT;
-    mQuadGeo->IndexBufferByteSize = (UINT)indices.size() * sizeof(uint16_t);
-
-    mQuadGeo->DrawArgs["quad"] = { (UINT)indices.size(), 0, 0, {} };
-
-    // Ýòî èñïðàâëÿåò îøèáêó "class "MeshGeometry" has no member "InputLayout""
-    mQuadGeo->InputLayout =
-    {
-        { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-        { "NORMAL",   0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-        { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,    0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-    };
 }
 
 void ParticleSystem::BuildRootSignatures(ID3D12Device* device)
@@ -210,10 +215,10 @@ void ParticleSystem::BuildShadersAndPSOs(ID3D12Device* device)
 
 void ParticleSystem::Update(ID3D12GraphicsCommandList* cmdList, float dt, FrameResource* frameResource, const XMFLOAT3& emitterPos, UINT numToEmit)
 {
-    // 1. Îáíîâëÿåì êîíñòàíòû
+    // 1. Обновляем константы
     ParticleConstants pConsts;
-    pConsts.DeltaTime = dt;
     pConsts.EmitterPos = emitterPos;
+    pConsts.DeltaTime = dt;
     pConsts.NumEmit = numToEmit;
     frameResource->ParticleCB->CopyData(0, pConsts);
 
@@ -222,40 +227,65 @@ void ParticleSystem::Update(ID3D12GraphicsCommandList* cmdList, float dt, FrameR
     ID3D12DescriptorHeap* computeHeaps[] = { mUavSrvHeap.Get() };
     cmdList->SetDescriptorHeaps(_countof(computeHeaps), computeHeaps);
 
-    // 2. Ñáðàñûâàåì ñ÷åò÷èê AliveList íà 0.
-    //cmdList->CopyBufferRegion(mCounters.Get(), 8, frameResource->UploadCounter.Get(), 0, 4); // Ñìåùåíèå 8 - äëÿ AliveList
+    // Барьеры для всех UAV перед использованием
+    CD3DX12_RESOURCE_BARRIER uavBarriers[] =
+    {
+        CD3DX12_RESOURCE_BARRIER::UAV(mParticlePool.Get()),
+        CD3DX12_RESOURCE_BARRIER::UAV(mCounters.Get()),
+        CD3DX12_RESOURCE_BARRIER::UAV(mDeadList[0].Get()),
+        CD3DX12_RESOURCE_BARRIER::UAV(mDeadList[1].Get()),
+        CD3DX12_RESOURCE_BARRIER::UAV(mAliveList.Get()),
+    };
+    cmdList->ResourceBarrier(_countof(uavBarriers), uavBarriers);
 
-    // 3. Çàïóñêàåì EmitCS äëÿ ñîçäàíèÿ íîâûõ ÷àñòèö
+    // 2. Обнуляем счётчик AliveList (смещение 8 в mCounters)
+    cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+        mCounters.Get(),
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+        D3D12_RESOURCE_STATE_COPY_DEST));
+
+    cmdList->CopyBufferRegion(
+        mCounters.Get(),
+        sizeof(UINT) * 2, // Смещение до счётчика Alive
+        frameResource->NullUploadBuffer->Resource(),
+        0,
+        sizeof(UINT));
+
+    cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+        mCounters.Get(),
+        D3D12_RESOURCE_STATE_COPY_DEST,
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS));
+
+    // 3. Запускаем EmitCS для создания новых частиц
     cmdList->SetPipelineState(mPSOEmit.Get());
     cmdList->SetComputeRootConstantBufferView(0, frameResource->ParticleCB->Resource()->GetGPUVirtualAddress());
     cmdList->SetComputeRootDescriptorTable(1, mUavSrvHeap->GetGPUDescriptorHandleForHeapStart());
     cmdList->Dispatch(numToEmit / 256 + 1, 1, 1);
 
-    // 4. Áàðüåðû, ÷òîáû çàâåðøèòü çàïèñü â áóôåðû ïåðåä ñèìóëÿöèåé
-    auto barriers = {
-        CD3DX12_RESOURCE_BARRIER::UAV(mParticlePool.Get()),
-        CD3DX12_RESOURCE_BARRIER::UAV(mDeadList[mCurrentDeadList].Get())
-    };
-    cmdList->ResourceBarrier(2, barriers.begin());
+    // Барьер для синхронизации после EmitCS
+    cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::UAV(mParticlePool.Get()));
 
-    // 5. Çàïóñêàåì SimulateCS äëÿ îáíîâëåíèÿ è îòáîðà
+    // 4. Запускаем SimulateCS для обновления и отбора
     cmdList->SetPipelineState(mPSOSimulate.Get());
     cmdList->Dispatch(mMaxParticles / 256 + 1, 1, 1);
 
-    // 6. Êîïèðóåì êîëè÷åñòâî æèâûõ ÷àñòèö (ñ÷åò÷èê èç AliveList) â áóôåð äëÿ DrawIndirect
-    cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
-        mDrawArgs.Get(),
-        D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT,
-        D3D12_RESOURCE_STATE_COPY_DEST));
+    // 5. Копируем количество живых частиц (счётчик из AliveList) в буфер для DrawIndirect
+    cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mDrawArgs.Get(), D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT, D3D12_RESOURCE_STATE_COPY_DEST));
     cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mCounters.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE));
-    cmdList->CopyBufferRegion(mDrawArgs.Get(), 4, mCounters.Get(), 8, 4); // Ñìåùåíèå 4 - InstanceCount â DrawArgs
-    cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mCounters.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS));
-    cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
-        mDrawArgs.Get(),
-        D3D12_RESOURCE_STATE_COPY_DEST,
-        D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT));
 
-    // 7. Ïåðåêëþ÷àåì "ìåðòâûå" ñïèñêè äëÿ ñëåäóþùåãî êàäðà
+    cmdList->CopyBufferRegion(mDrawArgs.Get(), 4, mCounters.Get(), 8, 4); // Смещение 4 - InstanceCount, смещение 8 - счётчик Alive
+
+    cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mCounters.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS));
+    cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mDrawArgs.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT));
+
+    // 6. Переводим ресурсы в состояние для чтения в вертексном шейдере
+    CD3DX12_RESOURCE_BARRIER toSrv[] = {
+        CD3DX12_RESOURCE_BARRIER::Transition(mParticlePool.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
+        CD3DX12_RESOURCE_BARRIER::Transition(mAliveList.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE)
+    };
+    cmdList->ResourceBarrier(_countof(toSrv), toSrv);
+
+    // 7. Переключаем "мертвые" списки для следующего кадра
     mCurrentDeadList = 1 - mCurrentDeadList;
 }
 

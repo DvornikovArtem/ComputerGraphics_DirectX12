@@ -9,6 +9,7 @@ struct ObjectConstants
     DirectX::XMFLOAT4X4 World = MathHelper::Identity4x4();
 	DirectX::XMFLOAT4X4 TexTransform = MathHelper::Identity4x4();
     float TesselationFactor = 1;
+    DirectX::XMFLOAT3 pad;
 };
 
 struct PassConstants
@@ -54,11 +55,10 @@ struct Vertex
 
 struct ParticleConstants
 {
-    float DeltaTime;
-    UINT NumEmit;      // Количество частиц для эмиссии в этом кадре
-    DirectX::XMFLOAT2 Pad1;
     DirectX::XMFLOAT3 EmitterPos;
-    float Pad2;
+    float DeltaTime;
+    UINT NumEmit;
+    DirectX::XMFLOAT3 Pad;
 };
 
 // Stores the resources needed for the CPU to build the command lists
@@ -67,7 +67,7 @@ struct FrameResource
 {
 public:
     
-    FrameResource(ID3D12Device* device, UINT passCount, UINT objectCount, UINT materialCount, UINT LightCount);
+    FrameResource(ID3D12Device* device, UINT passCount, UINT objectCount, UINT materialCount, UINT LightCount, UINT particleCount);
     FrameResource(const FrameResource& rhs) = delete;
     FrameResource& operator=(const FrameResource& rhs) = delete;
     ~FrameResource();
@@ -85,6 +85,7 @@ public:
     std::unique_ptr<UploadBuffer<Light>> LightCB = nullptr;
 
     std::unique_ptr<UploadBuffer<ParticleConstants>> ParticleCB = nullptr;
+    std::unique_ptr<UploadBuffer<UINT>> NullUploadBuffer = nullptr;
 
     // Fence value to mark commands up to this fence point.  This lets us
     // check if these frame resources are still in use by the GPU.

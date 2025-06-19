@@ -1,8 +1,8 @@
-п»ї#pragma once
+#pragma once
 
 #include "d3dUtil.h"
 #include "DirectXMath.h"
-#include <numeric> // Г„Г«Гї std::iota
+#include <numeric> // Для std::iota
 
 using Microsoft::WRL::ComPtr;
 using namespace DirectX;
@@ -16,16 +16,7 @@ struct Particle
     XMFLOAT4 Color;
 };
 
-//struct ParticleData
-//{
-//    float DeltaTime;
-//    UINT NumEmit;
-//    XMFLOAT2 Pad1;
-//    XMFLOAT3 EmitterPos;
-//    float Pad2;
-//};
-
-// Forward-Г¤ГҐГЄГ«Г Г°Г Г¶ГЁГї
+// Forward-декларация
 struct FrameResource;
 
 class ParticleSystem
@@ -40,6 +31,7 @@ public:
     MeshGeometry* GetQuadGeometry() const { return mQuadGeo.get(); }
 
     ID3D12Resource* GetAliveList() const { return mAliveList.Get(); }
+    ID3D12Resource* GetParticlePool() const { return mParticlePool.Get(); }
 
 private:
     void BuildResources(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList);
@@ -69,4 +61,9 @@ private:
     ComPtr<ID3D12DescriptorHeap> mUavSrvHeap;
 
     std::unique_ptr<MeshGeometry> mQuadGeo;
+
+    // Upload-буферы, которые должны существовать до выполнения команд GPU
+    ComPtr<ID3D12Resource> mDrawArgsUpload;
+    ComPtr<ID3D12Resource> mCounterUpload;
+    ComPtr<ID3D12Resource> mDeadListUpload;
 };
