@@ -434,7 +434,7 @@ void StencilApp::MakeLights()
     auto Direct1 = new LightObject;
     Direct1->Name = "Direct1";
     Direct1->LightType = LightType::Directional;
-    Direct1->WorldDirection = { 0.57735f, -0.57735f, 0.57735f };
+    Direct1->WorldDirection = { 0.57735f, -0.57735f, -0.57735f };
     Direct1->Strength = 1.f;
 
     mAllLightObjects[Direct1->Name] = Direct1;

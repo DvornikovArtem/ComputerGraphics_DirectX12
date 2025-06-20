@@ -76,6 +76,6 @@ VertexOut VS(VertexIn vin)
 
 float4 PS(VertexOut pin) : SV_Target
 {
-    return gDiffuseMap.Sample(gsamLinearWrap, pin.PosL);
+    return gDiffuseMap.SampleLevel(gsamLinearWrap, normalize(pin.PosL), 0);
 }
 
