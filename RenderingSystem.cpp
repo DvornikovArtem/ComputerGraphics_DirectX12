@@ -84,7 +84,7 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 	mParticleSystem = std::make_unique<ParticleSystem>(
 		md3dDevice.Get(),
 		mCommandList.Get(),
-		100);
+		5000);
 
 	// Get the increment size of a descriptor in this heap type.  This is hardware specific, 
 	// so we have to query this information.
@@ -250,9 +250,9 @@ void RenderingSystem::Render()
 
 	mParticleSystem->Update(
 		mCommandList.Get(),
-		mDeltaTime,                 // ← прошедшее с кадра время
+		mDeltaTime,
 		mCurrFrameResource,
-		XMFLOAT3{ 0.0f, 1.0f, 0.0f }, // позиция эмиттера
+		XMFLOAT3{ 0.0f, 1.0f, 0.0f },
 		10);
 
 	// Indicate a state transition on the resource usage.
@@ -288,14 +288,13 @@ void RenderingSystem::Render()
 	//
 	DrawSkyBox();
 
+
 	ID3D12DescriptorHeap* descriptorHeaps[] = { mSrvDescriptorHeap.Get() };
 	mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
 
 	auto passCBAddress = mCurrFrameResource->PassCB->Resource()->GetGPUVirtualAddress();
 	mParticleSystem->Draw(mCommandList.Get(), passCBAddress);
 
-	// Переводим ресурсы частиц обратно в состояние UAV для следующего кадра.
-	// ParticleSystem::Update ожидает их в этом состоянии.
 	CD3DX12_RESOURCE_BARRIER barriers[2] = {
 		CD3DX12_RESOURCE_BARRIER::Transition(mParticleSystem->GetAliveList(),
 			D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
@@ -303,6 +302,7 @@ void RenderingSystem::Render()
 			D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
 	};
 	mCommandList->ResourceBarrier(_countof(barriers), barriers);
+
 
 	//
 	// Post-Processing

@@ -283,6 +283,17 @@ void ParticleSystem::Update(ID3D12GraphicsCommandList* cmdList, float dt, FrameR
         0,
         sizeof(UINT));
 
+    UINT64 deadCounterOffset = (mCurrentDeadList == 0)
+        ? D3D12_UAV_COUNTER_PLACEMENT_ALIGNMENT
+        : 0;
+
+    cmdList->CopyBufferRegion(
+        mCounters.Get(),
+        deadCounterOffset,
+        frameResource->NullUploadBuffer->Resource(),
+        0,
+        sizeof(UINT));
+
     cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
         mCounters.Get(),
         D3D12_RESOURCE_STATE_COPY_DEST,
@@ -297,7 +308,15 @@ void ParticleSystem::Update(ID3D12GraphicsCommandList* cmdList, float dt, FrameR
     
 
     // Barier for synchronization between EmitCS and SimulateCS
-    cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::UAV(mParticlePool.Get()));
+    CD3DX12_RESOURCE_BARRIER postEmitBarriers[] =
+    {
+        CD3DX12_RESOURCE_BARRIER::UAV(mParticlePool.Get()),
+        CD3DX12_RESOURCE_BARRIER::UAV(mDeadList[0].Get()),
+        CD3DX12_RESOURCE_BARRIER::UAV(mDeadList[1].Get()),
+        CD3DX12_RESOURCE_BARRIER::UAV(mAliveList.Get()),
+        CD3DX12_RESOURCE_BARRIER::UAV(mCounters.Get())
+    };
+    cmdList->ResourceBarrier(_countof(postEmitBarriers), postEmitBarriers);
 
 
     // Launch SimulateCS for updating and selection
@@ -309,7 +328,7 @@ void ParticleSystem::Update(ID3D12GraphicsCommandList* cmdList, float dt, FrameR
     cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mDrawArgs.Get(), D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT, D3D12_RESOURCE_STATE_COPY_DEST));
     cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mCounters.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE));
 
-    cmdList->CopyBufferRegion(mDrawArgs.Get(), offsetof(D3D12_DRAW_INDEXED_ARGUMENTS, InstanceCount), mCounters.Get(), kAliveCounterOffset, sizeof(UINT)); // offset 4 - InstanceCount, offset 8 - counter Alive
+    cmdList->CopyBufferRegion(mDrawArgs.Get(), offsetof(D3D12_DRAW_INDEXED_ARGUMENTS, InstanceCount), mCounters.Get(), kAliveCounterOffset, sizeof(UINT));
 
     cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mCounters.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS));
     cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mDrawArgs.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT));
