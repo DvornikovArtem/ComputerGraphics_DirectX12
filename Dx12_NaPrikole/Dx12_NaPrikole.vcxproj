@@ -246,7 +246,7 @@
     <ClInclude Include="..\MISC\simplemath\SimpleMath.h" />
     <ClInclude Include="..\OctTree.h" />
     <ClInclude Include="..\old\DebugRenderSysImpl.h" />
-    <ClInclude Include="..\Particle.h" />
+    <ClInclude Include="..\ParticleSystem.h" />
     <ClInclude Include="..\RenderingSystem.h" />
     <ClInclude Include="..\RenderItem.h" />
     <ClInclude Include="..\ShadowMap.h" />
@@ -270,7 +270,7 @@
     <ClCompile Include="..\MathHelper.cpp" />
     <ClCompile Include="..\MISC\simplemath\SimpleMath.cpp" />
     <ClCompile Include="..\old\DebugRenderSysImpl.cpp" />
-    <ClCompile Include="..\Particle.cpp" />
+    <ClCompile Include="..\ParticleSystem.cpp" />
     <ClCompile Include="..\RenderingSystem.cpp" />
     <ClCompile Include="..\ShadowMap.cpp" />
     <ClCompile Include="..\StencilApp.cpp" />

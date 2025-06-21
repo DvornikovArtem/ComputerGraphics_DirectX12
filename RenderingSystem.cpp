@@ -81,10 +81,10 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 	// Reset the command list to prep for initialization commands.
 	ThrowIfFailed(mCommandList->Reset(mDirectCmdListAlloc.Get(), nullptr));
 
-	mParticleSystem = std::make_unique<ParticleSystem>(
+	/*mParticleSystem = std::make_unique<ParticleSystem>(
 		md3dDevice.Get(),
 		mCommandList.Get(),
-		5000);
+		5000);*/
 
 	// Get the increment size of a descriptor in this heap type.  This is hardware specific, 
 	// so we have to query this information.
@@ -248,13 +248,6 @@ void RenderingSystem::Render()
 	mCommandList->RSSetViewports(1, &mScreenViewport);
 	mCommandList->RSSetScissorRects(1, &mScissorRect);
 
-	mParticleSystem->Update(
-		mCommandList.Get(),
-		mDeltaTime,
-		mCurrFrameResource,
-		XMFLOAT3{ 0.0f, 1.0f, 0.0f },
-		10);
-
 	// Indicate a state transition on the resource usage.
 	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mSwapChainBuffer[mCurrBackBuffer].Get(),
 		D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
@@ -288,20 +281,18 @@ void RenderingSystem::Render()
 	//
 	DrawSkyBox();
 
+	//
+	//Draw ParticleSystems
+	//
+	for (ParticleSystem* particleSystem : mAllParticleSystems)
+	{
+		particleSystem->Update(
+			gt->DeltaTime(),
+			mCurrFrameResource
+		);
+	}
 
-	ID3D12DescriptorHeap* descriptorHeaps[] = { mSrvDescriptorHeap.Get() };
-	mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
-
-	auto passCBAddress = mCurrFrameResource->PassCB->Resource()->GetGPUVirtualAddress();
-	mParticleSystem->Draw(mCommandList.Get(), passCBAddress);
-
-	CD3DX12_RESOURCE_BARRIER barriers[2] = {
-		CD3DX12_RESOURCE_BARRIER::Transition(mParticleSystem->GetAliveList(),
-			D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
-		CD3DX12_RESOURCE_BARRIER::Transition(mParticleSystem->GetParticlePool(),
-			D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
-	};
-	mCommandList->ResourceBarrier(_countof(barriers), barriers);
+	DrawParticleSystems();
 
 
 	//
@@ -516,6 +507,33 @@ void RenderingSystem::BuildLightItems(std::unordered_map<std::string, LightObjec
 
 		k++;
 	}
+}
+
+void RenderingSystem::BuildParticleSystems(std::unordered_map<std::string, ParticleSystemDescriptor> ParticleSystemDescriptors)
+{
+	FlushCommandQueue();
+	ThrowIfFailed(mDirectCmdListAlloc->Reset());
+	ThrowIfFailed(mCommandList->Reset(mDirectCmdListAlloc.Get(), nullptr));
+
+	for (auto& pair : ParticleSystemDescriptors)
+	{
+		auto& particleSystemName = pair.first;
+		auto& particleSystemDescriptor = pair.second;
+
+		particleSystemDescriptor.emitComputeShader = mShaders[particleSystemDescriptor.emitComputeShaderName];
+		particleSystemDescriptor.simulateComputeShader = mShaders[particleSystemDescriptor.simulateComputeShaderName];
+
+		ParticleSystem* particleSystem = new ParticleSystem();
+		particleSystem->Initialize(particleSystemDescriptor);
+		particleSystem->Build(md3dDevice, mCommandList);
+
+		mAllParticleSystems.push_back(particleSystem);
+	}
+
+	ThrowIfFailed(mCommandList->Close());
+	ID3D12CommandList* cmdsLists[] = { mCommandList.Get() };
+	mCommandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
+	FlushCommandQueue();
 }
 
 void RenderingSystem::LogAdapterOutputs(IDXGIAdapter* adapter)
@@ -847,14 +865,6 @@ void RenderingSystem::Update(std::vector<DrawableObject*>& mAllObjectsToUpdate, 
 	UpdateMainPassCB(*gt);
 	UpdateLightItems(mAllLightObjectsToUpdate);
 	UpdateLightCBs(*gt);
-
-
-	mDeltaTime = gt->DeltaTime();
-	//XMFLOAT3 emitterPos = { 0.0f, 5.0f, 0.0f }; // Позиция эмиттера
-	//UINT numToEmit = 10; // Сколько частиц создавать каждый кадр
-
-	//mParticleSystem->Update(mCommandList.Get(), gt->DeltaTime(), mCurrFrameResource, emitterPos, numToEmit);
-
 }
 
 void RenderingSystem::UpdateObjectCBs(const GameTimer& gt)
@@ -1723,6 +1733,27 @@ void RenderingSystem::DrawSkyBox()
 		UINT BaseVertexLocation = ri->Geo->DrawArgs["LOD0"].BaseVertexLocation;
 
 		mCommandList->DrawIndexedInstanced(IndexCount, 1, StartIndexLocation, BaseVertexLocation, 0);
+	}
+}
+
+void RenderingSystem::DrawParticleSystems()
+{
+	ID3D12DescriptorHeap* descriptorHeaps[] = { mSrvDescriptorHeap.Get() };
+	mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
+
+	auto passCBAddress = mCurrFrameResource->PassCB->Resource()->GetGPUVirtualAddress();
+
+	for (ParticleSystem* particleSystem : mAllParticleSystems)
+	{
+		particleSystem->Draw(passCBAddress);
+
+		CD3DX12_RESOURCE_BARRIER barriers[2] = {
+			CD3DX12_RESOURCE_BARRIER::Transition(particleSystem->GetAliveList(),
+				D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+			CD3DX12_RESOURCE_BARRIER::Transition(particleSystem->GetParticlePool(),
+				D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
+		};
+		mCommandList->ResourceBarrier(_countof(barriers), barriers);
 	}
 }
 

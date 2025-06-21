@@ -29,7 +29,7 @@
 #include "old/DebugRenderSysImpl.h"
 #include "OctTree.h"
 
-#include "Particle.h"
+#include "ParticleSystem.h"
 
 #pragma comment(lib,"d3dcompiler.lib")
 #pragma comment(lib, "D3D12.lib")
@@ -188,6 +188,8 @@ public:
             layer.clear();
         }
 
+        for (auto& ps : mAllParticleSystems)
+            delete ps;
 
         mFrameResources.clear();
 
@@ -233,11 +235,13 @@ public:
     void BuildMaterials(std::vector<MaterialDesc>& MaterialDescs);
     void BuildRenderItems(std::unordered_map<std::string, DrawableObject*>& Objects);
     void BuildLightItems(std::unordered_map<std::string, LightObject*>& Objects);
+    void BuildParticleSystems(std::unordered_map<std::string, ParticleSystemDescriptor> ParticleSystemDescriptors);
 
     void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems, std::string PSOName);
 
     void GBufferGeometryPass();
     void GBufferLightPass();
+    void DrawParticleSystems();
 
     CD3DX12_CPU_DESCRIPTOR_HANDLE GetCpuSrv(int index)const;
     CD3DX12_GPU_DESCRIPTOR_HANDLE RenderingSystem::GetGpuSrv(int index)const;
@@ -369,9 +373,7 @@ protected:
 
     UINT TexDescsLength;
 
-    std::unique_ptr<ParticleSystem> mParticleSystem;
-
-    float mDeltaTime = 0.0f;
+    std::vector <ParticleSystem*> mAllParticleSystems;
 };
 
 

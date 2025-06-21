@@ -38,6 +38,7 @@ private:
     void LoadMeshes();
     void MakeDrawableObjects();
     void MakeLights();
+    void MakeParticleSystems();
 
     float mCameraMoveSpeed = 10.0f;
     POINT mLastMousePos;
@@ -79,6 +80,7 @@ bool StencilApp::Initialize()
     LoadTextures();
     MakeMaterials();
     MakeDrawableObjects();
+    MakeParticleSystems();
 
     mRenderingSystem->mCamera.SetPosition(-1.0f, 3.0f, 5.0f);
     mRenderingSystem->mCamera.RotateY(DirectX::XM_PI - 0.2f);
@@ -204,6 +206,8 @@ void StencilApp::LoadShaders()
         ShaderDesc("RotatingTilesPS", L"../Shaders/DeferredGeometryPass.hlsl", "PS", defines, "ps_5_1"),
         ShaderDesc("HSForDecals", L"../Shaders/DeferredGeometryPass.hlsl", "HSForDecals", nullptr, "hs_5_1"),
         ShaderDesc("DSForDecals", L"../Shaders/DeferredGeometryPass.hlsl", "DSForDecals", nullptr, "ds_5_1"),
+        ShaderDesc("EmitCS", L"../Shaders/ParticleCS.hlsl", "EmitCS", nullptr, "cs_5_1"),
+        ShaderDesc("SimulateCS", L"../Shaders/ParticleCS.hlsl", "SimulateCS", nullptr, "cs_5_1"),
     };
 
     mRenderingSystem->BuildShaders(ShaderDescs);
@@ -464,4 +468,22 @@ void StencilApp::MakeLights()
     mAllLightObjects[Spot1->Name] = Spot1;
 
     mRenderingSystem->BuildLightItems(mAllLightObjects);
+}
+
+void StencilApp::MakeParticleSystems()
+{
+    ParticleSystemDescriptor particleSystemDesc;
+    
+    particleSystemDesc.name = "fireworkParticleSystem";
+    particleSystemDesc.emitterPosition = {0.0f, 1.0f, 0.0f};
+    particleSystemDesc.numParticlesToEmit = 10;
+    particleSystemDesc.maxParticles = 15000;
+    particleSystemDesc.particleSize = 0.01f;
+    particleSystemDesc.particleShape = PARTICLE_SHAPE::QUAD;
+    particleSystemDesc.emitComputeShaderName = "EmitCS";
+    particleSystemDesc.simulateComputeShaderName = "SimulateCS";
+
+    mParticleSystemDescriptors[particleSystemDesc.name] = particleSystemDesc;
+
+    mRenderingSystem->BuildParticleSystems(mParticleSystemDescriptors);
 }

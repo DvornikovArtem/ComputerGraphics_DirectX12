@@ -262,7 +262,7 @@
     <ClInclude Include="..\ShadowMap.h">
       <Filter>Файлы заголовков</Filter>
     </ClInclude>
-    <ClInclude Include="..\Particle.h">
+    <ClInclude Include="..\ParticleSystem.h">
       <Filter>Файлы заголовков</Filter>
     </ClInclude>
   </ItemGroup>
@@ -324,7 +324,7 @@
     <ClCompile Include="..\ShadowMap.cpp">
       <Filter>Исходные файлы</Filter>
     </ClCompile>
-    <ClCompile Include="..\Particle.cpp">
+    <ClCompile Include="..\ParticleSystem.cpp">
       <Filter>Исходные файлы</Filter>
     </ClCompile>
   </ItemGroup>

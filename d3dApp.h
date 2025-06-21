@@ -91,4 +91,6 @@ protected:
 	std::vector<DrawableObject*> DrawableObjectUpdateList;
 	std::unordered_map<std::string, LightObject*> mAllLightObjects;
 	std::vector<LightObject*> LightObjectUpdateList;
+
+	std::unordered_map<std::string, ParticleSystemDescriptor> mParticleSystemDescriptors;
 };
