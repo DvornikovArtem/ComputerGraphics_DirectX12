@@ -1,4 +1,3 @@
-// Сначала определяем структуры
 struct Particle
 {
     float3 Pos;
@@ -7,6 +6,7 @@ struct Particle
     float Size;
     float4 Color;
 };
+
 
 struct VSInput
 {
@@ -22,18 +22,19 @@ struct VSOutput
     float2 TexCoord : TEXCOORD;
 };
 
-// Потом константы и ресурсы
+
 cbuffer PassConstants : register(b0)
 {
     matrix viewProj;
 };
 
+
 StructuredBuffer<Particle> gParticlePool : register(t0);
-StructuredBuffer<uint> gAliveList : register(t1); // Теперь это SRV
+StructuredBuffer<uint> gAliveList : register(t1);
+
 
 VSOutput VS(VSInput input, uint instanceID : SV_InstanceID)
 {
-    // ... (остальной код VS и PS без изменений)
     VSOutput output;
 
     uint particleIndex = gAliveList[instanceID];
@@ -41,17 +42,17 @@ VSOutput VS(VSInput input, uint instanceID : SV_InstanceID)
 
     float3 particlePosW = p.Pos;
     float3 quadPosL = input.PosL;
-
-    // TODO: Правильное создание билборда
+    
     float3 worldPos = particlePosW + quadPosL * p.Size;
 
     output.PosH = mul(float4(worldPos, 1.0f), viewProj);
     output.Color = p.Color;
-    output.Color.a *= saturate(p.LifeTime / 2.0f); // Нормализуем альфу
+    output.Color.a *= saturate(p.LifeTime / 2.0f);
     output.TexCoord = input.TexC;
 
     return output;
 }
+
 
 float4 PS(VSOutput input) : SV_TARGET
 {

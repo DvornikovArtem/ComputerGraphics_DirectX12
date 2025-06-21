@@ -1,8 +1,8 @@
-#pragma once
+п»ї#pragma once
 
 #include "d3dUtil.h"
 #include "DirectXMath.h"
-#include <numeric> // Для std::iota
+#include <numeric> // Г„Г«Гї std::iota
 
 using Microsoft::WRL::ComPtr;
 using namespace DirectX;
@@ -16,7 +16,7 @@ struct Particle
     XMFLOAT4 Color;
 };
 
-// Forward-декларация
+// Forward-Г¤ГҐГЄГ«Г Г°Г Г¶ГЁГї
 struct FrameResource;
 
 class ParticleSystem
@@ -62,8 +62,10 @@ private:
 
     std::unique_ptr<MeshGeometry> mQuadGeo;
 
-    // Upload-буферы, которые должны существовать до выполнения команд GPU
+    // Upload-ГЎГіГґГҐГ°Г», ГЄГ®ГІГ®Г°Г»ГҐ Г¤Г®Г«Г¦Г­Г» Г±ГіГ№ГҐГ±ГІГўГ®ГўГ ГІГј Г¤Г® ГўГ»ГЇГ®Г«Г­ГҐГ­ГЁГї ГЄГ®Г¬Г Г­Г¤ GPU
     ComPtr<ID3D12Resource> mDrawArgsUpload;
     ComPtr<ID3D12Resource> mCounterUpload;
     ComPtr<ID3D12Resource> mDeadListUpload;
+
+    ID3D12Device* mDevice;
 };

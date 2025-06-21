@@ -84,7 +84,7 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 	mParticleSystem = std::make_unique<ParticleSystem>(
 		md3dDevice.Get(),
 		mCommandList.Get(),
-		1000);
+		100);
 
 	// Get the increment size of a descriptor in this heap type.  This is hardware specific, 
 	// so we have to query this information.
@@ -253,7 +253,7 @@ void RenderingSystem::Render()
 		mDeltaTime,                 // ← прошедшее с кадра время
 		mCurrFrameResource,
 		XMFLOAT3{ 0.0f, 1.0f, 0.0f }, // позиция эмиттера
-		1000);
+		10);
 
 	// Indicate a state transition on the resource usage.
 	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mSwapChainBuffer[mCurrBackBuffer].Get(),
