@@ -31,28 +31,42 @@ void ParticleSystem::BuildResources()
     auto uploadHeap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD); // To storage data in default heap, u need to storage it first in upload heap (CPU-accessible) and then copy to default heap
 
 
-    // Geometry for particle (square) ===========================================================================================================================================
+    // Geometry for particle ====================================================================================================================================================
     GeometryGenerator geoGen;
-    GeometryGenerator::MeshData quad = geoGen.CreateQuad(0.0f, 0.0f, 1.0f, 1.0f, 0.0f);
+    GeometryGenerator::MeshData particleGeometry;
 
-    std::vector<Vertex> vertices(quad.Vertices.size());
-    for (size_t i = 0; i < quad.Vertices.size(); ++i)
+    switch (mParticleShape)
     {
-        vertices[i].Pos = quad.Vertices[i].Position;
-        vertices[i].Normal = quad.Vertices[i].Normal;
-        vertices[i].TexC = quad.Vertices[i].TexC;
+        case PARTICLE_SHAPE::QUAD:
+            particleGeometry = geoGen.CreateQuad(0.0f, 0.0f, 1.0f, 1.0f, 0.0f);
+            break;
+
+        case PARTICLE_SHAPE::CIRCLE:
+            particleGeometry = geoGen.CreateCircle(0.5f, 16);
+            break;
+
+        default:
+            throw std::runtime_error("Unknown PARTICLE_SHAPE");
     }
 
-    std::vector<std::uint16_t> indices = quad.GetIndices16();
+    std::vector<Vertex> vertices(particleGeometry.Vertices.size());
+    for (size_t i = 0; i < particleGeometry.Vertices.size(); ++i)
+    {
+        vertices[i].Pos = particleGeometry.Vertices[i].Position;
+        vertices[i].Normal = particleGeometry.Vertices[i].Normal;
+        vertices[i].TexC = particleGeometry.Vertices[i].TexC;
+    }
+
+    std::vector<std::uint16_t> indices = particleGeometry.GetIndices16();
     mQuadGeo = std::make_unique<MeshGeometry>();
-    mQuadGeo->Name = "particle_quad";
+    mQuadGeo->Name = "particleGeometry";
     mQuadGeo->VertexBufferGPU = d3dUtil::CreateDefaultBuffer(mDevice, mCommandList, vertices.data(), (UINT)vertices.size() * sizeof(Vertex), mQuadGeo->VertexBufferUploader);
     mQuadGeo->IndexBufferGPU = d3dUtil::CreateDefaultBuffer(mDevice, mCommandList, indices.data(), (UINT)indices.size() * sizeof(uint16_t), mQuadGeo->IndexBufferUploader);
     mQuadGeo->VertexByteStride = sizeof(Vertex);
     mQuadGeo->VertexBufferByteSize = (UINT)vertices.size() * sizeof(Vertex);
     mQuadGeo->IndexFormat = DXGI_FORMAT_R16_UINT;
     mQuadGeo->IndexBufferByteSize = (UINT)indices.size() * sizeof(uint16_t);
-    mQuadGeo->DrawArgs["quad"] = { (UINT)indices.size(), 0, 0, {} };
+    mQuadGeo->DrawArgs["particleGeometry"] = { (UINT)indices.size(), 0, 0, {} };
     mQuadGeo->InputLayout = {
         { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
         { "NORMAL",   0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
@@ -81,7 +95,7 @@ void ParticleSystem::BuildResources()
     // Data initialization
     // DrawArgs
     D3D12_DRAW_INDEXED_ARGUMENTS initArgs = {};
-    initArgs.IndexCountPerInstance = mQuadGeo->DrawArgs["quad"].IndexCount;
+    initArgs.IndexCountPerInstance = mQuadGeo->DrawArgs["particleGeometry"].IndexCount;
 
     CD3DX12_RESOURCE_DESC uploadDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(initArgs));
     
@@ -213,8 +227,6 @@ void ParticleSystem::BuildShadersAndPSOs()
 {
     auto vsByteCode = d3dUtil::CompileShader(L"../Shaders/Particle.hlsl", nullptr, "VS", "vs_5_1");
     auto psByteCode = d3dUtil::CompileShader(L"../Shaders/Particle.hlsl", nullptr, "PS", "ps_5_1");
-    auto emitCSByteCode = d3dUtil::CompileShader(L"../Shaders/ParticleCS.hlsl", nullptr, "EmitCS", "cs_5_1");
-    auto simulateCSByteCode = d3dUtil::CompileShader(L"../Shaders/ParticleCS.hlsl", nullptr, "SimulateCS", "cs_5_1");
 
     D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
     psoDesc.InputLayout = { mQuadGeo->InputLayout.data(), (UINT)mQuadGeo->InputLayout.size() };
@@ -242,10 +254,10 @@ void ParticleSystem::BuildShadersAndPSOs()
 
     D3D12_COMPUTE_PIPELINE_STATE_DESC computePsoDesc = {};
     computePsoDesc.pRootSignature = mRootSignatureCompute.Get();
-    computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(emitCSByteCode.Get());
+    computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(mEmitComputeShader.Get());
     ThrowIfFailed(mDevice->CreateComputePipelineState(&computePsoDesc, IID_PPV_ARGS(&mPSOEmit)));
 
-    computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(simulateCSByteCode.Get());
+    computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(mSimulateComputeShader.Get());
     ThrowIfFailed(mDevice->CreateComputePipelineState(&computePsoDesc, IID_PPV_ARGS(&mPSOSimulate)));
 }
 
@@ -258,6 +270,7 @@ void ParticleSystem::Update(float dt, FrameResource* frameResource)
     pConsts.NumEmit = mNumParticlesToEmit;
     pConsts.CurrentDeadList = mCurrentDeadList;
     pConsts.MaxParticles = mMaxParticles;
+    pConsts.particleSize = mParticleSize;
     frameResource->ParticleCB->CopyData(0, pConsts);
 
     mCommandList->SetComputeRootSignature(mRootSignatureCompute.Get());

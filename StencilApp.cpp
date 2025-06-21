@@ -476,10 +476,10 @@ void StencilApp::MakeParticleSystems()
     
     particleSystemDesc.name = "fireworkParticleSystem";
     particleSystemDesc.emitterPosition = {0.0f, 1.0f, 0.0f};
-    particleSystemDesc.numParticlesToEmit = 10;
+    particleSystemDesc.numParticlesToEmit = 50;
     particleSystemDesc.maxParticles = 15000;
-    particleSystemDesc.particleSize = 0.01f;
-    particleSystemDesc.particleShape = PARTICLE_SHAPE::QUAD;
+    particleSystemDesc.particleSize = 0.03f;
+    particleSystemDesc.particleShape = PARTICLE_SHAPE::CIRCLE;
     particleSystemDesc.emitComputeShaderName = "EmitCS";
     particleSystemDesc.simulateComputeShaderName = "SimulateCS";
 

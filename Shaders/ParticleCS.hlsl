@@ -14,7 +14,7 @@ cbuffer ParticleConstants : register(b0)
     uint gNumEmit;
     uint gCurrentDeadList;
     uint gMaxParticles;
-    float Pad;
+    float particleSize;
 };
 
 
@@ -55,7 +55,7 @@ void EmitCS(uint3 dispatchThreadID : SV_DispatchThreadID)
         rand_float(seed++) * 2.0f - 1.0f // z [-1, 1]
     ) * 2.0f;
     //gParticlePool[deadIndex].Size = 0.2f + rand_float(seed) * 0.3f;
-    gParticlePool[deadIndex].Size = 0.2f;
+    gParticlePool[deadIndex].Size = particleSize;
     gParticlePool[deadIndex].Color = float4(1.0f, 0.5f, 0.1f, 1.0f);
 }
 

@@ -60,7 +60,7 @@ struct ParticleConstants
     UINT NumEmit;
     UINT CurrentDeadList;
     UINT MaxParticles;
-    float Pad;
+    float particleSize;
 };
 
 // Stores the resources needed for the CPU to build the command lists

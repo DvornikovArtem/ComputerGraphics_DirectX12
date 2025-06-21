@@ -781,3 +781,42 @@ GeometryGenerator::MeshData GeometryGenerator::CreateCone(float radius, float he
 
 	return meshData;
 }
+
+GeometryGenerator::MeshData GeometryGenerator::CreateCircle(float radius, uint32 sliceCount)
+{
+	MeshData meshData;
+
+	meshData.Vertices.push_back(Vertex(
+		0.0f, 0.0f, 0.0f,     // Position
+		0.0f, 0.0f, 1.0f,     // Normal (Z)
+		1.0f, 0.0f, 0.0f,     // Tangent
+		0.5f, 0.5f));         // TexC
+
+	float dTheta = 2.0f * DirectX::XM_PI / sliceCount;
+
+	for (uint32 i = 0; i <= sliceCount; ++i)
+	{
+		float theta = i * dTheta;
+
+		float x = radius * cosf(theta);
+		float y = radius * sinf(theta);
+
+		float u = 0.5f + 0.5f * cosf(theta);
+		float v = 0.5f - 0.5f * sinf(theta);
+
+		meshData.Vertices.push_back(Vertex(
+			x, y, 0.0f,
+			0.0f, 0.0f, 1.0f,
+			-sinf(theta), cosf(theta), 0.0f,
+			u, v));
+	}
+
+	for (uint32 i = 1; i <= sliceCount; ++i)
+	{
+		meshData.Indices32.push_back(0);
+		meshData.Indices32.push_back(i + 1);
+		meshData.Indices32.push_back(i);
+	}
+
+	return meshData;
+}

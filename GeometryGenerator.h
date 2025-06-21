@@ -100,6 +100,8 @@ public:
 
 	MeshData CreateCone(float radius, float height, uint32 sliceCount, uint32 stackCount);
 
+	MeshData CreateCircle(float radius, uint32 sliceCount);
+
 private:
 	void Subdivide(MeshData& meshData);
     Vertex MidPoint(const Vertex& v0, const Vertex& v1);
