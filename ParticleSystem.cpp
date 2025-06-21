@@ -6,12 +6,14 @@ static constexpr UINT64 kAliveCounterOffset = kCounterAlignment * 2; // 8192
 
 void ParticleSystem::Initialize(const ParticleSystemDescriptor& particleSystemDesc)
 {
+    mEmitterPosition = particleSystemDesc.emitterPosition;
     mMaxParticles = particleSystemDesc.maxParticles;
     mNumParticlesToEmit = particleSystemDesc.numParticlesToEmit;
     mParticleSize = particleSystemDesc.particleSize;
     mParticleShape = particleSystemDesc.particleShape;
     mEmitComputeShader = particleSystemDesc.emitComputeShader;
     mSimulateComputeShader = particleSystemDesc.simulateComputeShader;
+    mCBIndex = particleSystemDesc.CBIndex;
 }
 
 void ParticleSystem::Build(ComPtr<ID3D12Device> device, ComPtr<ID3D12GraphicsCommandList> cmdList)
@@ -271,7 +273,7 @@ void ParticleSystem::Update(float dt, FrameResource* frameResource)
     pConsts.CurrentDeadList = mCurrentDeadList;
     pConsts.MaxParticles = mMaxParticles;
     pConsts.particleSize = mParticleSize;
-    frameResource->ParticleCB->CopyData(0, pConsts);
+    frameResource->ParticleCB->CopyData(mCBIndex, pConsts);
 
     mCommandList->SetComputeRootSignature(mRootSignatureCompute.Get());
 
@@ -322,7 +324,10 @@ void ParticleSystem::Update(float dt, FrameResource* frameResource)
 
     // Launch EmitCS for creating new particles
     mCommandList->SetPipelineState(mPSOEmit.Get());
-    mCommandList->SetComputeRootConstantBufferView(0, frameResource->ParticleCB->Resource()->GetGPUVirtualAddress());
+
+    UINT alignedSize = d3dUtil::CalcConstantBufferByteSize(sizeof(ParticleConstants));
+    mCommandList->SetComputeRootConstantBufferView(0, frameResource->ParticleCB->Resource()->GetGPUVirtualAddress() + mCBIndex * alignedSize);
+
     mCommandList->SetComputeRootDescriptorTable(1, mUavSrvHeap->GetGPUDescriptorHandleForHeapStart());
     mCommandList->Dispatch(mNumParticlesToEmit / 256 + 1, 1, 1);
     

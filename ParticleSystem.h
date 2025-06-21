@@ -44,6 +44,7 @@ struct ParticleSystemDescriptor
     std::string simulateComputeShaderName;
     ComPtr<ID3DBlob> emitComputeShader;
     ComPtr<ID3DBlob> simulateComputeShader;
+    UINT CBIndex;
     //PARTICLE_SYSTEM_EFFECT effect = PARTICLE_SYSTEM_EFFECT::"; // for the future
 };
 
@@ -81,6 +82,7 @@ private:
     PARTICLE_SHAPE mParticleShape;
     ComPtr<ID3DBlob> mEmitComputeShader;
     ComPtr<ID3DBlob> mSimulateComputeShader;
+    UINT mCBIndex;
 
     ComPtr<ID3D12RootSignature> mRootSignatureRender;
     ComPtr<ID3D12RootSignature> mRootSignatureCompute;

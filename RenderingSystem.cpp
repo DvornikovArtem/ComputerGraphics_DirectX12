@@ -515,6 +515,7 @@ void RenderingSystem::BuildParticleSystems(std::unordered_map<std::string, Parti
 	ThrowIfFailed(mDirectCmdListAlloc->Reset());
 	ThrowIfFailed(mCommandList->Reset(mDirectCmdListAlloc.Get(), nullptr));
 
+	UINT k = 0;
 	for (auto& pair : ParticleSystemDescriptors)
 	{
 		auto& particleSystemName = pair.first;
@@ -522,12 +523,15 @@ void RenderingSystem::BuildParticleSystems(std::unordered_map<std::string, Parti
 
 		particleSystemDescriptor.emitComputeShader = mShaders[particleSystemDescriptor.emitComputeShaderName];
 		particleSystemDescriptor.simulateComputeShader = mShaders[particleSystemDescriptor.simulateComputeShaderName];
+		particleSystemDescriptor.CBIndex = k;
 
 		ParticleSystem* particleSystem = new ParticleSystem();
 		particleSystem->Initialize(particleSystemDescriptor);
 		particleSystem->Build(md3dDevice, mCommandList);
 
 		mAllParticleSystems.push_back(particleSystem);
+
+		k++;
 	}
 
 	ThrowIfFailed(mCommandList->Close());
@@ -1526,7 +1530,7 @@ void RenderingSystem::BuildFrameResources()
 	for (int i = 0; i < gNumFrameResources; ++i)
 	{
 		mFrameResources.push_back(std::make_unique<FrameResource>(md3dDevice.Get(),
-			2, (UINT)mAllRitems.size(), (UINT)mMaterials.size(), (UINT)mAllLights.size(), 1));
+			2, (UINT)mAllRitems.size(), (UINT)mMaterials.size(), (UINT)mAllLights.size(), (UINT)mAllParticleSystems.size()));
 	}
 }
 
