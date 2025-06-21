@@ -58,7 +58,9 @@ struct ParticleConstants
     DirectX::XMFLOAT3 EmitterPos;
     float DeltaTime;
     UINT NumEmit;
-    DirectX::XMFLOAT3 Pad;
+    UINT CurrentDeadList;
+    UINT MaxParticles;
+    float Pad;
 };
 
 // Stores the resources needed for the CPU to build the command lists

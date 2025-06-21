@@ -249,6 +249,8 @@ void ParticleSystem::Update(ID3D12GraphicsCommandList* cmdList, float dt, FrameR
     pConsts.EmitterPos = emitterPos;
     pConsts.DeltaTime = dt;
     pConsts.NumEmit = numToEmit;
+    pConsts.CurrentDeadList = mCurrentDeadList;
+    pConsts.MaxParticles = mMaxParticles;
     frameResource->ParticleCB->CopyData(0, pConsts);
 
     cmdList->SetComputeRootSignature(mRootSignatureCompute.Get());
@@ -307,7 +309,7 @@ void ParticleSystem::Update(ID3D12GraphicsCommandList* cmdList, float dt, FrameR
     cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mDrawArgs.Get(), D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT, D3D12_RESOURCE_STATE_COPY_DEST));
     cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mCounters.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE));
 
-    cmdList->CopyBufferRegion(mDrawArgs.Get(), 4, mCounters.Get(), 8, 4); // offset 4 - InstanceCount, offset 8 - counter Alive
+    cmdList->CopyBufferRegion(mDrawArgs.Get(), offsetof(D3D12_DRAW_INDEXED_ARGUMENTS, InstanceCount), mCounters.Get(), kAliveCounterOffset, sizeof(UINT)); // offset 4 - InstanceCount, offset 8 - counter Alive
 
     cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mCounters.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS));
     cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mDrawArgs.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT));

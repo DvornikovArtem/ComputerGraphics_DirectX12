@@ -1,5 +1,3 @@
-#define MAX_PARTICLES 100
-
 struct Particle
 {
     float3 Pos;
@@ -14,13 +12,17 @@ cbuffer ParticleConstants : register(b0)
     float3 gEmitterPos;
     float gDeltaTime;
     uint gNumEmit;
-    float3 Pad;
+    uint gCurrentDeadList;
+    uint gMaxParticles;
+    float Pad;
 };
 
 
 RWStructuredBuffer<Particle> gParticlePool : register(u0);
-ConsumeStructuredBuffer<uint> gDeadListConsume : register(u1);
-AppendStructuredBuffer<uint> gNewDeadListAppend : register(u2);
+
+ConsumeStructuredBuffer<uint> gDeadListsConsume[2] : register(u1); // u1, u2
+AppendStructuredBuffer<uint> gDeadListsAppend[2] : register(u1); // u1, u2
+
 AppendStructuredBuffer<uint> gAliveListAppend : register(u3);
 RWByteAddressBuffer gDrawArgs : register(u4);
 
@@ -42,7 +44,7 @@ void EmitCS(uint3 dispatchThreadID : SV_DispatchThreadID)
     if (dispatchThreadID.x >= gNumEmit)
         return;
 
-    uint deadIndex = gDeadListConsume.Consume();
+    uint deadIndex = gDeadListsConsume[gCurrentDeadList].Consume();
     uint seed = deadIndex + (uint) (gDeltaTime * 1000.0f);
 
     gParticlePool[deadIndex].Pos = gEmitterPos;
@@ -53,9 +55,8 @@ void EmitCS(uint3 dispatchThreadID : SV_DispatchThreadID)
         rand_float(seed++) * 2.0f - 1.0f // z [-1, 1]
     ) * 2.0f;
     gParticlePool[deadIndex].Size = 0.2f + rand_float(seed) * 0.3f;
+    //gParticlePool[deadIndex].Size = 2.0f + rand_float(seed) * 3.0f;
     gParticlePool[deadIndex].Color = float4(1.0f, 0.5f, 0.1f, 1.0f);
-    
-    gAliveListAppend.Append(deadIndex);
 }
 
 
@@ -63,7 +64,7 @@ void EmitCS(uint3 dispatchThreadID : SV_DispatchThreadID)
 void SimulateCS(uint3 dispatchThreadID : SV_DispatchThreadID)
 {
     uint index = dispatchThreadID.x;
-    if (index >= MAX_PARTICLES)
+    if (index >= gMaxParticles)
         return;
 
     Particle p = gParticlePool[index];
@@ -80,13 +81,13 @@ void SimulateCS(uint3 dispatchThreadID : SV_DispatchThreadID)
         }
         else
         {
-            gNewDeadListAppend.Append(index);
+            gDeadListsAppend[1 - gCurrentDeadList].Append(index);
         }
         
         gParticlePool[index] = p;
     }
     else
     {
-        gNewDeadListAppend.Append(index);
+        gDeadListsAppend[1 - gCurrentDeadList].Append(index);
     }
 }
