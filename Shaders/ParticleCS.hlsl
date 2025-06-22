@@ -70,15 +70,16 @@ void EmitCS(uint3 dispatchThreadID : SV_DispatchThreadID)
 {
     if (dispatchThreadID.x >= gNumEmit)
         return;
-
+    
     uint deadIndex = gDeadListsConsume[gCurrentDeadList].Consume();
+    
     uint seed = deadIndex + (uint) (gDeltaTime * 1000.0f);
 
     gParticlePool[deadIndex].Pos = gEmitterPos;
     gParticlePool[deadIndex].LifeTime = 2.0f + rand_float(seed++) * 2.0f;
     gParticlePool[deadIndex].Vel = float3(
         rand_float(seed++) * 2.0f - 1.0f, // x [-1, 1]
-        2.0f + rand_float(seed++) * 3.0f, // y [2, 5]
+        1.0f + rand_float(seed++) * 3.0f, // y [2, 5]
         rand_float(seed++) * 2.0f - 1.0f // z [-1, 1]
     ) * 2.0f;
     //gParticlePool[deadIndex].Size = 0.2f + rand_float(seed) * 0.3f;

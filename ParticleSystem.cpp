@@ -314,10 +314,13 @@ void ParticleSystem::Update(float dt, FrameResource* frameResource)
 
 
     // Resetting the AliveList counter
-    mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
-        mCounters.Get(),
-        D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-        D3D12_RESOURCE_STATE_COPY_DEST));
+    mCommandList->ResourceBarrier(1,
+        &CD3DX12_RESOURCE_BARRIER::Transition(
+            mCounters.Get(),
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+            D3D12_RESOURCE_STATE_COPY_DEST
+        )
+    );
 
     mCommandList->CopyBufferRegion(
         mCounters.Get(),
@@ -338,10 +341,14 @@ void ParticleSystem::Update(float dt, FrameResource* frameResource)
         0,
         sizeof(UINT));
 
-    mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
-        mCounters.Get(),
-        D3D12_RESOURCE_STATE_COPY_DEST,
-        D3D12_RESOURCE_STATE_UNORDERED_ACCESS));
+    mCommandList->ResourceBarrier(
+        1,
+        &CD3DX12_RESOURCE_BARRIER::Transition(
+            mCounters.Get(),
+            D3D12_RESOURCE_STATE_COPY_DEST,
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS
+        )
+    );
 
 
     // Launch EmitCS for creating new particles
@@ -355,7 +362,11 @@ void ParticleSystem::Update(float dt, FrameResource* frameResource)
     mCommandList->SetComputeRootConstantBufferView(1, passCB->GetGPUVirtualAddress());
 
     mCommandList->SetComputeRootDescriptorTable(2, mUavSrvHeap->GetGPUDescriptorHandleForHeapStart());
-    mCommandList->Dispatch(mNumParticlesToEmit / 256 + 1, 1, 1);
+    //mCommandList->Dispatch(mNumParticlesToEmit / 256 + 1, 1, 1);
+
+    UINT groups = (mNumParticlesToEmit + 255) / 256;
+    if (groups == 0) return;
+    mCommandList->Dispatch(groups, 1, 1);
     
 
     // Barier for synchronization between EmitCS and SimulateCS

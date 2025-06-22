@@ -988,6 +988,7 @@ void RenderingSystem::UpdateLightCBs(const GameTimer& gt)
 			case LightType::Directional:
 			{
 				float SphereRadiuses[4] = { 10, 50, 150, 400 };
+
 				//for each cascade
 				for (int i = 0; i < 4; i++)
 				{

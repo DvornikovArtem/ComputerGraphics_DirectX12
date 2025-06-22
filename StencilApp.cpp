@@ -499,7 +499,7 @@ void StencilApp::MakeParticleSystems()
     smokeParticleSystemDesc.emitComputeShaderName = "EmitSmokeCS";
     smokeParticleSystemDesc.simulateComputeShaderName = "SimulateSmokeCS";
 
-    mParticleSystemDescriptors[smokeParticleSystemDesc.name] = smokeParticleSystemDesc;
+    //mParticleSystemDescriptors[smokeParticleSystemDesc.name] = smokeParticleSystemDesc;
 
     mRenderingSystem->BuildParticleSystems(mParticleSystemDescriptors);
 }
