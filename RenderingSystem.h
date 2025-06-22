@@ -281,6 +281,8 @@ public:
 
     Camera mCamera;
 
+    D3D12_CPU_DESCRIPTOR_HANDLE GetDepthBufferSRV() const { return mDepthBufferSRV; }
+
 protected:
     HINSTANCE mhAppInst = nullptr; // application instance handle
     HWND      mhMainWnd = nullptr; // main window handle
@@ -296,6 +298,8 @@ protected:
     Microsoft::WRL::ComPtr<IDXGIFactory4> mdxgiFactory;
     Microsoft::WRL::ComPtr<IDXGISwapChain> mSwapChain;
     Microsoft::WRL::ComPtr<ID3D12Device> md3dDevice;
+
+    D3D12_CPU_DESCRIPTOR_HANDLE mDepthBufferSRV;
 
     Microsoft::WRL::ComPtr<ID3D12Fence> mFence;
     UINT64 mCurrentFence = 0;

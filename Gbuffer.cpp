@@ -1,15 +1,15 @@
-// Gbuffer.cpp
+п»ї// Gbuffer.cpp
 
 #include "Gbuffer.h"
-#include "d3dUtil.h"    // Предполагается, что здесь есть функция d3dUtil::GetDevice()
-#include "directx/d3dx12.h"     // Для использования обёрток CD3DX12_*
+#include "d3dUtil.h"    // ГЏГ°ГҐГ¤ГЇГ®Г«Г ГЈГ ГҐГІГ±Гї, Г·ГІГ® Г§Г¤ГҐГ±Гј ГҐГ±ГІГј ГґГіГ­ГЄГ¶ГЁГї d3dUtil::GetDevice()
+#include "directx/d3dx12.h"     // Г„Г«Гї ГЁГ±ГЇГ®Г«ГјГ§Г®ГўГ Г­ГЁГї Г®ГЎВёГ°ГІГ®ГЄ CD3DX12_*
 #include <stdexcept>
 
-// Конструктор создает ресурсы (текстуры) и дескрипторные кучи для RTV и SRV.
+// ГЉГ®Г­Г±ГІГ°ГіГЄГІГ®Г° Г±Г®Г§Г¤Г ГҐГІ Г°ГҐГ±ГіГ°Г±Г» (ГІГҐГЄГ±ГІГіГ°Г») ГЁ Г¤ГҐГ±ГЄГ°ГЁГЇГІГ®Г°Г­Г»ГҐ ГЄГіГ·ГЁ Г¤Г«Гї RTV ГЁ SRV.
 Gbuffer::Gbuffer(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device> device)
 {
 
-    // Создаем дескрипторную кучу для RTV (5 дескрипторов: Diffuse, Emissive, Normal, Accumulation, Bloom)
+    // Г‘Г®Г§Г¤Г ГҐГ¬ Г¤ГҐГ±ГЄГ°ГЁГЇГІГ®Г°Г­ГіГѕ ГЄГіГ·Гі Г¤Г«Гї RTV (5 Г¤ГҐГ±ГЄГ°ГЁГЇГІГ®Г°Г®Гў: Diffuse, Emissive, Normal, Accumulation, Bloom)
     D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc = {};
     rtvHeapDesc.NumDescriptors = NumBuffers;
     rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
@@ -17,7 +17,7 @@ Gbuffer::Gbuffer(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device> dev
     if (FAILED(device->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(&m_RTVDescriptorHeap))))
         throw std::runtime_error("Failed to create RTV Descriptor Heap");
 
-    // Создаем дескрипторную кучу для SRV
+    // Г‘Г®Г§Г¤Г ГҐГ¬ Г¤ГҐГ±ГЄГ°ГЁГЇГІГ®Г°Г­ГіГѕ ГЄГіГ·Гі Г¤Г«Гї SRV
     D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
     srvHeapDesc.NumDescriptors = NumBuffers;
     srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
@@ -25,11 +25,11 @@ Gbuffer::Gbuffer(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device> dev
     if (FAILED(device->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&m_SRVDescriptorHeap))))
         throw std::runtime_error("Failed to create SRV Descriptor Heap");
 
-    // Получаем размеры дескрипторов для соответствующих куч
+    // ГЏГ®Г«ГіГ·Г ГҐГ¬ Г°Г Г§Г¬ГҐГ°Г» Г¤ГҐГ±ГЄГ°ГЁГЇГІГ®Г°Г®Гў Г¤Г«Гї Г±Г®Г®ГІГўГҐГІГ±ГІГўГіГѕГ№ГЁГµ ГЄГіГ·
     UINT rtvDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
     UINT srvDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
-    // Начальные CPU-хендлы для RTV и SRV
+    // ГЌГ Г·Г Г«ГјГ­Г»ГҐ CPU-ГµГҐГ­Г¤Г«Г» Г¤Г«Гї RTV ГЁ SRV
     D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = m_RTVDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
     D3D12_CPU_DESCRIPTOR_HANDLE srvHandle = m_SRVDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
 
@@ -70,7 +70,7 @@ Gbuffer::Gbuffer(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device> dev
     clearValue3.Color[2] = 0.0f;
     clearValue3.Color[3] = 1.0f;
 
-    // Создаем ресурс для DiffuseTex (формат 8-битный UNORM)
+    // Г‘Г®Г§Г¤Г ГҐГ¬ Г°ГҐГ±ГіГ°Г± Г¤Г«Гї DiffuseTex (ГґГ®Г°Г¬Г ГІ 8-ГЎГЁГІГ­Г»Г© UNORM)
     hr = device->CreateCommittedResource(
         &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
         D3D12_HEAP_FLAG_NONE,
@@ -82,7 +82,7 @@ Gbuffer::Gbuffer(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device> dev
     if (FAILED(hr))
         throw std::runtime_error("Failed to create DiffuseTex");
 
-    // Создаем ресурс для EmissiveTex (формат 8-битный UNORM)
+    // Г‘Г®Г§Г¤Г ГҐГ¬ Г°ГҐГ±ГіГ°Г± Г¤Г«Гї EmissiveTex (ГґГ®Г°Г¬Г ГІ 8-ГЎГЁГІГ­Г»Г© UNORM)
     hr = device->CreateCommittedResource(
         &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
         D3D12_HEAP_FLAG_NONE,
@@ -94,7 +94,7 @@ Gbuffer::Gbuffer(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device> dev
     if (FAILED(hr))
         throw std::runtime_error("Failed to create EmissiveTex");
 
-    // Создаем ресурс для NormalTex (формат 8-битный UNORM)
+    // Г‘Г®Г§Г¤Г ГҐГ¬ Г°ГҐГ±ГіГ°Г± Г¤Г«Гї NormalTex (ГґГ®Г°Г¬Г ГІ 8-ГЎГЁГІГ­Г»Г© UNORM)
     hr = device->CreateCommittedResource(
         &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
         D3D12_HEAP_FLAG_NONE,
@@ -106,7 +106,7 @@ Gbuffer::Gbuffer(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device> dev
     if (FAILED(hr))
         throw std::runtime_error("Failed to create NormalTex");
 
-    // Создаем ресурс для MaterialAlbedoTex (формат 8-битный UNORM)
+    // Г‘Г®Г§Г¤Г ГҐГ¬ Г°ГҐГ±ГіГ°Г± Г¤Г«Гї MaterialAlbedoTex (ГґГ®Г°Г¬Г ГІ 8-ГЎГЁГІГ­Г»Г© UNORM)
     hr = device->CreateCommittedResource(
         &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
         D3D12_HEAP_FLAG_NONE,
@@ -118,7 +118,7 @@ Gbuffer::Gbuffer(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device> dev
     if (FAILED(hr))
         throw std::runtime_error("Failed to create MaterialAlbedoTex");
 
-    // Создаем ресурс для MaterialFresnelRoughnessTex (формат 8-битный UNORM)
+    // Г‘Г®Г§Г¤Г ГҐГ¬ Г°ГҐГ±ГіГ°Г± Г¤Г«Гї MaterialFresnelRoughnessTex (ГґГ®Г°Г¬Г ГІ 8-ГЎГЁГІГ­Г»Г© UNORM)
     hr = device->CreateCommittedResource(
         &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
         D3D12_HEAP_FLAG_NONE,
@@ -130,7 +130,7 @@ Gbuffer::Gbuffer(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device> dev
     if (FAILED(hr))
         throw std::runtime_error("Failed to create MaterialFresnelRoughnessTex");
 
-    // Создаем ресурс для AccumulationBuf (формат 16-битный FLOAT)
+    // Г‘Г®Г§Г¤Г ГҐГ¬ Г°ГҐГ±ГіГ°Г± Г¤Г«Гї AccumulationBuf (ГґГ®Г°Г¬Г ГІ 16-ГЎГЁГІГ­Г»Г© FLOAT)
     hr = device->CreateCommittedResource(
         &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
         D3D12_HEAP_FLAG_NONE,
@@ -142,7 +142,7 @@ Gbuffer::Gbuffer(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device> dev
     if (FAILED(hr))
         throw std::runtime_error("Failed to create AccumulationBuf");
 
-    // Создаем ресурс для BloomTex (формат 8-битный UNORM)
+    // Г‘Г®Г§Г¤Г ГҐГ¬ Г°ГҐГ±ГіГ°Г± Г¤Г«Гї BloomTex (ГґГ®Г°Г¬Г ГІ 8-ГЎГЁГІГ­Г»Г© UNORM)
     hr = device->CreateCommittedResource(
         &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
         D3D12_HEAP_FLAG_NONE,
@@ -154,7 +154,7 @@ Gbuffer::Gbuffer(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device> dev
     if (FAILED(hr))
         throw std::runtime_error("Failed to create BloomTex");
 
-    // Создаем RTV для DiffuseTex
+    // Г‘Г®Г§Г¤Г ГҐГ¬ RTV Г¤Г«Гї DiffuseTex
     D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
     rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
     rtvDesc.Texture2D.MipSlice = 0;
@@ -164,42 +164,44 @@ Gbuffer::Gbuffer(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device> dev
     DiffuseRTV = rtvHandle;
     rtvHandle.ptr += rtvDescriptorSize;
 
-    // Создаем RTV для EmissiveTex
+    // Г‘Г®Г§Г¤Г ГҐГ¬ RTV Г¤Г«Гї EmissiveTex
     rtvDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
     device->CreateRenderTargetView(EmissiveTex.Get(), &rtvDesc, rtvHandle);
     EmissiveRTV = rtvHandle;
     rtvHandle.ptr += rtvDescriptorSize;
 
-    // Создаем RTV для NormalTex
+    // Г‘Г®Г§Г¤Г ГҐГ¬ RTV Г¤Г«Гї NormalTex
     rtvDesc.Format = DXGI_FORMAT_R16G16B16A16_SNORM;
     device->CreateRenderTargetView(NormalTex.Get(), &rtvDesc, rtvHandle);
     NormalRTV = rtvHandle;
     rtvHandle.ptr += rtvDescriptorSize;
 
-    // Создаем RTV для MaterialAlbedoTex
+    // Г‘Г®Г§Г¤Г ГҐГ¬ RTV Г¤Г«Гї MaterialAlbedoTex
     rtvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
     device->CreateRenderTargetView(MaterialAlbedoTex.Get(), &rtvDesc, rtvHandle);
     MaterialAlbedoRTV = rtvHandle;
     rtvHandle.ptr += rtvDescriptorSize;
 
-    // Создаем RTV для MaterialFresnelRoughnessTex
+    // Г‘Г®Г§Г¤Г ГҐГ¬ RTV Г¤Г«Гї MaterialFresnelRoughnessTex
     device->CreateRenderTargetView(MaterialFresnelRoughnessTex.Get(), &rtvDesc, rtvHandle);
     MaterialFresnelRoughnessRTV = rtvHandle;
     rtvHandle.ptr += rtvDescriptorSize;
 
-    // RTV для AccumulationBuf (формат FLOAT)
+    // RTV Г¤Г«Гї AccumulationBuf (ГґГ®Г°Г¬Г ГІ FLOAT)
     rtvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
     device->CreateRenderTargetView(AccumulationBuf.Get(), &rtvDesc, rtvHandle);
     AccumulationRTV = rtvHandle;
     rtvHandle.ptr += rtvDescriptorSize;
 
-    // RTV для BloomTex (возвращаем формат UNORM)
+    // RTV Г¤Г«Гї BloomTex (ГўГ®Г§ГўГ°Г Г№Г ГҐГ¬ ГґГ®Г°Г¬Г ГІ UNORM)
     rtvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
     device->CreateRenderTargetView(BloomTex.Get(), &rtvDesc, rtvHandle);
     BloomRTV = rtvHandle;
-    // rtvHandle далее не используется
+    // rtvHandle Г¤Г Г«ГҐГҐ Г­ГҐ ГЁГ±ГЇГ®Г«ГјГ§ГіГҐГІГ±Гї
 
-    // Создаем SRV для DiffuseTex
+
+
+    // Г‘Г®Г§Г¤Г ГҐГ¬ SRV Г¤Г«Гї DiffuseTex
     D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
     srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
     srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
@@ -209,36 +211,36 @@ Gbuffer::Gbuffer(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device> dev
     DiffuseSRV = srvHandle;
     srvHandle.ptr += srvDescriptorSize;
 
-    // SRV для EmissiveTex
+    // SRV Г¤Г«Гї EmissiveTex
     srvDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
     device->CreateShaderResourceView(EmissiveTex.Get(), &srvDesc, srvHandle);
     EmissiveSRV = srvHandle;
     srvHandle.ptr += srvDescriptorSize;
 
-    // SRV для NormalTex
+    // SRV Г¤Г«Гї NormalTex
     srvDesc.Format = DXGI_FORMAT_R16G16B16A16_SNORM;
     device->CreateShaderResourceView(NormalTex.Get(), &srvDesc, srvHandle);
     NormalSRV = srvHandle;
     srvHandle.ptr += srvDescriptorSize;
 
-    // SRV для MaterialAlbedoTex
+    // SRV Г¤Г«Гї MaterialAlbedoTex
     srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
     device->CreateShaderResourceView(MaterialAlbedoTex.Get(), &srvDesc, srvHandle);
     MaterialAlbedoSRV = srvHandle;
     srvHandle.ptr += srvDescriptorSize;
 
-    // SRV для MaterialFresnelRoughnessTex
+    // SRV Г¤Г«Гї MaterialFresnelRoughnessTex
     device->CreateShaderResourceView(MaterialFresnelRoughnessTex.Get(), &srvDesc, srvHandle);
     MaterialFresnelRoughnessSRV = srvHandle;
     srvHandle.ptr += srvDescriptorSize;
 
-    // SRV для AccumulationBuf (FLOAT)
+    // SRV Г¤Г«Гї AccumulationBuf (FLOAT)
     srvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
     device->CreateShaderResourceView(AccumulationBuf.Get(), &srvDesc, srvHandle);
     AccumulationSRV = srvHandle;
     srvHandle.ptr += srvDescriptorSize;
 
-    // SRV для BloomTex
+    // SRV Г¤Г«Гї BloomTex
     srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
     device->CreateShaderResourceView(BloomTex.Get(), &srvDesc, srvHandle);
     BloomSRV = srvHandle;
@@ -246,15 +248,15 @@ Gbuffer::Gbuffer(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device> dev
     md3dDevice = device;
 }
 
-// Переход к состоянию для отрисовки непрозрачных объектов.
-// Здесь переводим текстуры G-buffer (Diffuse, Emissive, Normal) в состояние RENDER_TARGET.
+// ГЏГҐГ°ГҐГµГ®Г¤ ГЄ Г±Г®Г±ГІГ®ГїГ­ГЁГѕ Г¤Г«Гї Г®ГІГ°ГЁГ±Г®ГўГЄГЁ Г­ГҐГЇГ°Г®Г§Г°Г Г·Г­Г»Гµ Г®ГЎГєГҐГЄГІГ®Гў.
+// Г‡Г¤ГҐГ±Гј ГЇГҐГ°ГҐГўГ®Г¤ГЁГ¬ ГІГҐГЄГ±ГІГіГ°Г» G-buffer (Diffuse, Emissive, Normal) Гў Г±Г®Г±ГІГ®ГїГ­ГЁГҐ RENDER_TARGET.
 void Gbuffer::TransitToOpaqueRenderingState(ComPtr<ID3D12GraphicsCommandList>& cmdList)
 {
     CD3DX12_RESOURCE_BARRIER barriers[7];
     barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
         DiffuseTex.Get(),
         D3D12_RESOURCE_STATE_COMMON,
-        //D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, // предполагаем, что до этого текстура использовалась как SRV
+        //D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, // ГЇГ°ГҐГ¤ГЇГ®Г«Г ГЈГ ГҐГ¬, Г·ГІГ® Г¤Г® ГЅГІГ®ГЈГ® ГІГҐГЄГ±ГІГіГ°Г  ГЁГ±ГЇГ®Г«ГјГ§Г®ГўГ Г«Г Г±Гј ГЄГ ГЄ SRV
         D3D12_RESOURCE_STATE_RENDER_TARGET);
     barriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(
         EmissiveTex.Get(),
@@ -285,9 +287,9 @@ void Gbuffer::TransitToOpaqueRenderingState(ComPtr<ID3D12GraphicsCommandList>& c
     cmdList->ResourceBarrier(7, barriers);
 }
 
-// Переход к состоянию для отрисовки освещения.
-// Здесь переводим Diffuse, Emissive и Normal из состояния RENDER_TARGET в SRV,
-// а также подготавливаем буферы Accumulation и Bloom для записи (RENDER_TARGET).
+// ГЏГҐГ°ГҐГµГ®Г¤ ГЄ Г±Г®Г±ГІГ®ГїГ­ГЁГѕ Г¤Г«Гї Г®ГІГ°ГЁГ±Г®ГўГЄГЁ Г®Г±ГўГҐГ№ГҐГ­ГЁГї.
+// Г‡Г¤ГҐГ±Гј ГЇГҐГ°ГҐГўГ®Г¤ГЁГ¬ Diffuse, Emissive ГЁ Normal ГЁГ§ Г±Г®Г±ГІГ®ГїГ­ГЁГї RENDER_TARGET Гў SRV,
+// Г  ГІГ ГЄГ¦ГҐ ГЇГ®Г¤ГЈГ®ГІГ ГўГ«ГЁГўГ ГҐГ¬ ГЎГіГґГҐГ°Г» Accumulation ГЁ Bloom Г¤Г«Гї Г§Г ГЇГЁГ±ГЁ (RENDER_TARGET).
 void Gbuffer::TransitToLightsRenderingState(ComPtr<ID3D12GraphicsCommandList>& cmdList)
 {
     CD3DX12_RESOURCE_BARRIER barriers[5];
@@ -314,8 +316,8 @@ void Gbuffer::TransitToLightsRenderingState(ComPtr<ID3D12GraphicsCommandList>& c
     cmdList->ResourceBarrier(5, barriers);
 }
 
-// Переход к состоянию для тонемаппинга.
-// Переводим буферы Accumulation и Bloom из состояния RENDER_TARGET в SRV для последующей выборки.
+// ГЏГҐГ°ГҐГµГ®Г¤ ГЄ Г±Г®Г±ГІГ®ГїГ­ГЁГѕ Г¤Г«Гї ГІГ®Г­ГҐГ¬Г ГЇГЇГЁГ­ГЈГ .
+// ГЏГҐГ°ГҐГўГ®Г¤ГЁГ¬ ГЎГіГґГҐГ°Г» Accumulation ГЁ Bloom ГЁГ§ Г±Г®Г±ГІГ®ГїГ­ГЁГї RENDER_TARGET Гў SRV Г¤Г«Гї ГЇГ®Г±Г«ГҐГ¤ГіГѕГ№ГҐГ© ГўГ»ГЎГ®Г°ГЄГЁ.
 void Gbuffer::TransitToTonemappingState(ComPtr<ID3D12GraphicsCommandList>& cmdList)
 {
     CD3DX12_RESOURCE_BARRIER barriers[2];
@@ -436,10 +438,10 @@ void Gbuffer::ClearRTVs(ComPtr<ID3D12GraphicsCommandList>& cmdList)
     cmdList->ClearRenderTargetView(BloomRTV, clearColor, 0, nullptr);
 }
 
-// Функция изменения размеров: освобождает текущие ресурсы и воссоздает их с новыми размерами.
+// Г”ГіГ­ГЄГ¶ГЁГї ГЁГ§Г¬ГҐГ­ГҐГ­ГЁГї Г°Г Г§Г¬ГҐГ°Г®Гў: Г®Г±ГўГ®ГЎГ®Г¦Г¤Г ГҐГІ ГІГҐГЄГіГ№ГЁГҐ Г°ГҐГ±ГіГ°Г±Г» ГЁ ГўГ®Г±Г±Г®Г§Г¤Г ГҐГІ ГЁГµ Г± Г­Г®ГўГ»Г¬ГЁ Г°Г Г§Г¬ГҐГ°Г Г¬ГЁ.
 void Gbuffer::Resize(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device> device)
 {
-    // Освобождаем старые ресурсы
+    // ГЋГ±ГўГ®ГЎГ®Г¦Г¤Г ГҐГ¬ Г±ГІГ Г°Г»ГҐ Г°ГҐГ±ГіГ°Г±Г»
     DiffuseTex.Reset();
     EmissiveTex.Reset();
     NormalTex.Reset();
@@ -450,7 +452,7 @@ void Gbuffer::Resize(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device>
 
     HRESULT hr = S_OK;
 
-    // Воссоздаем ресурсы с новыми размерами аналогично конструктору
+    // Г‚Г®Г±Г±Г®Г§Г¤Г ГҐГ¬ Г°ГҐГ±ГіГ°Г±Г» Г± Г­Г®ГўГ»Г¬ГЁ Г°Г Г§Г¬ГҐГ°Г Г¬ГЁ Г Г­Г Г«Г®ГЈГЁГ·Г­Г® ГЄГ®Г­Г±ГІГ°ГіГЄГІГ®Г°Гі
 
     D3D12_CLEAR_VALUE clearValue_UNORM = {};
     clearValue_UNORM.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -564,14 +566,14 @@ void Gbuffer::Resize(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device>
     if (FAILED(hr))
         throw std::runtime_error("Failed to recreate BloomTex during Resize");
 
-    // Обновляем дескрипторы RTV и SRV. Предполагается, что дескрипторные кучи уже созданы.
+    // ГЋГЎГ­Г®ГўГ«ГїГҐГ¬ Г¤ГҐГ±ГЄГ°ГЁГЇГІГ®Г°Г» RTV ГЁ SRV. ГЏГ°ГҐГ¤ГЇГ®Г«Г ГЈГ ГҐГІГ±Гї, Г·ГІГ® Г¤ГҐГ±ГЄГ°ГЁГЇГІГ®Г°Г­Г»ГҐ ГЄГіГ·ГЁ ГіГ¦ГҐ Г±Г®Г§Г¤Г Г­Г».
     UINT rtvDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
     UINT srvDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
     D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = m_RTVDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
     D3D12_CPU_DESCRIPTOR_HANDLE srvHandle = m_SRVDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
 
-    // RTV для DiffuseTex
+    // RTV Г¤Г«Гї DiffuseTex
     D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
     rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
     rtvDesc.Texture2D.MipSlice = 0;
@@ -581,41 +583,41 @@ void Gbuffer::Resize(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device>
     DiffuseRTV = rtvHandle;
     rtvHandle.ptr += rtvDescriptorSize;
 
-    // RTV для EmissiveTex
+    // RTV Г¤Г«Гї EmissiveTex
     rtvDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
     device->CreateRenderTargetView(EmissiveTex.Get(), &rtvDesc, rtvHandle);
     EmissiveRTV = rtvHandle;
     rtvHandle.ptr += rtvDescriptorSize;
 
-    // RTV для NormalTex
+    // RTV Г¤Г«Гї NormalTex
     rtvDesc.Format = DXGI_FORMAT_R16G16B16A16_SNORM;
     device->CreateRenderTargetView(NormalTex.Get(), &rtvDesc, rtvHandle);
     NormalRTV = rtvHandle;
     rtvHandle.ptr += rtvDescriptorSize;
 
-    // RTV для MaterialAlbedoTex
+    // RTV Г¤Г«Гї MaterialAlbedoTex
     rtvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
     device->CreateRenderTargetView(MaterialAlbedoTex.Get(), &rtvDesc, rtvHandle);
     MaterialAlbedoRTV = rtvHandle;
     rtvHandle.ptr += rtvDescriptorSize;
 
-    // RTV для MaterialFresnelRoughnessTex
+    // RTV Г¤Г«Гї MaterialFresnelRoughnessTex
     device->CreateRenderTargetView(MaterialFresnelRoughnessTex.Get(), &rtvDesc, rtvHandle);
     MaterialFresnelRoughnessRTV = rtvHandle;
     rtvHandle.ptr += rtvDescriptorSize;
 
-    // RTV для AccumulationBuf
+    // RTV Г¤Г«Гї AccumulationBuf
     rtvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
     device->CreateRenderTargetView(AccumulationBuf.Get(), &rtvDesc, rtvHandle);
     AccumulationRTV = rtvHandle;
     rtvHandle.ptr += rtvDescriptorSize;
 
-    // RTV для BloomTex
+    // RTV Г¤Г«Гї BloomTex
     rtvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
     device->CreateRenderTargetView(BloomTex.Get(), &rtvDesc, rtvHandle);
     BloomRTV = rtvHandle;
 
-    // SRV для DiffuseTex
+    // SRV Г¤Г«Гї DiffuseTex
     D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
     srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
     srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
@@ -625,42 +627,42 @@ void Gbuffer::Resize(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device>
     DiffuseSRV = srvHandle;
     srvHandle.ptr += srvDescriptorSize;
 
-    // SRV для EmissiveTex
+    // SRV Г¤Г«Гї EmissiveTex
     srvDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
     device->CreateShaderResourceView(EmissiveTex.Get(), &srvDesc, srvHandle);
     EmissiveSRV = srvHandle;
     srvHandle.ptr += srvDescriptorSize;
 
-    // SRV для NormalTex
+    // SRV Г¤Г«Гї NormalTex
     srvDesc.Format = DXGI_FORMAT_R16G16B16A16_SNORM;
     device->CreateShaderResourceView(NormalTex.Get(), &srvDesc, srvHandle);
     NormalSRV = srvHandle;
     srvHandle.ptr += srvDescriptorSize;
 
-    // SRV для MaterialAlbedoTex
+    // SRV Г¤Г«Гї MaterialAlbedoTex
     srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
     device->CreateShaderResourceView(MaterialAlbedoTex.Get(), &srvDesc, srvHandle);
     MaterialAlbedoSRV = srvHandle;
     srvHandle.ptr += srvDescriptorSize;
 
-    // SRV для MaterialFresnelRoughnessTex
+    // SRV Г¤Г«Гї MaterialFresnelRoughnessTex
     device->CreateShaderResourceView(MaterialFresnelRoughnessTex.Get(), &srvDesc, srvHandle);
     MaterialFresnelRoughnessSRV = srvHandle;
     srvHandle.ptr += srvDescriptorSize;
 
-    // SRV для AccumulationBuf
+    // SRV Г¤Г«Гї AccumulationBuf
     srvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
     device->CreateShaderResourceView(AccumulationBuf.Get(), &srvDesc, srvHandle);
     AccumulationSRV = srvHandle;
     srvHandle.ptr += srvDescriptorSize;
 
-    // SRV для BloomTex
+    // SRV Г¤Г«Гї BloomTex
     srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
     device->CreateShaderResourceView(BloomTex.Get(), &srvDesc, srvHandle);
     BloomSRV = srvHandle;
 }
 
-// Освобождаем все ресурсы
+// ГЋГ±ГўГ®ГЎГ®Г¦Г¤Г ГҐГ¬ ГўГ±ГҐ Г°ГҐГ±ГіГ°Г±Г»
 void Gbuffer::Dispose()
 {
     DiffuseTex.Reset();

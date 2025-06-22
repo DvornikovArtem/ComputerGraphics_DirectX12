@@ -61,6 +61,9 @@ struct ParticleConstants
     UINT CurrentDeadList;
     UINT MaxParticles;
     float particleSize;
+    float Time;
+    UINT FrameIndex;
+    DirectX::XMFLOAT2 _pad;
 };
 
 // Stores the resources needed for the CPU to build the command lists

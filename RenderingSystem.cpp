@@ -286,10 +286,8 @@ void RenderingSystem::Render()
 	//
 	for (ParticleSystem* particleSystem : mAllParticleSystems)
 	{
-		particleSystem->Update(
-			gt->DeltaTime(),
-			mCurrFrameResource
-		);
+		particleSystem->setEmissiveTex(mGbuffer->getEmissiveTex());
+		particleSystem->Update(gt->DeltaTime(),mCurrFrameResource);
 	}
 
 	DrawParticleSystems();

@@ -4,6 +4,8 @@ static constexpr UINT64 kCounterAlignment = D3D12_UAV_COUNTER_PLACEMENT_ALIGNMEN
 static constexpr UINT kNumCounters = 3; // Dead0, Dead1, Alive
 static constexpr UINT64 kAliveCounterOffset = kCounterAlignment * 2; // 8192
 
+UINT ParticleSystem::sGlobalFrame = 0;
+
 void ParticleSystem::Initialize(const ParticleSystemDescriptor& particleSystemDesc)
 {
     mEmitterPosition = particleSystemDesc.emitterPosition;
@@ -152,7 +154,7 @@ void ParticleSystem::BuildResources()
 
     // Create UAV-descriptors
     D3D12_DESCRIPTOR_HEAP_DESC uavHeapDesc = {};
-    uavHeapDesc.NumDescriptors = 5;
+    uavHeapDesc.NumDescriptors = 6;
     uavHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     uavHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 
@@ -183,6 +185,16 @@ void ParticleSystem::BuildResources()
     uavDesc.Buffer.NumElements = sizeof(D3D12_DRAW_INDEXED_ARGUMENTS) / sizeof(UINT);
     uavDesc.Buffer.CounterOffsetInBytes = 0;
     mDevice->CreateUnorderedAccessView(mDrawArgs.Get(), nullptr, &uavDesc, uavHandle);
+
+
+    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+    srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+    srvDesc.Texture2D.MipLevels = 1;
+
+    mDevice->CreateShaderResourceView(mEmissiveTex.Get(), &srvDesc, uavHandle);
+    CD3DX12_GPU_DESCRIPTOR_HANDLE emissiveTexDescriptorGPU(mUavSrvHeap->GetGPUDescriptorHandleForHeapStart(), 5);
 }
 
 void ParticleSystem::BuildRootSignatures()
@@ -202,9 +214,14 @@ void ParticleSystem::BuildRootSignatures()
     CD3DX12_DESCRIPTOR_RANGE uavTable = {};
     uavTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 5, 0);
 
-    CD3DX12_ROOT_PARAMETER computeSlotRootParameter[2] = {};
+    CD3DX12_DESCRIPTOR_RANGE srvTable = {};
+    srvTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
+
+    CD3DX12_ROOT_PARAMETER computeSlotRootParameter[4] = {};
     computeSlotRootParameter[0].InitAsConstantBufferView(0);
-    computeSlotRootParameter[1].InitAsDescriptorTable(1, &uavTable);
+    computeSlotRootParameter[1].InitAsConstantBufferView(1); // PassConstants
+    computeSlotRootParameter[2].InitAsDescriptorTable(1, &uavTable);
+    computeSlotRootParameter[3].InitAsDescriptorTable(1, &srvTable);
 
     CD3DX12_ROOT_SIGNATURE_DESC computeRsDesc(_countof(computeSlotRootParameter), computeSlotRootParameter, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_NONE);
     ThrowIfFailed(D3D12SerializeRootSignature(&computeRsDesc, D3D_ROOT_SIGNATURE_VERSION_1, serializedRootSig.GetAddressOf(), errorBlob.GetAddressOf()));
@@ -265,6 +282,8 @@ void ParticleSystem::BuildShadersAndPSOs()
 
 void ParticleSystem::Update(float dt, FrameResource* frameResource)
 {
+    mTime += dt;
+
     // Update constants
     ParticleConstants pConsts = {};
     pConsts.EmitterPos = mEmitterPosition;
@@ -273,6 +292,8 @@ void ParticleSystem::Update(float dt, FrameResource* frameResource)
     pConsts.CurrentDeadList = mCurrentDeadList;
     pConsts.MaxParticles = mMaxParticles;
     pConsts.particleSize = mParticleSize;
+    pConsts.Time = mTime;
+    pConsts.FrameIndex = sGlobalFrame++;
     frameResource->ParticleCB->CopyData(mCBIndex, pConsts);
 
     mCommandList->SetComputeRootSignature(mRootSignatureCompute.Get());
@@ -309,6 +330,7 @@ void ParticleSystem::Update(float dt, FrameResource* frameResource)
         ? D3D12_UAV_COUNTER_PLACEMENT_ALIGNMENT
         : 0;
 
+
     mCommandList->CopyBufferRegion(
         mCounters.Get(),
         deadCounterOffset,
@@ -328,7 +350,11 @@ void ParticleSystem::Update(float dt, FrameResource* frameResource)
     UINT alignedSize = d3dUtil::CalcConstantBufferByteSize(sizeof(ParticleConstants));
     mCommandList->SetComputeRootConstantBufferView(0, frameResource->ParticleCB->Resource()->GetGPUVirtualAddress() + mCBIndex * alignedSize);
 
-    mCommandList->SetComputeRootDescriptorTable(1, mUavSrvHeap->GetGPUDescriptorHandleForHeapStart());
+    // PassConstants
+    auto passCB = frameResource->PassCB->Resource();
+    mCommandList->SetComputeRootConstantBufferView(1, passCB->GetGPUVirtualAddress());
+
+    mCommandList->SetComputeRootDescriptorTable(2, mUavSrvHeap->GetGPUDescriptorHandleForHeapStart());
     mCommandList->Dispatch(mNumParticlesToEmit / 256 + 1, 1, 1);
     
 

@@ -20,7 +20,7 @@ class Gbuffer {
     ComPtr<ID3D12Resource> MaterialFresnelRoughnessTex      = nullptr;
 
     ComPtr<ID3D12Resource> AccumulationBuf  = nullptr;
-    ComPtr<ID3D12Resource> BloomTex         = nullptr; // это потом (про блики)
+    ComPtr<ID3D12Resource> BloomTex         = nullptr;
 
 
 public:
@@ -63,6 +63,8 @@ public:
     void Resize(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device> device);
 
     void Dispose();
+
+    ComPtr<ID3D12Resource> getEmissiveTex() { return EmissiveTex; }
 };
 
 #endif // GBUFFER_H

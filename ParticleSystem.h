@@ -36,7 +36,7 @@ struct ParticleSystemDescriptor
 {
     std::string name;
     XMFLOAT3 emitterPosition = { 0.0f, 0.0f, 0.0f };
-    UINT numParticlesToEmit = 10;
+    UINT numParticlesToEmit;
     UINT maxParticles = 1000;
     float particleSize = 0.2f;
     PARTICLE_SHAPE particleShape = PARTICLE_SHAPE::QUAD;
@@ -67,6 +67,8 @@ public:
     XMFLOAT3 getEmitterPosition() const { return mEmitterPosition; }
     UINT getMaxParticles() const { return mMaxParticles; }
     UINT getNumParticlesToEmit() const { return mNumParticlesToEmit; }
+    
+    void setEmissiveTex(ComPtr<ID3D12Resource> emissiveTex) { mEmissiveTex = emissiveTex; }
 
 private:
     void BuildResources();
@@ -110,4 +112,9 @@ private:
 
     ID3D12Device* mDevice;
     ID3D12GraphicsCommandList* mCommandList;
+
+    float mTime = 0.0f;
+    static UINT sGlobalFrame;
+
+    ComPtr<ID3D12Resource> mEmissiveTex = nullptr;
 };
