@@ -249,26 +249,26 @@ float4 PS(VertexOut pin) : SV_Target
         
         for (uint cascade = 0; cascade < 4; cascade++)
         {
-            //float factor = CalcShadowFactor(WorldPosition, Normal, cascade);
-            //if (factor < 0.3f)
-            //{
-            //    shadowFactor = factor;
-            //    break;
-            //}
+            float factor = CalcShadowFactor(WorldPosition, Normal, cascade);
+            if (factor < 0.3f)
+            {
+                shadowFactor = factor;
+                break;
+            }
         }
         
-        uint cascadeIndex = 0;
+        //uint cascadeIndex = 0;
+        //
+        //if (distanceFromEye < CascadeDistances.x)
+        //    cascadeIndex = 0;
+        //else if (distanceFromEye < CascadeDistances.y)
+        //    cascadeIndex = 1;
+        //else if (distanceFromEye < CascadeDistances.z)
+        //    cascadeIndex = 2;
+        //else
+        //    cascadeIndex = 3;
 
-        if (distanceFromEye < CascadeDistances.x)
-            cascadeIndex = 0;
-        else if (distanceFromEye < CascadeDistances.y)
-            cascadeIndex = 1;
-        else if (distanceFromEye < CascadeDistances.z)
-            cascadeIndex = 2;
-        else
-            cascadeIndex = 3;
-
-        shadowFactor = CalcShadowFactor(WorldPosition, Normal, cascadeIndex);
+        //shadowFactor = CalcShadowFactor(WorldPosition, Normal, cascadeIndex);
         
         float3 lightDir = normalize(-CurrentLight.Direction);
         float3 halfVec = normalize(toEyeW + lightDir);
