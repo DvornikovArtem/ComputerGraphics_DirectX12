@@ -61,20 +61,13 @@ VSOutput VS(VSInput input, uint instanceID : SV_InstanceID)
     float3 particlePosW = p.Pos;
     float2 quadPosL = input.PosL.xy;
     
-    // =========================================================================
-    // Исправленная логика Billboard:
-    // Мы берем правый и верхний векторы камеры из обратной матрицы вида (InvView).
-    // Эти векторы говорят нам, "где право" и "где верх" с точки зрения камеры в мировом пространстве.
-    // Мы используем их для смещения вершин квадрата так, чтобы он всегда был повернут к камере.
-    // =========================================================================
     float3 camRightW = InvView[0].xyz;
     float3 camUpW = InvView[1].xyz;
     
     float3 worldPos = particlePosW;
     worldPos += camRightW * quadPosL.x * p.Size;
     worldPos += camUpW * quadPosL.y * p.Size;
-
-    // Теперь мы используем правильную матрицу ViewProj для трансформации
+    
     output.PosH = mul(float4(worldPos, 1.0f), ViewProj);
     
     output.Color = p.Color;

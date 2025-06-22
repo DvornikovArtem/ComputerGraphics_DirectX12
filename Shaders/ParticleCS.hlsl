@@ -120,23 +120,16 @@ void SimulateCS2(uint3 dispatchThreadID : SV_DispatchThreadID)
 }
 
 
-// Хелпер-функция для преобразования глубины из пространства экрана в позицию в мировом пространстве
 float3 Unproject(float3 screenPos)
 {
-    // screenPos.xy - это координаты текселя [0..width, 0..height]
-    // screenPos.z - это значение глубины [0..1]
-
-    // Преобразуем в NDC [-1..1]
     float2 ndc = (screenPos.xy * InvRenderTargetSize) * 2.0f - 1.0f;
-    ndc.y = -ndc.y; // Инвертируем Y для D3D
-
-    // Преобразуем в мировые координаты
+    ndc.y = -ndc.y;
+    
     float4 p = mul(float4(ndc, screenPos.z, 1.0f), InvViewProj);
     return p.xyz / p.w;
 }
 
 
-// Пример для SimulateCS (фейерверк)
 [numthreads(256, 1, 1)]
 void SimulateCS(uint3 dispatchThreadID : SV_DispatchThreadID)
 {
@@ -152,46 +145,40 @@ void SimulateCS(uint3 dispatchThreadID : SV_DispatchThreadID)
 
         if (p.LifeTime > 0.0f)
         {
-            // Симуляция
             p.Vel.y -= 3.8f * gDeltaTime;
             float3 nextPos = p.Pos + p.Vel * gDeltaTime;
-
-            // --- Проверка столкновений ---
+            
             float4 posH = mul(float4(nextPos, 1.0f), ViewProj);
             posH.xyz /= posH.w; // Perspective divide
-
-            // Проверяем, находится ли частица в пределах экрана
+            
             if (saturate(posH.x) == posH.x && saturate(posH.y) == posH.y)
             {
-                // Конвертируем NDC в UV координаты
                 float2 texCoord = 0.5f * posH.xy + 0.5f;
                 texCoord.y = 1.0f - texCoord.y;
 
                 uint2 screenPos = texCoord * RenderTargetSize;
                 float sceneDepth = gEmissiveMap.Load(int3(screenPos, 0)).w;
-
-                // Если глубина сцены не максимальна (т.е. там есть геометрия)
+                
                 if (sceneDepth < 1.0f)
                 {
                     float3 sceneWorldPos = Unproject(float3(screenPos, sceneDepth));
-
-                    // Если частица "за" поверхностью
+                    
                     if (length(nextPos - EyePosW) > length(sceneWorldPos - EyePosW))
                     {
-                        // Простая реакция - отскок от пола
-                        p.Vel.y = -p.Vel.y * 0.4f; // Теряем часть энергии
+                        p.Vel.y = -p.Vel.y * 0.4f;
                         nextPos = p.Pos + p.Vel * gDeltaTime;
                     }
                 }
             }
-            // Простое столкновение с полом на y=0
-            if (nextPos.y < 0.0f)
-            {
-                nextPos.y = 0.0f;
-                p.Vel.y = -p.Vel.y * 0.4f;
-            }
+            
+            
+            //if (nextPos.y - particleSize < 0.0f)
+            //{
+             //   nextPos.y = 0.0f + particleSize;
+            //    p.Vel.y = -p.Vel.y * 0.4f;
+            //}
+            
             p.Pos = nextPos;
-            // --- Конец проверки столкновений ---
 
             gAliveListAppend.Append(index);
         }
@@ -274,14 +261,24 @@ void EmitSmokeCS(uint3 dispatchThreadID : SV_DispatchThreadID)
 
     uint slot = gDeadListsConsume[gCurrentDeadList].Consume();
     
-    uint seed = slot * 9781 + gFrameIndex;
+    uint seed = slot * 9781 + gFrameIndex * gNumEmit + dispatchThreadID.x;
     
-    float3 offset = (float3(hash11(seed++), hash11(seed++), hash11(seed++)) - 0.5) * float3(0.8, 0.2, 0.8);
-    gParticlePool[slot].Pos = gEmitterPos + offset;
+    {
+        uint s = seed;
+        float3 rnd = float3(
+            rand_float(s++),
+            rand_float(s++),
+            rand_float(s++)
+        );
+        float3 offset = (rnd * 2.0f - 1.0f) * float3(0.1f, 0.4f, 0.2f);
+        gParticlePool[slot].Pos = gEmitterPos + offset;
+    }
+    
+    //gParticlePool[slot].Pos = gEmitterPos + offset;
     
     gParticlePool[slot].Vel = float3(
         (hash11(seed++) - 0.5) * 0.5,
-         10.0 + hash11(seed++) * 0.4,
+         2.0 + hash11(seed++) * 0.4,
         (hash11(seed++) - 0.5) * 0.5);
 
     gParticlePool[slot].LifeTime = 5.0 + hash11(seed++) * 1.5;
@@ -291,8 +288,6 @@ void EmitSmokeCS(uint3 dispatchThreadID : SV_DispatchThreadID)
 
 
 
-// Вставьте этот код в ParticleCS.hlsl, полностью заменив старую функцию SimulateSmokeCS
-
 [numthreads(256, 1, 1)]
 void SimulateSmokeCS(uint3 dispatchThreadID : SV_DispatchThreadID)
 {
@@ -301,45 +296,48 @@ void SimulateSmokeCS(uint3 dispatchThreadID : SV_DispatchThreadID)
         return;
 
     Particle p = gParticlePool[idx];
-
-    // Если частица еще жива, симулируем ее
+    
     if (p.LifeTime > 0.0f)
     {
         p.LifeTime -= gDeltaTime;
-
-        // Если частица все еще жива после обновления
+        
         if (p.LifeTime > 0.0f)
         {
-            float3 buoyancy = float3(0.0, 1.1, 0.0);
-            float3 windDir = float3(0.25, 0.0, 0.05);
-            p.Vel += (buoyancy + windDir) * gDeltaTime;
+            float3 buoyancy = float3(0.0, 0.3, 0.0);
+            //float3 windDir = float3(0.25, 0.0, 0.05);
+            //p.Vel += (buoyancy + windDir) * gDeltaTime;
+            p.Vel += buoyancy * gDeltaTime;
 
             float3 field = curlNoise(p.Pos * 0.25 + gTime * 0.5);
-            p.Vel += field * 0.8 * gDeltaTime;
-
-            // Затухание скорости (сопротивление воздуха)
+            p.Vel += field * 0.2 * gDeltaTime;
+            
             p.Vel *= 0.96;
             p.Pos += p.Vel * gDeltaTime;
-
-            // Частица растет со временем
-            p.Size += particleSize * 0.7 * gDeltaTime;
-
-            // Плавное появление и исчезновение
-            float t_fade = p.LifeTime / 5.0f; // Предполагаем, что начальное время жизни около 5.0
+            
+            p.Size += particleSize * 0.4 * gDeltaTime;
+            
+            float t_fade = p.LifeTime / 5.0f;
             p.Color.a = saturate(1.0 - (1.0 - t_fade) * (1.0 - t_fade)) * 0.8f;
-
-            // Цвет меняется от плотного серого к более светлому и прозрачному
+            
             p.Color.rgb = lerp(float3(0.4, 0.4, 0.4), float3(0.15, 0.15, 0.15), saturate(t_fade));
+            
+            //float ratio = saturate(p.LifeTime / p.StartLifeTime);
+            //p.Color.a = ratio * 0.8f;
+            //p.Color.rgb = lerp(
+            //    float3(0.15, 0.15, 0.15),
+            //    float3(0.4, 0.4, 0.4),
+            //    ratio
+            //);
 
             gParticlePool[idx] = p;
             gAliveListAppend.Append(idx);
         }
-        else // Частица умерла в этом кадре
+        else
         {
             gDeadListsAppend[1 - gCurrentDeadList].Append(idx);
         }
     }
-    else // Частица уже была мертва
+    else
     {
         gDeadListsAppend[1 - gCurrentDeadList].Append(idx);
     }

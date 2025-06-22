@@ -265,7 +265,7 @@ void ParticleSystem::BuildShadersAndPSOs()
     psoDesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
     psoDesc.BlendState.RenderTarget[0].BlendEnable = true;
     psoDesc.BlendState.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
-    psoDesc.BlendState.RenderTarget[0].DestBlend = D3D12_BLEND_ONE;
+    psoDesc.BlendState.RenderTarget[0].DestBlend = D3D12_BLEND_INV_SRC_ALPHA; // D3D12_BLEND_ONE
     psoDesc.BlendState.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
     psoDesc.BlendState.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ONE;
     psoDesc.BlendState.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ZERO;
