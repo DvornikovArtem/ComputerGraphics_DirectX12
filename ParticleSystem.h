@@ -68,7 +68,7 @@ public:
     UINT getMaxParticles() const { return mMaxParticles; }
     UINT getNumParticlesToEmit() const { return mNumParticlesToEmit; }
     
-    void setEmissiveTex(ComPtr<ID3D12Resource> emissiveTex) { mEmissiveTex = emissiveTex; }
+    void setEmissiveTex(ComPtr<ID3D12Resource> emissiveTex, ComPtr<ID3D12Resource> normalTex);
 
 private:
     void BuildResources();
@@ -117,4 +117,5 @@ private:
     static UINT sGlobalFrame;
 
     ComPtr<ID3D12Resource> mEmissiveTex = nullptr;
+    ComPtr<ID3D12Resource> mNormalTex = nullptr;
 };

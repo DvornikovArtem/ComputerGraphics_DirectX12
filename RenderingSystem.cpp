@@ -37,6 +37,16 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 			IID_PPV_ARGS(&md3dDevice)));
 	}
 
+	IDXGIAdapter* currentAdapter;
+	LUID deviceLuid = md3dDevice->GetAdapterLuid();
+	mdxgiFactory->EnumAdapterByLuid(deviceLuid, IID_PPV_ARGS(&currentAdapter));
+	DXGI_ADAPTER_DESC adapterDesc;
+	currentAdapter->GetDesc(&adapterDesc);
+	OutputDebugStringA("\n\n");
+	OutputDebugStringW(adapterDesc.Description);
+	OutputDebugStringA("\n\n");
+
+
 	ThrowIfFailed(md3dDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE,
 		IID_PPV_ARGS(&mFence)));
 
@@ -122,6 +132,11 @@ void RenderingSystem::FinishInitialize()
 	}
 
 	BuildFrameResources();
+
+	for (ParticleSystem* particleSystem : mAllParticleSystems)
+	{
+		particleSystem->setEmissiveTex(mGbuffer->getEmissiveTex(), mGbuffer->getNormalTex());
+	}
 }
 
 void RenderingSystem::OnResize() {
@@ -235,6 +250,10 @@ void RenderingSystem::OnResize() {
 			D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 	}
 
+	for (ParticleSystem* particleSystem : mAllParticleSystems)
+	{
+		particleSystem->setEmissiveTex(mGbuffer->getEmissiveTex(), mGbuffer->getNormalTex());
+	}
 }
 
 void RenderingSystem::Render()
@@ -286,7 +305,7 @@ void RenderingSystem::Render()
 	//
 	for (ParticleSystem* particleSystem : mAllParticleSystems)
 	{
-		particleSystem->setEmissiveTex(mGbuffer->getEmissiveTex());
+		//particleSystem->setEmissiveTex(mGbuffer->getEmissiveTex());
 		particleSystem->Update(gt->DeltaTime(),mCurrFrameResource);
 	}
 
@@ -988,7 +1007,7 @@ void RenderingSystem::UpdateLightCBs(const GameTimer& gt)
 			case LightType::Directional:
 			{
 				float SphereRadiuses[4] = { 10, 50, 150, 400 };
-
+				
 				//for each cascade
 				for (int i = 0; i < 4; i++)
 				{
@@ -996,11 +1015,11 @@ void RenderingSystem::UpdateLightCBs(const GameTimer& gt)
 					lightPos = mCamera.GetPosition() - 2.0f * SphereRadiuses[i] * lightDir;
 					targetPos = mCamera.GetPosition();
 					lightView = XMMatrixLookAtLH(lightPos, targetPos, lightUp);
-
+				
 					// Transform bounding sphere to light space.
 					sphereCenterLS;
 					XMStoreFloat3(&sphereCenterLS, XMVector3TransformCoord(targetPos, lightView));
-
+				
 					// Ortho frustum in light space encloses cascade.
 					l = sphereCenterLS.x - SphereRadiuses[i];
 					b = sphereCenterLS.y - SphereRadiuses[i];
@@ -1008,9 +1027,9 @@ void RenderingSystem::UpdateLightCBs(const GameTimer& gt)
 					r = sphereCenterLS.x + SphereRadiuses[i];
 					t = sphereCenterLS.y + SphereRadiuses[i];
 					f = sphereCenterLS.z + SphereRadiuses[i];
-
+				
 					lightProj = XMMatrixOrthographicOffCenterLH(l, r, b, t, n, f);
-
+				
 					S = lightView * lightProj * T;
 					XMStoreFloat4x4(&LightConstants.View[i], XMMatrixTranspose(lightView));
 					XMStoreFloat4x4(&LightConstants.Proj[i], XMMatrixTranspose(lightProj));

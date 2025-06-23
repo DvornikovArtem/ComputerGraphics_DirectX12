@@ -52,7 +52,7 @@ AppendStructuredBuffer<uint> gAliveListAppend : register(u3);
 RWByteAddressBuffer gDrawArgs : register(u4);
 
 Texture2D gEmissiveMap : register(t0);
-
+Texture2D gNormalTex : register(t1);
 
 float rand_float(uint seed)
 {
@@ -83,7 +83,25 @@ void EmitCS(uint3 dispatchThreadID : SV_DispatchThreadID)
         rand_float(seed++) * 2.0f - 1.0f // z [-1, 1]
     ) * 2.0f;
     gParticlePool[deadIndex].Size = particleSize;
-    gParticlePool[deadIndex].Color = float4(rand_float(seed*2), rand_float(seed), rand_float(seed/2), 1.0f);
+    gParticlePool[deadIndex].Color = float4(rand_float(seed*2), rand_float(seed), rand_float(seed), 1.0f);
+    
+    
+    {
+        uint index = dispatchThreadID.x;
+        Particle p = gParticlePool[index];
+        float3 nextPos = p.Pos + p.Vel * gDeltaTime;
+            
+        float4 posH = mul(float4(nextPos, 1.0f), ViewProj);
+        posH.xyz /= posH.w;
+            
+        float2 texCoord = 0.5f * posH.xy + 0.5f;
+        texCoord.y = 1.0f - texCoord.y;
+
+        uint2 screenPos = texCoord * RenderTargetSize;
+        
+        if (gEmissiveMap.Load(int3(screenPos, 0)).w == 0)
+            gParticlePool[deadIndex].Color = float4(0.0f, 0.0f, 0.0f, 1.0f);
+    }
 }
 
 
@@ -130,70 +148,147 @@ float3 Unproject(float3 screenPos)
 }
 
 
-[numthreads(256, 1, 1)]
-void SimulateCS(uint3 dispatchThreadID : SV_DispatchThreadID)
+// -- Depth helpers --------------------------------------------------
+float LinearizeDepth(float ndcDepth)
 {
-    uint index = dispatchThreadID.x;
-    if (index >= gMaxParticles)
+    // NDC in [0..1] view-space Z (>0, от камеры вперёд)
+    return NearZ * FarZ / (FarZ - ndcDepth * (FarZ - NearZ));
+}
+
+float GetSceneViewDepth(int2 pix)
+{
+    // depth лежит в .w у gEmissiveMap
+    float ndc = gEmissiveMap.Load(int3(pix, 0)).w;
+    return LinearizeDepth(ndc);
+}
+
+// Преобразуем world screen pixel
+bool WorldToPixel(float3 pos, out int2 pix)
+{
+    float4 clip = mul(float4(pos, 1.0f), ViewProj);
+    if (abs(clip.w) < 1e-6f)
+        return false;
+
+    float3 ndc = clip.xyz / clip.w;
+    if (abs(ndc.x) > 1.0f || abs(ndc.y) > 1.0f)
+        return false;
+
+    float2 uv = ndc.xy * 0.5f + 0.5f;
+    uv.y = 1.0f - uv.y;
+    pix = int2(uv * RenderTargetSize + 0.5f);
+    pix = clamp(pix, int2(0, 0), int2(RenderTargetSize) - int2(1, 1));
+    return true;
+}
+
+
+// Вычисляем нормаль по 4-самплам depth
+float3 FetchNormal(int2 pix)
+{
+    // читаем normal; допустим, она лежит в .xyz как [0..1]
+    float3 enc = gNormalTex.Load(int3(pix, 0)).xyz;
+
+    // декодируем в [-1..1] и нормализуем
+    float3 n = normalize(enc * 2.0f - 1.0f);
+
+    // если NormalTex в view-space, верните в world:
+    // n = mul((float3x3)ViewInv, n);   // ViewInv = transpose(View)
+
+    return n;
+}
+
+// -- возвращает world-позицию сцены по depth-текстрачу -------------------
+float3 SceneWorld(int2 pix)
+{
+    float ndcDepth = gEmissiveMap.Load(int3(pix, 0)).w;
+    float2 uv = (float2(pix) + 0.5f) / RenderTargetSize;
+    float4 clip = float4(uv * 2.0f - 1.0f, ndcDepth, 1.0f);
+    float4 ws = mul(clip, InvViewProj);
+    return ws.xyz / ws.w;
+}
+
+// -- нормаль из G-buffer (world-space записана в [0,1]) ------------------
+float3 SceneNormal(int2 pix)
+{
+    float3 enc = gNormalTex.Load(int3(pix, 0)).xyz; // [0..1]
+    float3 nVS = normalize(enc * 2.0f - 1.0f); // view-space
+
+    // world = transpose(View) * nVS
+    float3x3 viewInvT = (float3x3) View;
+    return normalize(mul(nVS, viewInvT));
+}
+
+bool Bounce(inout float3 pos, inout float3 vel, int2 pix)
+{
+    float CollisionRestitution = 0.8f; // упругость отскока
+    float CollisionThreshold = 0.01f; // 2 мм в view-space
+    
+    float3 sPos = SceneWorld(pix);
+    float3 n = SceneNormal(pix);
+
+    // нормаль наружу
+    if (dot(n, pos - sPos) < 0.0f)
+        n = -n;
+
+    // частица уже вне поверхности?
+    float dist = dot(pos - sPos, n); // >0 снаружи, <0 внутри
+    if (dist >= 0.0f)
+        return false;
+
+    // летит ли к поверхности
+    if (dot(vel, n) >= 0.0f)
+        return false;
+
+    // отражаем
+    vel = vel - (1.0f + CollisionRestitution) * dot(vel, n) * n;
+
+    // выталкиваем ровно на глубину проникновения + зазор
+    pos += n * (-dist + CollisionThreshold);
+
+    return true;
+}
+
+[numthreads(256, 1, 1)]
+void SimulateCS(uint3 tid : SV_DispatchThreadID)
+{
+    float3 Gravity = { 0.0f, -9.8f, 0.0f };
+    float CollisionRestitution = 0.8f; // упругость отскока
+    float CollisionThreshold = 0.1f; // 2 мм в view-space
+    
+    uint idx = tid.x;
+    if (idx >= gMaxParticles)
         return;
 
-    Particle p = gParticlePool[index];
-
-    if (p.LifeTime > 0.0f)
+    Particle p = gParticlePool[idx];
+    if (p.LifeTime <= 0.0f)
     {
-        p.LifeTime -= gDeltaTime;
-
-        if (p.LifeTime > 0.0f)
-        {
-            p.Vel.y -= 3.8f * gDeltaTime;
-            float3 nextPos = p.Pos + p.Vel * gDeltaTime;
-            
-            float4 posH = mul(float4(nextPos, 1.0f), ViewProj);
-            posH.xyz /= posH.w; // Perspective divide
-            
-            if (saturate(posH.x) == posH.x && saturate(posH.y) == posH.y)
-            {
-                float2 texCoord = 0.5f * posH.xy + 0.5f;
-                texCoord.y = 1.0f - texCoord.y;
-
-                uint2 screenPos = texCoord * RenderTargetSize;
-                float sceneDepth = gEmissiveMap.Load(int3(screenPos, 0)).w;
-                
-                if (sceneDepth < 1.0f)
-                {
-                    float3 sceneWorldPos = Unproject(float3(screenPos, sceneDepth));
-                    
-                    if (length(nextPos - EyePosW) > length(sceneWorldPos - EyePosW))
-                    {
-                        p.Vel.y = -p.Vel.y * 0.4f;
-                        nextPos = p.Pos + p.Vel * gDeltaTime;
-                    }
-                }
-            }
-            
-            
-            //if (nextPos.y - particleSize < 0.0f)
-            //{
-             //   nextPos.y = 0.0f + particleSize;
-            //    p.Vel.y = -p.Vel.y * 0.4f;
-            //}
-            
-            p.Pos = nextPos;
-
-            gAliveListAppend.Append(index);
-        }
-        else
-        {
-            gDeadListsAppend[1 - gCurrentDeadList].Append(index);
-        }
-
-        gParticlePool[index] = p;
+        gDeadListsAppend[1 - gCurrentDeadList].Append(idx);
+        return;
     }
-    else
+
+    // — уменьшение жизни —
+    p.LifeTime -= gDeltaTime;
+
+    // — суб-шаги для устранения tunneling —
+    const int kSteps = 2;
+    const float dt = gDeltaTime / kSteps;
+
+    for (int s = 0; s < kSteps; ++s)
     {
-        gDeadListsAppend[1 - gCurrentDeadList].Append(index);
+        p.Vel += Gravity * dt; // гравитация
+        float3 nextPos = p.Pos + p.Vel * dt; // эйлер-шаг
+
+        int2 pix;
+        if (WorldToPixel(nextPos, pix))
+            Bounce(nextPos, p.Vel, pix);
+
+        p.Pos = nextPos;
     }
+
+    // — запись и список живых —
+    gParticlePool[idx] = p;
+    gAliveListAppend.Append(idx);
 }
+
 
 
 uint hash(uint x)
@@ -214,7 +309,6 @@ float hash13(float3 p)
 {
     return hash(asuint(p.x) ^ hash(asuint(p.y)) ^ hash(asuint(p.z))) / 4294967296.0;
 }
-
 
 float noise(float3 p)
 {
@@ -285,8 +379,6 @@ void EmitSmokeCS(uint3 dispatchThreadID : SV_DispatchThreadID)
     gParticlePool[slot].Size = particleSize * (0.6 + hash11(seed++) * 0.4);
     gParticlePool[slot].Color = float4(0.06, 0.06, 0.06, 0.85);
 }
-
-
 
 [numthreads(256, 1, 1)]
 void SimulateSmokeCS(uint3 dispatchThreadID : SV_DispatchThreadID)

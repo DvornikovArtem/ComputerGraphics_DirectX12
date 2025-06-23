@@ -29,6 +29,38 @@ void ParticleSystem::Build(ComPtr<ID3D12Device> device, ComPtr<ID3D12GraphicsCom
     BuildShadersAndPSOs();
 }
 
+void ParticleSystem::setEmissiveTex(ComPtr<ID3D12Resource> emissiveTex, ComPtr<ID3D12Resource> normalTex)
+{
+    if (mEmissiveTex.Get() == emissiveTex.Get()) return;
+    if (mNormalTex.Get() == normalTex.Get()) return;
+
+    mEmissiveTex = emissiveTex;
+    mNormalTex = normalTex;
+
+    UINT descriptorSize = mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
+    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+    srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+    srvDesc.Texture2D.MipLevels = 1;
+
+    srvDesc.Format = mEmissiveTex->GetDesc().Format;
+    CD3DX12_CPU_DESCRIPTOR_HANDLE emissiveHandle(
+        mUavSrvHeap->GetCPUDescriptorHandleForHeapStart(),
+        5,
+        descriptorSize);
+
+    mDevice->CreateShaderResourceView(mEmissiveTex.Get(), &srvDesc, emissiveHandle);
+
+    srvDesc.Format = mNormalTex->GetDesc().Format;
+    CD3DX12_CPU_DESCRIPTOR_HANDLE normalHandle(
+        emissiveHandle,
+        1,
+        descriptorSize);
+
+    mDevice->CreateShaderResourceView(mNormalTex.Get(), &srvDesc, normalHandle);
+}
+
 void ParticleSystem::BuildResources()
 {
     auto defaultHeap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT); // GPU-accessible memory (VRAM) -> to storage resources for GPU-rendering (VB, textures, UAV e.c.)
@@ -154,7 +186,7 @@ void ParticleSystem::BuildResources()
 
     // Create UAV-descriptors
     D3D12_DESCRIPTOR_HEAP_DESC uavHeapDesc = {};
-    uavHeapDesc.NumDescriptors = 6;
+    uavHeapDesc.NumDescriptors = 7;
     uavHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     uavHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 
@@ -184,17 +216,17 @@ void ParticleSystem::BuildResources()
 
     uavDesc.Buffer.NumElements = sizeof(D3D12_DRAW_INDEXED_ARGUMENTS) / sizeof(UINT);
     uavDesc.Buffer.CounterOffsetInBytes = 0;
-    mDevice->CreateUnorderedAccessView(mDrawArgs.Get(), nullptr, &uavDesc, uavHandle);
+    mDevice->CreateUnorderedAccessView(mDrawArgs.Get(), nullptr, &uavDesc, uavHandle); //uavHandle.Offset(1, uavDescriptorSize);
 
 
-    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+    /*D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
     srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
     srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
     srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
     srvDesc.Texture2D.MipLevels = 1;
 
     mDevice->CreateShaderResourceView(mEmissiveTex.Get(), &srvDesc, uavHandle);
-    CD3DX12_GPU_DESCRIPTOR_HANDLE emissiveTexDescriptorGPU(mUavSrvHeap->GetGPUDescriptorHandleForHeapStart(), 5);
+    CD3DX12_GPU_DESCRIPTOR_HANDLE emissiveTexDescriptorGPU(mUavSrvHeap->GetGPUDescriptorHandleForHeapStart(), 5);*/
 }
 
 void ParticleSystem::BuildRootSignatures()
@@ -215,7 +247,7 @@ void ParticleSystem::BuildRootSignatures()
     uavTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 5, 0);
 
     CD3DX12_DESCRIPTOR_RANGE srvTable = {};
-    srvTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
+    srvTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 0);
 
     CD3DX12_ROOT_PARAMETER computeSlotRootParameter[4] = {};
     computeSlotRootParameter[0].InitAsConstantBufferView(0);
@@ -362,6 +394,11 @@ void ParticleSystem::Update(float dt, FrameResource* frameResource)
     mCommandList->SetComputeRootConstantBufferView(1, passCB->GetGPUVirtualAddress());
 
     mCommandList->SetComputeRootDescriptorTable(2, mUavSrvHeap->GetGPUDescriptorHandleForHeapStart());
+
+    CD3DX12_GPU_DESCRIPTOR_HANDLE emissiveTexDescriptorGPU(mUavSrvHeap->GetGPUDescriptorHandleForHeapStart());
+    emissiveTexDescriptorGPU.Offset(5, mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
+
+    mCommandList->SetComputeRootDescriptorTable(3, emissiveTexDescriptorGPU);
     //mCommandList->Dispatch(mNumParticlesToEmit / 256 + 1, 1, 1);
 
     UINT groups = (mNumParticlesToEmit + 255) / 256;

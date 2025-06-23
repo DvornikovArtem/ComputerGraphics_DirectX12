@@ -65,6 +65,7 @@ public:
     void Dispose();
 
     ComPtr<ID3D12Resource> getEmissiveTex() { return EmissiveTex; }
+    ComPtr<ID3D12Resource> getNormalTex() { return NormalTex; }
 };
 
 #endif // GBUFFER_H
