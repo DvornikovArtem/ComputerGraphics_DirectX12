@@ -63,7 +63,9 @@ struct ParticleConstants
     float particleSize;
     float Time;
     UINT FrameIndex;
-    DirectX::XMFLOAT2 _pad;
+    DirectX::XMFLOAT3 CameraPos;
+    DirectX::XMFLOAT3 CameraDir;
+    DirectX::XMFLOAT4 _pad;
 };
 
 // Stores the resources needed for the CPU to build the command lists

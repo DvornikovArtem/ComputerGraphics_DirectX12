@@ -93,6 +93,7 @@ private:
     ComPtr<ID3D12PipelineState> mPSORender;
     ComPtr<ID3D12PipelineState> mPSOEmit;
     ComPtr<ID3D12PipelineState> mPSOSimulate;
+    ComPtr<ID3D12PipelineState> mPSOSort;
 
     ComPtr<ID3D12Resource> mParticlePool;
     ComPtr<ID3D12Resource> mAliveList;
@@ -118,4 +119,8 @@ private:
 
     ComPtr<ID3D12Resource> mEmissiveTex = nullptr;
     ComPtr<ID3D12Resource> mNormalTex = nullptr;
+
+public:
+    XMFLOAT3 CameraPos;
+    XMFLOAT3 CameraDir;
 };

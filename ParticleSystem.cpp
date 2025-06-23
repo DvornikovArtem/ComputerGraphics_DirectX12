@@ -242,6 +242,7 @@ void ParticleSystem::BuildRootSignatures()
     ThrowIfFailed(D3D12SerializeRootSignature(&rsDesc, D3D_ROOT_SIGNATURE_VERSION_1, serializedRootSig.GetAddressOf(), errorBlob.GetAddressOf()));
     ThrowIfFailed(mDevice->CreateRootSignature(0, serializedRootSig->GetBufferPointer(), serializedRootSig->GetBufferSize(), IID_PPV_ARGS(&mRootSignatureRender)));
 
+
     // For compute shaders
     CD3DX12_DESCRIPTOR_RANGE uavTable = {};
     uavTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 5, 0);
@@ -258,6 +259,15 @@ void ParticleSystem::BuildRootSignatures()
     CD3DX12_ROOT_SIGNATURE_DESC computeRsDesc(_countof(computeSlotRootParameter), computeSlotRootParameter, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_NONE);
     ThrowIfFailed(D3D12SerializeRootSignature(&computeRsDesc, D3D_ROOT_SIGNATURE_VERSION_1, serializedRootSig.GetAddressOf(), errorBlob.GetAddressOf()));
     ThrowIfFailed(mDevice->CreateRootSignature(0, serializedRootSig->GetBufferPointer(), serializedRootSig->GetBufferSize(), IID_PPV_ARGS(&mRootSignatureCompute)));
+
+
+    // For sort shader
+    //auto sortCS = d3dUtil::CompileShader(L"../Shaders/ParticleSortCS.hlsl", nullptr, "CS", "cs_5_1");
+    //D3D12_COMPUTE_PIPELINE_STATE_DESC sortDesc{};
+    //sortDesc.pRootSignature = mRootSignatureCompute.Get();
+    //sortDesc.CS = CD3DX12_SHADER_BYTECODE(sortCS.Get());
+    //ThrowIfFailed(mDevice->CreateComputePipelineState(&sortDesc, IID_PPV_ARGS(&mPSOSort)));
+
 }
 
 void ParticleSystem::BuildCommandSignature()
@@ -278,6 +288,7 @@ void ParticleSystem::BuildShadersAndPSOs()
 {
     auto vsByteCode = d3dUtil::CompileShader(L"../Shaders/Particle.hlsl", nullptr, "VS", "vs_5_1");
     auto psByteCode = d3dUtil::CompileShader(L"../Shaders/Particle.hlsl", nullptr, "PS", "ps_5_1");
+    auto sortCS = d3dUtil::CompileShader(L"../Shaders/ParticleSortCS.hlsl", nullptr, "CS", "cs_5_1");
 
     D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
     psoDesc.InputLayout = { mQuadGeo->InputLayout.data(), (UINT)mQuadGeo->InputLayout.size() };
@@ -296,12 +307,16 @@ void ParticleSystem::BuildShadersAndPSOs()
     psoDesc.SampleDesc.Quality = 0;
     psoDesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
     psoDesc.BlendState.RenderTarget[0].BlendEnable = true;
-    psoDesc.BlendState.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
-    psoDesc.BlendState.RenderTarget[0].DestBlend = D3D12_BLEND_INV_SRC_ALPHA; // D3D12_BLEND_ONE
+    psoDesc.BlendState.RenderTarget[0].SrcBlend = D3D12_BLEND_ONE; // D3D12_BLEND_SRC_ALPHA
+    psoDesc.BlendState.RenderTarget[0].DestBlend = D3D12_BLEND_ONE; // D3D12_BLEND_INV_SRC_ALPHA
     psoDesc.BlendState.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
     psoDesc.BlendState.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ONE;
     psoDesc.BlendState.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ZERO;
     ThrowIfFailed(mDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&mPSORender)));
+
+    //blendDesc.RenderTarget[0].SrcBlend = D3D12_BLEND_ONE;
+    //blendDesc.RenderTarget[0].DestBlend = D3D12_BLEND_ONE;
+    //blendDesc.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
 
     D3D12_COMPUTE_PIPELINE_STATE_DESC computePsoDesc = {};
     computePsoDesc.pRootSignature = mRootSignatureCompute.Get();
@@ -309,7 +324,11 @@ void ParticleSystem::BuildShadersAndPSOs()
     ThrowIfFailed(mDevice->CreateComputePipelineState(&computePsoDesc, IID_PPV_ARGS(&mPSOEmit)));
 
     computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(mSimulateComputeShader.Get());
-    ThrowIfFailed(mDevice->CreateComputePipelineState(&computePsoDesc, IID_PPV_ARGS(&mPSOSimulate)));
+    ThrowIfFailed(mDevice->CreateComputePipelineState(&computePsoDesc, IID_PPV_ARGS(&mPSOSimulate)))
+
+    // --> ДОБАВЬ ЭТИ СТРОКИ
+    computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(sortCS.Get());
+    ThrowIfFailed(mDevice->CreateComputePipelineState(&computePsoDesc, IID_PPV_ARGS(&mPSOSort)));
 }
 
 void ParticleSystem::Update(float dt, FrameResource* frameResource)
@@ -326,6 +345,8 @@ void ParticleSystem::Update(float dt, FrameResource* frameResource)
     pConsts.particleSize = mParticleSize;
     pConsts.Time = mTime;
     pConsts.FrameIndex = sGlobalFrame++;
+    pConsts.CameraPos = CameraPos;
+    pConsts.CameraDir = CameraDir;
     frameResource->ParticleCB->CopyData(mCBIndex, pConsts);
 
     mCommandList->SetComputeRootSignature(mRootSignatureCompute.Get());
@@ -431,6 +452,40 @@ void ParticleSystem::Update(float dt, FrameResource* frameResource)
 
     mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mCounters.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS));
     mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mDrawArgs.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT));
+
+
+    // ================== ИСПРАВЛЕННЫЙ БЛОК СОРТИРОВКИ ==================
+    // Sorting
+    // Сначала барьер для gAliveList, так как SimulateCS только что в него писал.
+    CD3DX12_RESOURCE_BARRIER sortBarrier = CD3DX12_RESOURCE_BARRIER::UAV(mAliveList.Get());
+    mCommandList->ResourceBarrier(1, &sortBarrier);
+
+    mCommandList->SetPipelineState(mPSOSort.Get());
+    // Корневая сигнатура та же, что и у симуляции, поэтому ее можно не переключать,
+    // если она уже установлена, но для ясности лучше указать.
+    mCommandList->SetComputeRootSignature(mRootSignatureCompute.Get());
+
+    // Привязываем ресурсы как для симуляции, наш шейдер теперь ожидает именно их.
+    // ParticleConstants уже привязан к b0 ранее в этой функции.
+    // PassConstants уже привязан к b1 ранее в этой функции.
+    // Таблица дескрипторов UAV/SRV уже привязана ранее.
+
+    // Нам нужно создать SRV для gParticlePool и привязать его
+    // Но шейдер сортировки мы изменили, чтобы он использовал ту же структуру ресурсов,
+    // что и шейдеры симуляции. Однако у нас нет SRV для gParticlePool.
+    // Вместо этого, давайте изменим шейдер так, чтобы он использовал UAV для gParticlePool,
+    // так как он уже привязан. Это будет проще всего.
+
+    // --> Открой `ParticleSortCS.hlsl` и замени `StructuredBuffer<Particle> gParticlePool : register(t0);`
+    // --> на `RWStructuredBuffer<Particle> gParticlePool : register(u0);`
+    // --> Тогда нам не нужно ничего менять в C++ коде привязок!
+
+    UINT numGroups = (mMaxParticles + 255) / 256;
+    mCommandList->Dispatch(numGroups, 1, 1);
+
+    // Барьер после сортировки, перед тем как gAliveList будет использоваться для рендеринга
+    mCommandList->ResourceBarrier(1, &sortBarrier);
+    // ================== КОНЕЦ ИСПРАВЛЕННОГО БЛОКА ==================
 
 
     // Convert resources to a read-only state in the vertex shader

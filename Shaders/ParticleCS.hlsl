@@ -17,7 +17,9 @@ cbuffer ParticleConstants : register(b0)
     float particleSize;
     float gTime;
     uint gFrameIndex;
-    float2 _pad;
+    float3 CameraPos;
+    float3 CameraDir;
+    float4 _pad;
 };
 
 cbuffer PassConstants : register(b1)
@@ -151,18 +153,15 @@ float3 Unproject(float3 screenPos)
 // -- Depth helpers --------------------------------------------------
 float LinearizeDepth(float ndcDepth)
 {
-    // NDC in [0..1] view-space Z (>0, от камеры вперёд)
     return NearZ * FarZ / (FarZ - ndcDepth * (FarZ - NearZ));
 }
 
 float GetSceneViewDepth(int2 pix)
 {
-    // depth лежит в .w у gEmissiveMap
     float ndc = gEmissiveMap.Load(int3(pix, 0)).w;
     return LinearizeDepth(ndc);
 }
 
-// Преобразуем world screen pixel
 bool WorldToPixel(float3 pos, out int2 pix)
 {
     float4 clip = mul(float4(pos, 1.0f), ViewProj);
@@ -181,22 +180,16 @@ bool WorldToPixel(float3 pos, out int2 pix)
 }
 
 
-// Вычисляем нормаль по 4-самплам depth
 float3 FetchNormal(int2 pix)
 {
-    // читаем normal; допустим, она лежит в .xyz как [0..1]
     float3 enc = gNormalTex.Load(int3(pix, 0)).xyz;
-
-    // декодируем в [-1..1] и нормализуем
+    
     float3 n = normalize(enc * 2.0f - 1.0f);
-
-    // если NormalTex в view-space, верните в world:
-    // n = mul((float3x3)ViewInv, n);   // ViewInv = transpose(View)
+    
 
     return n;
 }
 
-// -- возвращает world-позицию сцены по depth-текстрачу -------------------
 float3 SceneWorld(int2 pix)
 {
     float ndcDepth = gEmissiveMap.Load(int3(pix, 0)).w;
@@ -206,7 +199,6 @@ float3 SceneWorld(int2 pix)
     return ws.xyz / ws.w;
 }
 
-// -- нормаль из G-buffer (world-space записана в [0,1]) ------------------
 float3 SceneNormal(int2 pix)
 {
     float3 enc = gNormalTex.Load(int3(pix, 0)).xyz; // [0..1]
@@ -219,29 +211,24 @@ float3 SceneNormal(int2 pix)
 
 bool Bounce(inout float3 pos, inout float3 vel, int2 pix)
 {
-    float CollisionRestitution = 0.8f; // упругость отскока
-    float CollisionThreshold = 0.01f; // 2 мм в view-space
+    float CollisionRestitution = 0.8f;
+    float CollisionThreshold = 0.01f;
     
     float3 sPos = SceneWorld(pix);
     float3 n = SceneNormal(pix);
-
-    // нормаль наружу
+    
     if (dot(n, pos - sPos) < 0.0f)
         n = -n;
-
-    // частица уже вне поверхности?
-    float dist = dot(pos - sPos, n); // >0 снаружи, <0 внутри
+    
+    float dist = dot(pos - sPos, n);
     if (dist >= 0.0f)
         return false;
-
-    // летит ли к поверхности
+    
     if (dot(vel, n) >= 0.0f)
         return false;
-
-    // отражаем
+    
     vel = vel - (1.0f + CollisionRestitution) * dot(vel, n) * n;
-
-    // выталкиваем ровно на глубину проникновения + зазор
+    
     pos += n * (-dist + CollisionThreshold);
 
     return true;
@@ -251,9 +238,8 @@ bool Bounce(inout float3 pos, inout float3 vel, int2 pix)
 void SimulateCS(uint3 tid : SV_DispatchThreadID)
 {
     float3 Gravity = { 0.0f, -9.8f, 0.0f };
-    float CollisionRestitution = 0.8f; // упругость отскока
-    float CollisionThreshold = 0.1f; // 2 мм в view-space
-    
+    float CollisionRestitution = 0.8f;
+    float CollisionThreshold = 0.1f;
     uint idx = tid.x;
     if (idx >= gMaxParticles)
         return;
@@ -264,18 +250,16 @@ void SimulateCS(uint3 tid : SV_DispatchThreadID)
         gDeadListsAppend[1 - gCurrentDeadList].Append(idx);
         return;
     }
-
-    // — уменьшение жизни —
+    
     p.LifeTime -= gDeltaTime;
-
-    // — суб-шаги для устранения tunneling —
+    
     const int kSteps = 2;
     const float dt = gDeltaTime / kSteps;
 
     for (int s = 0; s < kSteps; ++s)
     {
-        p.Vel += Gravity * dt; // гравитация
-        float3 nextPos = p.Pos + p.Vel * dt; // эйлер-шаг
+        p.Vel += Gravity * dt;
+        float3 nextPos = p.Pos + p.Vel * dt;
 
         int2 pix;
         if (WorldToPixel(nextPos, pix))
@@ -283,8 +267,7 @@ void SimulateCS(uint3 tid : SV_DispatchThreadID)
 
         p.Pos = nextPos;
     }
-
-    // — запись и список живых —
+    
     gParticlePool[idx] = p;
     gAliveListAppend.Append(idx);
 }

@@ -303,8 +303,11 @@ void RenderingSystem::Render()
 	//
 	//Draw ParticleSystems
 	//
+
 	for (ParticleSystem* particleSystem : mAllParticleSystems)
 	{
+		particleSystem->CameraPos = mCamera.GetPosition3f();
+		particleSystem->CameraDir = mCamera.GetLook3f();
 		//particleSystem->setEmissiveTex(mGbuffer->getEmissiveTex());
 		particleSystem->Update(gt->DeltaTime(),mCurrFrameResource);
 	}

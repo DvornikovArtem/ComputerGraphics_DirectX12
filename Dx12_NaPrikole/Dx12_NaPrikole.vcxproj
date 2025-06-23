@@ -219,6 +219,7 @@
     <FxCompile Include="..\Shaders\LightingUtil.hlsl" />
     <FxCompile Include="..\Shaders\Particle.hlsl" />
     <FxCompile Include="..\Shaders\ParticleCS.hlsl" />
+    <FxCompile Include="..\Shaders\ParticleSortCS.hlsl" />
     <FxCompile Include="..\Shaders\PostProcessing.hlsl" />
     <FxCompile Include="..\Shaders\Shadows.hlsl" />
     <FxCompile Include="..\Shaders\SkyBox.hlsl" />
