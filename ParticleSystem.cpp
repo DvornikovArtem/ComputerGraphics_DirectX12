@@ -307,32 +307,26 @@ void ParticleSystem::BuildShadersAndPSOs()
     psoDesc.SampleDesc.Quality = 0;
     psoDesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
     psoDesc.BlendState.RenderTarget[0].BlendEnable = true;
-    //psoDesc.BlendState.RenderTarget[0].SrcBlend = D3D12_BLEND_ONE; // D3D12_BLEND_SRC_ALPHA
-    //psoDesc.BlendState.RenderTarget[0].DestBlend = D3D12_BLEND_ONE; // D3D12_BLEND_INV_SRC_ALPHA
-    //psoDesc.BlendState.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
-    //psoDesc.BlendState.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ONE;
-    //psoDesc.BlendState.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ZERO;
-    ThrowIfFailed(mDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&mPSORender)));
-
-    psoDesc.BlendState.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
+    psoDesc.BlendState.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA; // D3D12_BLEND_ONE
     psoDesc.BlendState.RenderTarget[0].DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
     psoDesc.BlendState.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
     psoDesc.BlendState.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ONE;
     psoDesc.BlendState.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ZERO;
 
-    //blendDesc.RenderTarget[0].SrcBlend = D3D12_BLEND_ONE;
-    //blendDesc.RenderTarget[0].DestBlend = D3D12_BLEND_ONE;
-    //blendDesc.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
+    // mPSORender
+    ThrowIfFailed(mDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&mPSORender)));
 
+    // mPSOEmit
     D3D12_COMPUTE_PIPELINE_STATE_DESC computePsoDesc = {};
     computePsoDesc.pRootSignature = mRootSignatureCompute.Get();
     computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(mEmitComputeShader.Get());
     ThrowIfFailed(mDevice->CreateComputePipelineState(&computePsoDesc, IID_PPV_ARGS(&mPSOEmit)));
 
+    // mPSOSimulate
     computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(mSimulateComputeShader.Get());
     ThrowIfFailed(mDevice->CreateComputePipelineState(&computePsoDesc, IID_PPV_ARGS(&mPSOSimulate)))
 
-    // --> ДОБАВЬ ЭТИ СТРОКИ
+    // mPSOSort
     computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(sortCS.Get());
     ThrowIfFailed(mDevice->CreateComputePipelineState(&computePsoDesc, IID_PPV_ARGS(&mPSOSort)));
 }
@@ -426,7 +420,6 @@ void ParticleSystem::Update(float dt, FrameResource* frameResource)
     emissiveTexDescriptorGPU.Offset(5, mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
 
     mCommandList->SetComputeRootDescriptorTable(3, emissiveTexDescriptorGPU);
-    //mCommandList->Dispatch(mNumParticlesToEmit / 256 + 1, 1, 1);
 
     UINT groups = (mNumParticlesToEmit + 255) / 256;
     if (groups == 0) return;
@@ -460,15 +453,12 @@ void ParticleSystem::Update(float dt, FrameResource* frameResource)
     mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mDrawArgs.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT));
 
 
-    // ================== ИСПРАВЛЕННЫЙ БЛОК СОРТИРОВКИ ==================
     // Sorting
-    // Сначала барьер для gAliveList, так как SimulateCS только что в него писал.
+    // Barrier fir gAliveList cause SimulateCS just now wrote inside gAliveList
     CD3DX12_RESOURCE_BARRIER sortBarrier = CD3DX12_RESOURCE_BARRIER::UAV(mAliveList.Get());
     mCommandList->ResourceBarrier(1, &sortBarrier);
 
     mCommandList->SetPipelineState(mPSOSort.Get());
-    // Корневая сигнатура та же, что и у симуляции, поэтому ее можно не переключать,
-    // если она уже установлена, но для ясности лучше указать.
     mCommandList->SetComputeRootSignature(mRootSignatureCompute.Get());
 
     // Привязываем ресурсы как для симуляции, наш шейдер теперь ожидает именно их.

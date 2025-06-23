@@ -234,6 +234,33 @@ bool Bounce(inout float3 pos, inout float3 vel, int2 pix)
     return true;
 }
 
+bool DepthBounce(inout float3 pos, inout float3 vel, int2 pix)
+{
+    const float Restitution = 0.8f; // коэффициент упругости
+    const float PushOut = 0.02f; // выталкиваем на 2 см
+
+    // world-положение поверхности и нормаль
+    float3 sPos = SceneWorld(pix);
+    float3 n = SceneNormal(pix);
+
+    // гарантируем, что n «смотрит» к частице
+    if (dot(n, pos - sPos) < 0.0f)
+        n = -n;
+
+    // проникновение вдоль нормали
+    float dist = dot(pos - sPos, n);
+
+    // Нет проникновения нет отражения
+    if (dist >= 0.0f || dot(vel, n) >= 0.0f)
+        return false;
+
+    // Отражаем скорость и выталкиваем
+    vel = reflect(vel, n) * Restitution;
+    pos -= n * (dist - PushOut);
+
+    return true;
+}
+
 [numthreads(256, 1, 1)]
 void SimulateCS(uint3 tid : SV_DispatchThreadID)
 {
@@ -263,10 +290,45 @@ void SimulateCS(uint3 tid : SV_DispatchThreadID)
 
         int2 pix;
         if (WorldToPixel(nextPos, pix))
-            Bounce(nextPos, p.Vel, pix);
+            DepthBounce(nextPos, p.Vel, pix); // НОВЫЙ вызов
 
         p.Pos = nextPos;
     }
+    
+    {
+    // Проецируем позицию частицы
+        float4 clip = mul(float4(p.Pos, 1.0f), ViewProj);
+
+    // Отбрасываем частицы за пределами вьюпорта
+        if (abs(clip.w) > 1e-6f)
+        {
+            float3 ndc = clip.xyz / clip.w;
+            if (abs(ndc.x) <= 1.0f && abs(ndc.y) <= 1.0f)
+            {
+            // Пиксель в render-таргете
+                float2 uv = ndc.xy * 0.5f + 0.5f;
+                uv.y = 1.0f - uv.y;
+                int2 pix = int2(uv * RenderTargetSize + 0.5f);
+
+            // Глубина сцены (переводим в линейную!)
+                float ndcScene = gEmissiveMap.Load(int3(pix, 0)).w;
+                float sceneDepth = LinearizeDepth(ndcScene);
+
+            // Глубина частицы
+                float particleDepth = LinearizeDepth(ndc.z);
+
+                if (particleDepth > sceneDepth)            // частица «позади» геометрии
+                {
+                    float3 n = SceneNormal(pix);
+                    if (dot(n, p.Vel) > 0.0f)
+                        n = -n; // направляем к частице
+
+                    p.Vel = reflect(p.Vel, n) * 2.f; // 0.8 = restitution
+                }
+            }
+        }
+    }
+   
     
     gParticlePool[idx] = p;
     gAliveListAppend.Append(idx);

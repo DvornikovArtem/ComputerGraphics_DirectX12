@@ -479,8 +479,8 @@ void StencilApp::MakeParticleSystems()
     
     fireworkParticleSystemDesc.name = "fireworkParticleSystem";
     fireworkParticleSystemDesc.emitterPosition = { -6.0f, 2.0f, -6.0f }; // -10.0f, 0.0f, -10.0f
-    fireworkParticleSystemDesc.numParticlesToEmit = 3000;
-    fireworkParticleSystemDesc.maxParticles = 35000;
+    fireworkParticleSystemDesc.numParticlesToEmit = 50000;
+    fireworkParticleSystemDesc.maxParticles = 10000000;
     fireworkParticleSystemDesc.particleSize = 0.07f;
     fireworkParticleSystemDesc.particleShape = PARTICLE_SHAPE::CIRCLE;
     fireworkParticleSystemDesc.emitComputeShaderName = "EmitCS";
@@ -500,7 +500,7 @@ void StencilApp::MakeParticleSystems()
     smokeParticleSystemDesc.emitComputeShaderName = "EmitSmokeCS";
     smokeParticleSystemDesc.simulateComputeShaderName = "SimulateSmokeCS";
 
-    mParticleSystemDescriptors[smokeParticleSystemDesc.name] = smokeParticleSystemDesc;
+    //mParticleSystemDescriptors[smokeParticleSystemDesc.name] = smokeParticleSystemDesc;
 
     mRenderingSystem->BuildParticleSystems(mParticleSystemDescriptors);
 }
