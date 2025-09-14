@@ -1,4 +1,4 @@
-﻿#include "RenderingSystem.h"
+#include "RenderingSystem.h"
 
 RenderingSystem::RenderingSystem() {}
 
@@ -309,7 +309,7 @@ void RenderingSystem::Render()
 		particleSystem->CameraPos = mCamera.GetPosition3f();
 		particleSystem->CameraDir = mCamera.GetLook3f();
 		//particleSystem->setEmissiveTex(mGbuffer->getEmissiveTex());
-		particleSystem->Update(gt->DeltaTime(),mCurrFrameResource);
+		particleSystem->Update(gt->DeltaTime(), mCurrFrameResource);
 	}
 
 	DrawParticleSystems();
@@ -1406,7 +1406,7 @@ void RenderingSystem::BuildGlobalPSOs()
 
 
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC deferredPsoDesc = {};
-	// Ïîñêîëüêó äëÿ ïîëíîýêðàííîãî êâàäðàòà íå íóæåí âõîäíîé layout, îñòàâëÿåì åãî ïóñòûì:
+	// ????????? ??? ?????????????? ???????? ?? ????? ??????? layout, ????????? ??? ??????:
 	deferredPsoDesc.InputLayout = { nullptr, 0 };
 	deferredPsoDesc.pRootSignature = RootSignatures["DeferredLightPass"].Get();
 
@@ -1770,6 +1770,13 @@ void RenderingSystem::DrawParticleSystems()
 
 	for (ParticleSystem* particleSystem : mAllParticleSystems)
 	{
+		// Convert resources to a read-only state in the vertex shader
+		CD3DX12_RESOURCE_BARRIER toSrv[] = {
+			CD3DX12_RESOURCE_BARRIER::Transition(particleSystem->GetParticlePool(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
+			CD3DX12_RESOURCE_BARRIER::Transition(particleSystem->GetAliveList(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE)
+		};
+		mCommandList->ResourceBarrier(_countof(toSrv), toSrv);
+
 		particleSystem->Draw(passCBAddress);
 
 		CD3DX12_RESOURCE_BARRIER barriers[2] = {
@@ -1988,14 +1995,14 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 	for (TextureDesc& i : TexDescs) {
 		auto it = mTextures.find(i.Name);
 		if (it == mTextures.end()) {
-			// Îáðàáîòêà îøèáêè: òåêñòóðà íå íàéäåíà
+			// ????????? ??????: ???????? ?? ???????
 			OutputDebugStringA(("Texture not found: " + i.Name + "\n").c_str());
 			continue;
 		}
 
 		auto& tex = it->second->Resource;
 		if (!tex) {
-			// Îáðàáîòêà îøèáêè: ðåñóðñ òåêñòóðû íå èíèöèàëèçèðîâàí
+			// ????????? ??????: ?????? ???????? ?? ???????????????
 			OutputDebugStringA(("Texture resource is null: " + i.Name + "\n").c_str());
 			continue;
 		}
@@ -2053,14 +2060,14 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 	for (Texture* i : MPRTextures) {
 		auto it = mTextures.find(i->Name);
 		if (it == mTextures.end()) {
-			// Îáðàáîòêà îøèáêè: òåêñòóðà íå íàéäåíà
+			// ????????? ??????: ???????? ?? ???????
 			OutputDebugStringA(("Texture not found: " + i->Name + "\n").c_str());
 			continue;
 		}
 
 		auto& tex = it->second->Resource;
 		if (!tex) {
-			// Îáðàáîòêà îøèáêè: ðåñóðñ òåêñòóðû íå èíèöèàëèçèðîâàí
+			// ????????? ??????: ?????? ???????? ?? ???????????????
 			OutputDebugStringA(("Texture resource is null: " + i->Name + "\n").c_str());
 			continue;
 		}

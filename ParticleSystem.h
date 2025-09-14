@@ -19,7 +19,7 @@ struct Particle
     XMFLOAT4 Color;
 };
 
-struct FrameResource;
+//struct FrameResource;
 
 enum PARTICLE_SHAPE {
     QUAD    = 0,

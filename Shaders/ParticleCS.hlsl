@@ -1,3 +1,8 @@
+// ParticleCS.hlsl
+
+
+// Define the same Particle structure as in ParticleSystem.h so that
+// the expected and actual sizes of the particle data structures match
 struct Particle
 {
     float3 Pos;
@@ -7,6 +12,8 @@ struct Particle
     float4 Color;
 };
 
+
+// Emitter/simulation constants
 cbuffer ParticleConstants : register(b0)
 {
     float3 gEmitterPos;
@@ -22,6 +29,8 @@ cbuffer ParticleConstants : register(b0)
     float4 _pad;
 };
 
+
+// Frame constant buffer
 cbuffer PassConstants : register(b1)
 {
     matrix View;
@@ -45,17 +54,31 @@ cbuffer PassConstants : register(b1)
     float2 cbPerObjectPad2;
 };
 
+
+// UAV-buffer with all particles (read/write at arbitrary index)
 RWStructuredBuffer<Particle> gParticlePool : register(u0);
 
+// Two dead-lists (ping-pong) with indices of free slots in the pool
+// In one place we Consume() from the 'current' one (take a free index).
+// In another place we Append() to the 'other' one (put back a freed index).
+// The fact that both arrays start at u1 means: slots u1 and u2 are bound to the same resources;
+// they’re just used differently in different passes — either as Consume or Append.
 ConsumeStructuredBuffer<uint> gDeadListsConsume[2] : register(u1); // u1, u2
 AppendStructuredBuffer<uint> gDeadListsAppend[2] : register(u1); // u1, u2
 
+// The simulation adds indices of alive particles here
 AppendStructuredBuffer<uint> gAliveListAppend : register(u3);
+
+// Indirect arguments buffer for ExecuteIndirect (not used in this file; updated in another shader/pass)
 RWByteAddressBuffer gDrawArgs : register(u4);
 
+// For physics using the depth buffer
 Texture2D gEmissiveMap : register(t0);
 Texture2D gNormalTex : register(t1);
 
+
+// Pseudorandom number generator
+// Returns a number in the range [0, 1]
 float rand_float(uint seed)
 {
     seed = (seed ^ 61) ^ (seed >> 16);
@@ -67,30 +90,47 @@ float rand_float(uint seed)
 }
 
 
+// Launch 256 threads per group, each thread handles one potential emission.
+// If the thread index >= the number we want to spawn this frame -> exit.
 [numthreads(256, 1, 1)]
 void EmitCS(uint3 dispatchThreadID : SV_DispatchThreadID)
 {
-    if (dispatchThreadID.x >= gNumEmit)
-        return;
+    // If the current thread index >= than the specified particle spawn count for this frame, no more particles are needed -> exit
+    if (dispatchThreadID.x >= gNumEmit) return;
     
+    
+    // Take a free particle index from the 'current' dead-list (the free slots pool).
+    // Index uniqueness is guaranteed by hardware (atomic Consume)
     uint deadIndex = gDeadListsConsume[gCurrentDeadList].Consume();
     
+    
+    // Initialization of seeds for pseudorandom numbers (deterministic by index and time)
     uint seed = deadIndex + (uint) (gDeltaTime * 1000.0f);
+   
 
+    // Initialize a new particle:
+    //  - position = emitter position;
+    //  - lifetime = [2, 4] sec;
+    //  - velocity is random(x,z in [-2, 2], y in [2, 8] after x2;
+    //  - size = particleSize;
+    //  - color is random, alpha = 1
     gParticlePool[deadIndex].Pos = gEmitterPos;
     gParticlePool[deadIndex].LifeTime = 2.0f + rand_float(seed++) * 2.0f;
     gParticlePool[deadIndex].Vel = float3(
         rand_float(seed++) * 2.0f - 1.0f, // x [-1, 1]
-        1.0f + rand_float(seed++) * 3.0f, // y [2, 5]
+        1.0f + rand_float(seed++) * 3.0f, // y [1, 4]
         rand_float(seed++) * 2.0f - 1.0f // z [-1, 1]
     ) * 2.0f;
     gParticlePool[deadIndex].Size = particleSize;
     gParticlePool[deadIndex].Color = float4(rand_float(seed*2), rand_float(seed), rand_float(seed), 1.0f);
     
+    // Standard emit ENDS HERE.
+    // Next part — Debug for testing depth buffer collisions.
     
     {
-        uint index = dispatchThreadID.x;
-        Particle p = gParticlePool[index];
+        //uint index = dispatchThreadID.x;
+        //Particle p = gParticlePool[index];
+        Particle p = gParticlePool[deadIndex];
         float3 nextPos = p.Pos + p.Vel * gDeltaTime;
             
         float4 posH = mul(float4(nextPos, 1.0f), ViewProj);
@@ -99,42 +139,59 @@ void EmitCS(uint3 dispatchThreadID : SV_DispatchThreadID)
         float2 texCoord = 0.5f * posH.xy + 0.5f;
         texCoord.y = 1.0f - texCoord.y;
 
+        texCoord = saturate(texCoord); // may be
         uint2 screenPos = texCoord * RenderTargetSize;
         
-        if (gEmissiveMap.Load(int3(screenPos, 0)).w == 0)
-            gParticlePool[deadIndex].Color = float4(0.0f, 0.0f, 0.0f, 1.0f);
+        if (gEmissiveMap.Load(int3(screenPos, 0)).w == 0) gParticlePool[deadIndex].Color = float4(0.0f, 0.0f, 0.0f, 1.0f);
     }
 }
 
 
+// Each thread is responsible for one particle pool slot. Exit if the index is out of range.
 [numthreads(256, 1, 1)]
 void SimulateCS2(uint3 dispatchThreadID : SV_DispatchThreadID)
 {
     uint index = dispatchThreadID.x;
-    if (index >= gMaxParticles)
-        return;
+    
+    // If the current thread index >= than max particles, no more particles are needed -> exit
+    if (index >= gMaxParticles) return;
 
+    
+    // Read the current particle parameters
     Particle p = gParticlePool[index];
 
+    // If the particle is alive
     if (p.LifeTime > 0.0f)
     {
+        // Decrease its remaining lifetime
         p.LifeTime -= gDeltaTime;
 
+        // If after decreasing its lifetime the particle is still alive
         if (p.LifeTime > 0.0f)
         {
+            // 'Gravity'
             p.Vel.y -= 3.8f * gDeltaTime;
+            
+            // Update the particle position
             p.Pos += p.Vel * gDeltaTime;
+            
+            // Add the index of the still-alive particle to the alive particle index list
             gAliveListAppend.Append(index);
         }
+        // If the particle died after its lifetime was decreased
         else
         {
+            // Add the index of the current (dead) particle to the dead particle index list
             gDeadListsAppend[1 - gCurrentDeadList].Append(index);
         }
         
+        // Update the modified particle parameters in the global particle pool
         gParticlePool[index] = p;
     }
+    // If the particle is not alive
     else
     {
+        // Add the index of the current (dead) particle to the dead particle index list
         gDeadListsAppend[1 - gCurrentDeadList].Append(index);
     }
 }
@@ -236,25 +293,25 @@ bool Bounce(inout float3 pos, inout float3 vel, int2 pix)
 
 bool DepthBounce(inout float3 pos, inout float3 vel, int2 pix)
 {
-    const float Restitution = 0.8f; // коэффициент упругости
-    const float PushOut = 0.02f; // выталкиваем на 2 см
+    const float Restitution = 0.8f; // ??????????? ?????????
+    const float PushOut = 0.02f; // ??????????? ?? 2 ??
 
-    // world-положение поверхности и нормаль
+    // world-????????? ??????????? ? ???????
     float3 sPos = SceneWorld(pix);
     float3 n = SceneNormal(pix);
 
-    // гарантируем, что n «смотрит» к частице
+    // ???????????, ??? n «???????» ? ???????
     if (dot(n, pos - sPos) < 0.0f)
         n = -n;
 
-    // проникновение вдоль нормали
+    // ????????????? ????? ???????
     float dist = dot(pos - sPos, n);
 
-    // Нет проникновения нет отражения
+    // ??? ????????????? ??? ?????????
     if (dist >= 0.0f || dot(vel, n) >= 0.0f)
         return false;
 
-    // Отражаем скорость и выталкиваем
+    // ???????? ???????? ? ???????????
     vel = reflect(vel, n) * Restitution;
     pos -= n * (dist - PushOut);
 
@@ -290,40 +347,43 @@ void SimulateCS(uint3 tid : SV_DispatchThreadID)
 
         int2 pix;
         if (WorldToPixel(nextPos, pix))
-            DepthBounce(nextPos, p.Vel, pix); // НОВЫЙ вызов
+            DepthBounce(nextPos, p.Vel, pix); // ????? ?????
 
         p.Pos = nextPos;
     }
     
     {
-    // Проецируем позицию частицы
+    // ?????????? ??????? ???????
         float4 clip = mul(float4(p.Pos, 1.0f), ViewProj);
 
-    // Отбрасываем частицы за пределами вьюпорта
+    // ??????????? ??????? ?? ????????? ????????
         if (abs(clip.w) > 1e-6f)
         {
             float3 ndc = clip.xyz / clip.w;
             if (abs(ndc.x) <= 1.0f && abs(ndc.y) <= 1.0f)
             {
-            // Пиксель в render-таргете
+            // ??????? ? render-???????
                 float2 uv = ndc.xy * 0.5f + 0.5f;
                 uv.y = 1.0f - uv.y;
                 int2 pix = int2(uv * RenderTargetSize + 0.5f);
 
-            // Глубина сцены (переводим в линейную!)
+            // ??????? ????? (????????? ? ????????!)
                 float ndcScene = gEmissiveMap.Load(int3(pix, 0)).w;
                 float sceneDepth = LinearizeDepth(ndcScene);
 
-            // Глубина частицы
+            // ??????? ???????
                 float particleDepth = LinearizeDepth(ndc.z);
 
-                if (particleDepth > sceneDepth)            // частица «позади» геометрии
+                if (particleDepth > sceneDepth)            // ??????? «??????» ?????????
                 {
                     float3 n = SceneNormal(pix);
                     if (dot(n, p.Vel) > 0.0f)
-                        n = -n; // направляем к частице
+                        n = -n; // ?????????? ? ???????
 
-                    p.Vel = reflect(p.Vel, n) * 2.f; // 0.8 = restitution
+                    //p.Vel = reflect(p.Vel, n) * 2.f; // 0.8 = restitution
+                    
+                    p.Vel = float3(p.Vel.x, -p.Vel.y, p.Vel.z);
+
                 }
             }
         }
