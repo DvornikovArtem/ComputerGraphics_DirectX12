@@ -38,6 +38,7 @@ private:
     void LoadMeshes();
     void MakeDrawableObjects();
     void MakeLights();
+    void MakeParticleSystems();
 
     float mCameraMoveSpeed = 10.0f;
     POINT mLastMousePos;
@@ -79,6 +80,7 @@ bool StencilApp::Initialize()
     LoadTextures();
     MakeMaterials();
     MakeDrawableObjects();
+    MakeParticleSystems();
 
     mRenderingSystem->mCamera.SetPosition(-1.0f, 3.0f, 5.0f);
     mRenderingSystem->mCamera.RotateY(DirectX::XM_PI - 0.2f);
@@ -204,6 +206,11 @@ void StencilApp::LoadShaders()
         ShaderDesc("RotatingTilesPS", L"../Shaders/DeferredGeometryPass.hlsl", "PS", defines, "ps_5_1"),
         ShaderDesc("HSForDecals", L"../Shaders/DeferredGeometryPass.hlsl", "HSForDecals", nullptr, "hs_5_1"),
         ShaderDesc("DSForDecals", L"../Shaders/DeferredGeometryPass.hlsl", "DSForDecals", nullptr, "ds_5_1"),
+        ShaderDesc("EmitCS", L"../Shaders/ParticleCS.hlsl", "EmitCS", nullptr, "cs_5_1"),
+        ShaderDesc("SimulateCS", L"../Shaders/ParticleCS.hlsl", "SimulateCS", nullptr, "cs_5_1"),
+        ShaderDesc("SimulateCS2", L"../Shaders/ParticleCS.hlsl", "SimulateCS2", nullptr, "cs_5_1"),
+        ShaderDesc("EmitSmokeCS", L"../Shaders/ParticleCS.hlsl", "EmitSmokeCS", nullptr, "cs_5_1"),
+        ShaderDesc("SimulateSmokeCS", L"../Shaders/ParticleCS.hlsl", "SimulateSmokeCS", nullptr, "cs_5_1"),
     };
 
     mRenderingSystem->BuildShaders(ShaderDescs);
@@ -464,4 +471,36 @@ void StencilApp::MakeLights()
     mAllLightObjects[Spot1->Name] = Spot1;
 
     mRenderingSystem->BuildLightItems(mAllLightObjects);
+}
+
+void StencilApp::MakeParticleSystems()
+{
+    ParticleSystemDescriptor fireworkParticleSystemDesc;
+    
+    fireworkParticleSystemDesc.name = "fireworkParticleSystem";
+    fireworkParticleSystemDesc.emitterPosition = { -6.0f, 2.0f, -6.0f }; // -10.0f, 0.0f, -10.0f
+    fireworkParticleSystemDesc.numParticlesToEmit = 10;
+    fireworkParticleSystemDesc.maxParticles = 256;
+    fireworkParticleSystemDesc.particleSize = 0.07f;
+    fireworkParticleSystemDesc.particleShape = PARTICLE_SHAPE::CIRCLE;
+    fireworkParticleSystemDesc.emitComputeShaderName = "EmitCS";
+    fireworkParticleSystemDesc.simulateComputeShaderName = "SimulateCS2";
+
+    mParticleSystemDescriptors[fireworkParticleSystemDesc.name] = fireworkParticleSystemDesc;
+
+    
+    ParticleSystemDescriptor smokeParticleSystemDesc;
+
+    smokeParticleSystemDesc.name = "smokeParticleSystem";
+    smokeParticleSystemDesc.emitterPosition = XMFLOAT3(-10.0f, 2.0f, -10.0f); // -10.0f, 0.0f, -10.0f
+    smokeParticleSystemDesc.numParticlesToEmit = 1000;
+    smokeParticleSystemDesc.maxParticles = 300000;
+    smokeParticleSystemDesc.particleSize = 0.02f; // 0.03f
+    smokeParticleSystemDesc.particleShape = PARTICLE_SHAPE::CIRCLE;
+    smokeParticleSystemDesc.emitComputeShaderName = "EmitSmokeCS";
+    smokeParticleSystemDesc.simulateComputeShaderName = "SimulateSmokeCS";
+
+    mParticleSystemDescriptors[smokeParticleSystemDesc.name] = smokeParticleSystemDesc;
+
+    mRenderingSystem->BuildParticleSystems(mParticleSystemDescriptors);
 }

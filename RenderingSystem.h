@@ -29,6 +29,8 @@
 #include "old/DebugRenderSysImpl.h"
 #include "OctTree.h"
 
+#include "ParticleSystem.h"
+
 #pragma comment(lib,"d3dcompiler.lib")
 #pragma comment(lib, "D3D12.lib")
 #pragma comment(lib, "dxgi.lib")
@@ -186,6 +188,8 @@ public:
             layer.clear();
         }
 
+        for (auto& ps : mAllParticleSystems)
+            delete ps;
 
         mFrameResources.clear();
 
@@ -231,11 +235,13 @@ public:
     void BuildMaterials(std::vector<MaterialDesc>& MaterialDescs);
     void BuildRenderItems(std::unordered_map<std::string, DrawableObject*>& Objects);
     void BuildLightItems(std::unordered_map<std::string, LightObject*>& Objects);
+    void BuildParticleSystems(std::unordered_map<std::string, ParticleSystemDescriptor> ParticleSystemDescriptors);
 
     void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems, std::string PSOName);
 
     void GBufferGeometryPass();
     void GBufferLightPass();
+    void DrawParticleSystems();
 
     CD3DX12_CPU_DESCRIPTOR_HANDLE GetCpuSrv(int index)const;
     CD3DX12_GPU_DESCRIPTOR_HANDLE RenderingSystem::GetGpuSrv(int index)const;
@@ -275,6 +281,8 @@ public:
 
     Camera mCamera;
 
+    D3D12_CPU_DESCRIPTOR_HANDLE GetDepthBufferSRV() const { return mDepthBufferSRV; }
+
 protected:
     HINSTANCE mhAppInst = nullptr; // application instance handle
     HWND      mhMainWnd = nullptr; // main window handle
@@ -290,6 +298,8 @@ protected:
     Microsoft::WRL::ComPtr<IDXGIFactory4> mdxgiFactory;
     Microsoft::WRL::ComPtr<IDXGISwapChain> mSwapChain;
     Microsoft::WRL::ComPtr<ID3D12Device> md3dDevice;
+
+    D3D12_CPU_DESCRIPTOR_HANDLE mDepthBufferSRV;
 
     Microsoft::WRL::ComPtr<ID3D12Fence> mFence;
     UINT64 mCurrentFence = 0;
@@ -366,6 +376,8 @@ protected:
     std::vector<Texture*> MPRTextures;
 
     UINT TexDescsLength;
+
+    std::vector <ParticleSystem*> mAllParticleSystems;
 };
 
 

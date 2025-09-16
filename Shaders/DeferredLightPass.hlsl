@@ -244,7 +244,6 @@ float4 PS(VertexOut pin) : SV_Target
     //calculate light based on its type
     if (CurrentLight.LightType == 0)
     {
-        // Расчет теней (оставляем существующую логику)
         float shadowFactor = 1.f;
         float distanceFromEye = length(WorldPosition - gEyePosW);
         
@@ -258,19 +257,28 @@ float4 PS(VertexOut pin) : SV_Target
             }
         }
         
-        // PBR расчет для Directional Light
+        //uint cascadeIndex = 0;
+        
+        //if (distanceFromEye < CascadeDistances.x)
+        //    cascadeIndex = 0;
+        //else if (distanceFromEye < CascadeDistances.y)
+        //    cascadeIndex = 1;
+        //else if (distanceFromEye < CascadeDistances.z)
+        //    cascadeIndex = 2;
+        //else
+        //    cascadeIndex = 3;
+        //
+        //shadowFactor = CalcShadowFactor(WorldPosition, Normal, cascadeIndex);
+        
         float3 lightDir = normalize(-CurrentLight.Direction);
         float3 halfVec = normalize(toEyeW + lightDir);
         float NdotL = max(dot(Normal, lightDir), 0.0);
         
-        // Френель
         float3 F0 = lerp(0.04.xxx, Diffuse.rgb, Metallic);
         float3 F = FresnelSchlick(max(dot(halfVec, toEyeW), 0.0), F0);
         
-        // Распределение нормалей (NDF)
         float NDF = DistributionGGX(Normal, halfVec, MatRoughness);
         
-        // Геометрия
         float G = GeometrySmith(Normal, toEyeW, lightDir, MatRoughness);
         
         // Cook-Torrance BRDF
@@ -278,15 +286,12 @@ float4 PS(VertexOut pin) : SV_Target
         float denominator = 4.0 * NdotV * NdotL + 0.001;
         float3 specular = numerator / denominator;
         
-        // Коэффициенты
         float3 kS = F;
         float3 kD = 1.0 - kS;
         kD *= (1.0 - Metallic);
         
-        // Радианс света
         float3 radiance = CurrentLight.Strength * CurrentLight.Color;
         
-        // Финальный вклад света
         float3 Lo = (kD * Diffuse.rgb / PI + specular) * radiance * NdotL;
         
         Lighting = shadowFactor * Lo;
@@ -374,8 +379,7 @@ float4 PS_AddAmbient(VertexOut pin) : SV_Target
     float2 brdf = BRDF_LUT.Sample(gsamLinearClamp, float2(NdotV, roughness)).rg;
     float3 specular = prefilteredColor * (F * brdf.x + brdf.y);
     
-    // Финальное ambient освещение
-    float ao = 1.0f; // Можно добавить Ambient Occlusion если есть в G-буфере
+    float ao = 1.0f;
     float3 ambient = (kD * diffuse + specular) * ao * 0.1f.xxx;
     
     return float4(ambient, Diffuse.a);

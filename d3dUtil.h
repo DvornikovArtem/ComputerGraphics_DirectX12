@@ -182,6 +182,8 @@ struct MeshGeometry
 	// the Submeshes individually.
 	std::unordered_map<std::string, SubmeshGeometry> DrawArgs;
 
+    std::vector<D3D12_INPUT_ELEMENT_DESC> InputLayout;
+
 	D3D12_VERTEX_BUFFER_VIEW VertexBufferView()const
 	{
 		D3D12_VERTEX_BUFFER_VIEW vbv;

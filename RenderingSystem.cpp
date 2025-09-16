@@ -37,6 +37,16 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 			IID_PPV_ARGS(&md3dDevice)));
 	}
 
+	IDXGIAdapter* currentAdapter;
+	LUID deviceLuid = md3dDevice->GetAdapterLuid();
+	mdxgiFactory->EnumAdapterByLuid(deviceLuid, IID_PPV_ARGS(&currentAdapter));
+	DXGI_ADAPTER_DESC adapterDesc;
+	currentAdapter->GetDesc(&adapterDesc);
+	OutputDebugStringA("\n\n");
+	OutputDebugStringW(adapterDesc.Description);
+	OutputDebugStringA("\n\n");
+
+
 	ThrowIfFailed(md3dDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE,
 		IID_PPV_ARGS(&mFence)));
 
@@ -81,6 +91,11 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 	// Reset the command list to prep for initialization commands.
 	ThrowIfFailed(mCommandList->Reset(mDirectCmdListAlloc.Get(), nullptr));
 
+	/*mParticleSystem = std::make_unique<ParticleSystem>(
+		md3dDevice.Get(),
+		mCommandList.Get(),
+		5000);*/
+
 	// Get the increment size of a descriptor in this heap type.  This is hardware specific, 
 	// so we have to query this information.
 	mCbvSrvDescriptorSize = md3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
@@ -117,6 +132,11 @@ void RenderingSystem::FinishInitialize()
 	}
 
 	BuildFrameResources();
+
+	for (ParticleSystem* particleSystem : mAllParticleSystems)
+	{
+		particleSystem->setEmissiveTex(mGbuffer->getEmissiveTex(), mGbuffer->getNormalTex());
+	}
 }
 
 void RenderingSystem::OnResize() {
@@ -230,6 +250,10 @@ void RenderingSystem::OnResize() {
 			D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 	}
 
+	for (ParticleSystem* particleSystem : mAllParticleSystems)
+	{
+		particleSystem->setEmissiveTex(mGbuffer->getEmissiveTex(), mGbuffer->getNormalTex());
+	}
 }
 
 void RenderingSystem::Render()
@@ -275,6 +299,21 @@ void RenderingSystem::Render()
 	//Draw SkyBox
 	//
 	DrawSkyBox();
+
+	//
+	//Draw ParticleSystems
+	//
+
+	for (ParticleSystem* particleSystem : mAllParticleSystems)
+	{
+		particleSystem->CameraPos = mCamera.GetPosition3f();
+		particleSystem->CameraDir = mCamera.GetLook3f();
+		//particleSystem->setEmissiveTex(mGbuffer->getEmissiveTex());
+		particleSystem->Update(gt->DeltaTime(), mCurrFrameResource);
+	}
+
+	DrawParticleSystems();
+
 
 	//
 	// Post-Processing
@@ -488,6 +527,37 @@ void RenderingSystem::BuildLightItems(std::unordered_map<std::string, LightObjec
 
 		k++;
 	}
+}
+
+void RenderingSystem::BuildParticleSystems(std::unordered_map<std::string, ParticleSystemDescriptor> ParticleSystemDescriptors)
+{
+	FlushCommandQueue();
+	ThrowIfFailed(mDirectCmdListAlloc->Reset());
+	ThrowIfFailed(mCommandList->Reset(mDirectCmdListAlloc.Get(), nullptr));
+
+	UINT k = 0;
+	for (auto& pair : ParticleSystemDescriptors)
+	{
+		auto& particleSystemName = pair.first;
+		auto& particleSystemDescriptor = pair.second;
+
+		particleSystemDescriptor.emitComputeShader = mShaders[particleSystemDescriptor.emitComputeShaderName];
+		particleSystemDescriptor.simulateComputeShader = mShaders[particleSystemDescriptor.simulateComputeShaderName];
+		particleSystemDescriptor.CBIndex = k;
+
+		ParticleSystem* particleSystem = new ParticleSystem();
+		particleSystem->Initialize(particleSystemDescriptor);
+		particleSystem->Build(md3dDevice, mCommandList);
+
+		mAllParticleSystems.push_back(particleSystem);
+
+		k++;
+	}
+
+	ThrowIfFailed(mCommandList->Close());
+	ID3D12CommandList* cmdsLists[] = { mCommandList.Get() };
+	mCommandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
+	FlushCommandQueue();
 }
 
 void RenderingSystem::LogAdapterOutputs(IDXGIAdapter* adapter)
@@ -819,7 +889,6 @@ void RenderingSystem::Update(std::vector<DrawableObject*>& mAllObjectsToUpdate, 
 	UpdateMainPassCB(*gt);
 	UpdateLightItems(mAllLightObjectsToUpdate);
 	UpdateLightCBs(*gt);
-
 }
 
 void RenderingSystem::UpdateObjectCBs(const GameTimer& gt)
@@ -941,6 +1010,7 @@ void RenderingSystem::UpdateLightCBs(const GameTimer& gt)
 			case LightType::Directional:
 			{
 				float SphereRadiuses[4] = { 10, 50, 150, 400 };
+				
 				//for each cascade
 				for (int i = 0; i < 4; i++)
 				{
@@ -948,11 +1018,11 @@ void RenderingSystem::UpdateLightCBs(const GameTimer& gt)
 					lightPos = mCamera.GetPosition() - 2.0f * SphereRadiuses[i] * lightDir;
 					targetPos = mCamera.GetPosition();
 					lightView = XMMatrixLookAtLH(lightPos, targetPos, lightUp);
-
+				
 					// Transform bounding sphere to light space.
 					sphereCenterLS;
 					XMStoreFloat3(&sphereCenterLS, XMVector3TransformCoord(targetPos, lightView));
-
+				
 					// Ortho frustum in light space encloses cascade.
 					l = sphereCenterLS.x - SphereRadiuses[i];
 					b = sphereCenterLS.y - SphereRadiuses[i];
@@ -960,9 +1030,9 @@ void RenderingSystem::UpdateLightCBs(const GameTimer& gt)
 					r = sphereCenterLS.x + SphereRadiuses[i];
 					t = sphereCenterLS.y + SphereRadiuses[i];
 					f = sphereCenterLS.z + SphereRadiuses[i];
-
+				
 					lightProj = XMMatrixOrthographicOffCenterLH(l, r, b, t, n, f);
-
+				
 					S = lightView * lightProj * T;
 					XMStoreFloat4x4(&LightConstants.View[i], XMMatrixTranspose(lightView));
 					XMStoreFloat4x4(&LightConstants.Proj[i], XMMatrixTranspose(lightProj));
@@ -1336,7 +1406,7 @@ void RenderingSystem::BuildGlobalPSOs()
 
 
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC deferredPsoDesc = {};
-	// Поскольку для полноэкранного квадрата не нужен входной layout, оставляем его пустым:
+	// ????????? ??? ?????????????? ???????? ?? ????? ??????? layout, ????????? ??? ??????:
 	deferredPsoDesc.InputLayout = { nullptr, 0 };
 	deferredPsoDesc.pRootSignature = RootSignatures["DeferredLightPass"].Get();
 
@@ -1481,7 +1551,7 @@ void RenderingSystem::BuildFrameResources()
 	for (int i = 0; i < gNumFrameResources; ++i)
 	{
 		mFrameResources.push_back(std::make_unique<FrameResource>(md3dDevice.Get(),
-			2, (UINT)mAllRitems.size(), (UINT)mMaterials.size(), (UINT)mAllLights.size()));
+			2, (UINT)mAllRitems.size(), (UINT)mMaterials.size(), (UINT)mAllLights.size(), (UINT)mAllParticleSystems.size()));
 	}
 }
 
@@ -1691,6 +1761,34 @@ void RenderingSystem::DrawSkyBox()
 	}
 }
 
+void RenderingSystem::DrawParticleSystems()
+{
+	ID3D12DescriptorHeap* descriptorHeaps[] = { mSrvDescriptorHeap.Get() };
+	mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
+
+	auto passCBAddress = mCurrFrameResource->PassCB->Resource()->GetGPUVirtualAddress();
+
+	for (ParticleSystem* particleSystem : mAllParticleSystems)
+	{
+		// Convert resources to a read-only state in the vertex shader
+		CD3DX12_RESOURCE_BARRIER toSrv[] = {
+			CD3DX12_RESOURCE_BARRIER::Transition(particleSystem->GetParticlePool(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
+			CD3DX12_RESOURCE_BARRIER::Transition(particleSystem->GetAliveList(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE)
+		};
+		mCommandList->ResourceBarrier(_countof(toSrv), toSrv);
+
+		particleSystem->Draw(passCBAddress);
+
+		CD3DX12_RESOURCE_BARRIER barriers[2] = {
+			CD3DX12_RESOURCE_BARRIER::Transition(particleSystem->GetAliveList(),
+				D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+			CD3DX12_RESOURCE_BARRIER::Transition(particleSystem->GetParticlePool(),
+				D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
+		};
+		mCommandList->ResourceBarrier(_countof(barriers), barriers);
+	}
+}
+
 void RenderingSystem::DrawShadowMaps()
 {
 	mCommandList->SetGraphicsRootSignature(RootSignatures["Default"].Get());
@@ -1897,14 +1995,14 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 	for (TextureDesc& i : TexDescs) {
 		auto it = mTextures.find(i.Name);
 		if (it == mTextures.end()) {
-			// Обработка ошибки: текстура не найдена
+			// ????????? ??????: ???????? ?? ???????
 			OutputDebugStringA(("Texture not found: " + i.Name + "\n").c_str());
 			continue;
 		}
 
 		auto& tex = it->second->Resource;
 		if (!tex) {
-			// Обработка ошибки: ресурс текстуры не инициализирован
+			// ????????? ??????: ?????? ???????? ?? ???????????????
 			OutputDebugStringA(("Texture resource is null: " + i.Name + "\n").c_str());
 			continue;
 		}
@@ -1962,14 +2060,14 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 	for (Texture* i : MPRTextures) {
 		auto it = mTextures.find(i->Name);
 		if (it == mTextures.end()) {
-			// Обработка ошибки: текстура не найдена
+			// ????????? ??????: ???????? ?? ???????
 			OutputDebugStringA(("Texture not found: " + i->Name + "\n").c_str());
 			continue;
 		}
 
 		auto& tex = it->second->Resource;
 		if (!tex) {
-			// Обработка ошибки: ресурс текстуры не инициализирован
+			// ????????? ??????: ?????? ???????? ?? ???????????????
 			OutputDebugStringA(("Texture resource is null: " + i->Name + "\n").c_str());
 			continue;
 		}

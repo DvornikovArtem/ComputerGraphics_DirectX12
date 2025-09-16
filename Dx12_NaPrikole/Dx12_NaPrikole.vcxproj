@@ -217,6 +217,9 @@
     <FxCompile Include="..\Shaders\DeferredLightPass.hlsl" />
     <FxCompile Include="..\Shaders\DeferredGeometryPass.hlsl" />
     <FxCompile Include="..\Shaders\LightingUtil.hlsl" />
+    <FxCompile Include="..\Shaders\Particle.hlsl" />
+    <FxCompile Include="..\Shaders\ParticleCS.hlsl" />
+    <FxCompile Include="..\Shaders\ParticleSortCS.hlsl" />
     <FxCompile Include="..\Shaders\PostProcessing.hlsl" />
     <FxCompile Include="..\Shaders\Shadows.hlsl" />
     <FxCompile Include="..\Shaders\SkyBox.hlsl" />
@@ -244,6 +247,7 @@
     <ClInclude Include="..\MISC\simplemath\SimpleMath.h" />
     <ClInclude Include="..\OctTree.h" />
     <ClInclude Include="..\old\DebugRenderSysImpl.h" />
+    <ClInclude Include="..\ParticleSystem.h" />
     <ClInclude Include="..\RenderingSystem.h" />
     <ClInclude Include="..\RenderItem.h" />
     <ClInclude Include="..\ShadowMap.h" />
@@ -267,6 +271,7 @@
     <ClCompile Include="..\MathHelper.cpp" />
     <ClCompile Include="..\MISC\simplemath\SimpleMath.cpp" />
     <ClCompile Include="..\old\DebugRenderSysImpl.cpp" />
+    <ClCompile Include="..\ParticleSystem.cpp" />
     <ClCompile Include="..\RenderingSystem.cpp" />
     <ClCompile Include="..\ShadowMap.cpp" />
     <ClCompile Include="..\StencilApp.cpp" />
