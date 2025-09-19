@@ -1,1 +1,0 @@
-# ComputerGraphics_DirectX12
