@@ -8,6 +8,7 @@
 
 #include <Engine/Terrain/TerrainImporter.h>
 #include <Engine/Terrain/TerrainQuadTree.h>
+#include <Engine/Scene/Camera.h>
 
 
 struct TerrainRendererDesc
@@ -50,6 +51,8 @@ public:
 	void ForEachTile(Function&& function) const {
 		m_quad.ForEachNode([&](const TerrainNode& n) { function(n.tile); });
 	}
+
+	void SelectLOD(const Camera& cam, std::vector<RenderItem*>& outVisible, float lodFactor = 2.5f) const;
 
 private:
 	TerrainImporter* terrainImporter = nullptr;

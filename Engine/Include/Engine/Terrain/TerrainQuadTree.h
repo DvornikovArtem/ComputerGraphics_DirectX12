@@ -22,6 +22,8 @@ struct TerrainNode
     TerrainNode* children[4] = { nullptr, nullptr, nullptr, nullptr };
 
     bool IsLeaf() const { return !children[0] && !children[1] && !children[2] && !children[3]; }
+
+    RenderItem* renderItem = nullptr;
 };
 
 

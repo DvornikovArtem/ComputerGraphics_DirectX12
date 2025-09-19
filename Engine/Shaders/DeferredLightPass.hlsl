@@ -275,26 +275,64 @@ float4 PS(VertexOut pin) : SV_Target
         float NdotL = max(dot(Normal, lightDir), 0.0);
         
         float3 F0 = lerp(0.04.xxx, Diffuse.rgb, Metallic);
-        float3 F = FresnelSchlick(max(dot(halfVec, toEyeW), 0.0), F0);
         
-        float NDF = DistributionGGX(Normal, halfVec, MatRoughness);
+        bool gUsePBR = false;
+        if (gUsePBR == 0)
+            {
+                // Lambert
+                float3 diffuse = Diffuse.rgb * NdotL;
+
+                // Blinn-Phong (спек-гладкость от roughness)
+                // подберём показатель степени так, чтобы roughness=0 => острый блик
+                float specPower = lerp(4.0, 128.0, 1.0 - MatRoughness);
+                float NdotH = max(dot(Normal, halfVec), 0.0);
+                float specTerm = pow(NdotH, specPower);
+
+                // цвет блика: возьмём MatFresnelR0 как «specular color»
+                float3 specular = MatFresnelR0 * specTerm;
+
+                float3 radiance = CurrentLight.Strength * CurrentLight.Color;
+
+                float3 Lo = (diffuse + specular) * radiance;
+
+                Lighting = shadowFactor * Lo;
+            }
+        else
+            {
+                // PBR как было
+                float3 F = FresnelSchlick(max(dot(halfVec, toEyeW), 0.0), F0);
+                float NDF = DistributionGGX(Normal, halfVec, MatRoughness);
+                float G = GeometrySmith(Normal, toEyeW, lightDir, MatRoughness);
+                float3 specular = (NDF * G * F) / (4.0 * NdotV * NdotL + 0.001);
+
+                float3 kS = F;
+                float3 kD = (1.0 - kS) * (1.0 - Metallic);
+
+                float3 radiance = CurrentLight.Strength * CurrentLight.Color;
+                float3 Lo = (kD * Diffuse.rgb / PI + specular) * radiance * NdotL;
+
+                Lighting = shadowFactor * Lo;
+            }
+        //float3 F = FresnelSchlick(max(dot(halfVec, toEyeW), 0.0), F0);
         
-        float G = GeometrySmith(Normal, toEyeW, lightDir, MatRoughness);
+        //float NDF = DistributionGGX(Normal, halfVec, MatRoughness);
+        
+        //float G = GeometrySmith(Normal, toEyeW, lightDir, MatRoughness);
         
         // Cook-Torrance BRDF
-        float3 numerator = NDF * G * F;
-        float denominator = 4.0 * NdotV * NdotL + 0.001;
-        float3 specular = numerator / denominator;
+        //float3 numerator = NDF * G * F;
+        //float denominator = 4.0 * NdotV * NdotL + 0.001;
+        //float3 specular = numerator / denominator;
         
-        float3 kS = F;
-        float3 kD = 1.0 - kS;
-        kD *= (1.0 - Metallic);
+        //float3 kS = F;
+        //float3 kD = 1.0 - kS;
+        //kD *= (1.0 - Metallic);
         
-        float3 radiance = CurrentLight.Strength * CurrentLight.Color;
+        //float3 radiance = CurrentLight.Strength * CurrentLight.Color;
         
-        float3 Lo = (kD * Diffuse.rgb / PI + specular) * radiance * NdotL;
+        //float3 Lo = (kD * Diffuse.rgb / PI + specular) * radiance * NdotL;
         
-        Lighting = shadowFactor * Lo;
+        //Lighting = shadowFactor * Lo;
     }
     else if (CurrentLight.LightType == 1)
     {
@@ -315,7 +353,27 @@ float4 PS(VertexOut pin) : SV_Target
         else
             faceIndex = (lightToPixel.z > 0) ? 4 : 5;
         
-        Lighting = CalcShadowFactor(WorldPosition, Normal, faceIndex) * ComputePointLight(CurrentLight, mat, WorldPosition, Normal, toEyeW) * CurrentLight.Color;
+        float3 L = normalize(CurrentLight.Position - WorldPosition);
+        float NdotL = max(dot(Normal, L), 0.0);
+        float3 H = normalize(L + toEyeW);
+        
+        bool gUsePBR = false;
+        if (gUsePBR == 0)
+        {
+            float3 radiance = CurrentLight.Strength * CurrentLight.Color;
+            float specPower = lerp(4.0, 128.0, 1.0 - MatRoughness);
+            float specTerm = pow(max(dot(Normal, H), 0.0), specPower);
+
+            float3 diffuse = Diffuse.rgb * NdotL;
+            float3 specular = MatFresnelR0 * specTerm;
+
+            Lighting = CalcShadowFactor(WorldPosition, Normal, faceIndex) * (diffuse + specular) * radiance;
+        }
+        else
+        {
+            Lighting = CalcShadowFactor(WorldPosition, Normal, faceIndex)
+                 * ComputePointLight(CurrentLight, mat, WorldPosition, Normal, toEyeW) * CurrentLight.Color;
+        }
     }
     else if(CurrentLight.LightType == 2)
     {
@@ -354,6 +412,13 @@ float4 PS_AddAmbient(VertexOut pin) : SV_Target
     
     if(length(normal) < 0.01f)
         discard;
+    
+    bool gUsePBR = false;
+    if (gUsePBR == 0)
+    {
+        float3 ambient = gAmbientLight.rgb * Diffuse.rgb; // можно умножить на 0.1f, если нужно темнее
+        return float4(ambient, Diffuse.a);
+    }
     
     float2 UV = pin.PosH.xy / gRenderTargetSize;
     float3 worldPos = ReconstructWorldPosition(UV, Emissive.w);

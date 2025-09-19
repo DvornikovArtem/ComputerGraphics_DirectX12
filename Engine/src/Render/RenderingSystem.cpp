@@ -471,6 +471,91 @@ void RenderingSystem::BuildRenderItems(std::unordered_map<std::string, DrawableO
 
 	}
 
+	terrainRenderer->Quad().ForEachNode([&](TerrainNode& n)
+		{
+			//if (!n.IsLeaf()) return;
+
+			//if (n.parent != nullptr) return;
+
+			if (n.tile.lod != 1) return;
+
+			const TerrainTile& t = n.tile;
+
+			std::string matNm = "tile_level" + std::to_string(t.lod) + "_" + std::to_string(t.ix) + "_" + std::to_string(t.iy);
+
+			std::wstring matNm2 = L"\n\ntile_level"
+				+ std::to_wstring(t.lod) + L"_"
+				+ std::to_wstring(t.ix) + L"_"
+				+ std::to_wstring(t.iy) + L"\n\n";
+
+			OutputDebugStringW(matNm2.c_str());
+
+			DrawableObject* terrainTile = new DrawableObject();
+			terrainTile->Name = matNm;
+			terrainTile->GeometryName = "TerrainPatch";
+			terrainTile->MaterialName = matNm;
+			terrainTile->renderLayer = RenderLayer::Opaque;
+			terrainTile->WorldLocation = XMFLOAT3(0.f, 0.f, 0.f);
+			terrainTile->Scale = XMFLOAT3(1.0f, 1.0f, 1.0f);
+			terrainTile->TexTransform = XMMatrixScaling(1.0f, 1.0f, 1.0f);
+
+			const float sx = t.worldRect.sizeX;
+			const float sz = t.worldRect.sizeZ;
+			const float cx = t.worldRect.x0 + sx * 0.5f;
+			const float cz = t.worldRect.z0 + sz * 0.5f;
+
+			terrainTile->WorldLocation = XMFLOAT3(cx, 0.0f, cz);
+			terrainTile->Scale = XMFLOAT3(sx, 0.0f, sz);
+
+			terrainTile->isTerrainTile = true;
+
+
+
+			auto* ri = new RenderItem();
+			ri->ObjCBIndex = k;
+			ri->Mat = mMaterials[matNm];
+			ri->Geo = mGeometries["TerrainPatch"];
+
+			XMMATRIX W = XMMatrixScaling(sx, 1.0f, sz) * XMMatrixTranslation(cx, 0.0f, cz);
+			XMStoreFloat4x4(&ri->World, W);
+			XMStoreFloat4x4(&ri->TexTransform, XMMatrixIdentity());
+
+			/*XMMATRIX texFlipV = XMMatrixScaling(1.0f, -1.0f, 1.0f) * XMMatrixTranslation(0.0f, 1.0f, 0.0f);
+			XMStoreFloat4x4(&ri->TexTransform, texFlipV);*/
+
+			float u0 = t.worldRect.x0 / terrainRenderer->Meta().worldSizeX;
+			float v0 = t.worldRect.z0 / terrainRenderer->Meta().worldSizeZ;
+			float u1 = (t.worldRect.x0 + t.worldRect.sizeX) / terrainRenderer->Meta().worldSizeX;
+			float v1 = (t.worldRect.z0 + t.worldRect.sizeZ) / terrainRenderer->Meta().worldSizeZ;
+
+			//XMStoreFloat4x4(&ri->TexTransform, XMMatrixScaling(u1 - u0, v1 - v0, 1.0f) * XMMatrixTranslation(u0, v0, 0.0f));
+
+			ri->bounds = t.bounds;
+
+
+			ri->currentLOD = 0;
+			ri->numLODs = 5 - 1; // LOD0..LOD4
+			ri->renderLayer = RenderLayer::Opaque;
+
+			ri->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+			ri->IndexCount = ri->Geo->DrawArgs["LOD0"].IndexCount;
+			ri->StartIndexLocation = ri->Geo->DrawArgs["LOD0"].StartIndexLocation;
+			ri->BaseVertexLocation = ri->Geo->DrawArgs["LOD0"].BaseVertexLocation;
+
+			ri->drawableObject = terrainTile;
+			terrainTile->renderItem = ri;
+			n.renderItem = ri;
+
+			mRitemLayer[(int)RenderLayer::Opaque].push_back(ri);
+			mAllRitems.push_back(ri);
+
+			terrainDrawableObjects.push_back(terrainTile);
+
+			k++;
+		});
+	
+
+
 	//generate OctTree
 	OctTreeDesc octTreeDesc;
 	octTreeDesc.ritems = &mAllRitems;
@@ -570,13 +655,13 @@ void RenderingSystem::BuildTerrain()
 {
 	TerrainRendererDesc terrainRendererDesc;
 	terrainRendererDesc.terrainName = L"Mountains";
-	terrainRendererDesc.pathToDiffuseMap = SOLUTION_DIR L"assets/textures/terrain/mountains_png_16bit/mountains_DiffuseMap.png";
-	terrainRendererDesc.pathToHeightMap = SOLUTION_DIR L"assets/textures/terrain/mountains_png_16bit/mountains_HeightMap.png";
-	terrainRendererDesc.pathToNormalMap = SOLUTION_DIR L"assets/textures/terrain/mountains_png_16bit/mountains_NormalMap.png";
+	terrainRendererDesc.pathToDiffuseMap = SOLUTION_DIR L"assets/textures/terrain/mountains_png_8bit/mountains_DiffuseMap.png";
+	terrainRendererDesc.pathToHeightMap = SOLUTION_DIR L"assets/textures/terrain/mountains_png_8bit/mountains_HeightMap.png";
+	terrainRendererDesc.pathToNormalMap = SOLUTION_DIR L"assets/textures/terrain/mountains_png_8bit/mountains_NormalMap.png";
 	terrainRendererDesc.quadTreeLevels = 3;
 	//terrainRendererDesc.minHeight = 0.0f;
 	//terrainRendererDesc.maxHeight = 500.0f;
-	terrainRendererDesc.heightMapScale = 1.0f;
+	terrainRendererDesc.heightMapScale = 150.0f;
 	terrainRendererDesc.enableWireFrame = false;
 
 	terrainRenderer = new TerrainRenderer();
@@ -587,6 +672,8 @@ void RenderingSystem::BuildTerrain()
 	{
 		GeometryGenerator geoGen;
 		auto mesh = geoGen.CreateGrid(1.0f, 1.0f, terrainRenderer->Meta().baseTilePixels, terrainRenderer->Meta().baseTilePixels);
+
+		//auto mesh = geoGen.CreatePlane(1.0f, 1.0f, 2.0f, 1.0f);
 
 		std::vector<Vertex> vertices(mesh.Vertices.size());
 		for (size_t i = 0; i < mesh.Vertices.size(); ++i)
@@ -644,88 +731,54 @@ void RenderingSystem::BuildTerrain()
 		mGeometries[geo->Name] = geo;
 	}
 
-	// MPRTextures
-	std::vector<MaterialDesc> matDescs;
-	matDescs.reserve(256);
 
 	terrainRenderer->ForEachTile([&](const TerrainTile& t)
-		{
-			std::string key = std::to_string(t.lod) + "_" + std::to_string(t.ix) + "_" + std::to_string(t.iy);
-			std::string diffName = "T_D_" + key;
-			std::string normName = "T_N_" + key;
-			std::string heightName = "T_H_" + key;
-			std::string matName = "M_Tile_" + key;
+		{	
+			MPRTerrainTextures.push_back(TextureDesc("tile_diffuse_level" + std::to_string(t.lod) + "_" + std::to_string(t.ix) + "_" + std::to_string(t.iy), t.textures.diffusePath, TextureDesc::Texture2D, true));
+			MPRTerrainTextures.push_back(TextureDesc("tile_normal_level" + std::to_string(t.lod) + "_" + std::to_string(t.ix) + "_" + std::to_string(t.iy), t.textures.normalPath, TextureDesc::Texture2D, false));
+			MPRTerrainTextures.push_back(TextureDesc("tile_height_level" + std::to_string(t.lod) + "_" + std::to_string(t.ix) + "_" + std::to_string(t.iy), t.textures.heightPath, TextureDesc::Texture2D, false));
+		
 
-			/*if (!t.textures.diffusePath.empty()) LoadExternalTexturePNG(t.textures.diffusePath, diffName);
-			if (!t.textures.normalPath.empty())  LoadExternalTexturePNG(t.textures.normalPath, normName);
-			if (!t.textures.heightPath.empty())  LoadExternalTexturePNG(t.textures.heightPath, heightName);*/
+			MaterialDesc Tile;
 
-			if (t.textures.diffusePath.empty()) ThrowError(L"", L"");
-			if (t.textures.normalPath.empty()) ThrowError(L"", L"");
-			if (t.textures.heightPath.empty()) ThrowError(L"", L"");
+			Tile.Name = "tile_level" + std::to_string(t.lod) + "_" + std::to_string(t.ix) + "_" + std::to_string(t.iy);
+			Tile.VertexShaderName = "TerrainVS";
+			Tile.HullShaderName = "TerrainHS";
+			Tile.GeometryShaderName = "TerrainGS";
+			Tile.DomainShaderName = "TerrainDS";
+			Tile.PixelShaderName = "TerrainPS";
 
-			MaterialDesc md;
-			md.Name = matName;
-			md.VertexShaderName = "standardVS";
-			md.PixelShaderName = "standardPS";
-			md.HullShaderName = "standardHS";
-			md.DomainShaderName = "standardDS";
-			md.DiffuseTexName = diffName;
-			md.NormalMapName = normName;
-			md.HeightMapName = heightName;
-			md.DiffuseAlbedo = XMFLOAT4(1, 1, 1, 1);
-			md.FresnelR0 = XMFLOAT3(0.05f, 0.05f, 0.05f);
-			md.Roughness = 0.6f;
-			md.Metallic = 0.0f;
-			md.UseTesselation = true;
-			matDescs.push_back(md);
+			Tile.DiffuseTexName = "tile_diffuse_level" + std::to_string(t.lod) + "_" + std::to_string(t.ix) + "_" + std::to_string(t.iy);
+			Tile.NormalMapName = "tile_normal_level" + std::to_string(t.lod) + "_" + std::to_string(t.ix) + "_" + std::to_string(t.iy);
+			Tile.HeightMapName = "tile_height_level" + std::to_string(t.lod) + "_" + std::to_string(t.ix) + "_" + std::to_string(t.iy);
+
+			Tile.UseTesselation = true;
+			Tile.bWireframe = terrainRendererDesc.enableWireFrame;
+
+			Tile.DiffuseAlbedo = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
+			Tile.FresnelR0 = XMFLOAT3(0.05f, 0.05f, 0.05f);
+			Tile.Roughness = 0.5f;
+			Tile.Metallic = 0.f;
+
+			TerrainMaterialDescs.push_back(Tile);
+
+			std::wstring matNm2 = L"\n\ntile_diffuse_level" + std::to_wstring(t.lod) + L"_" + std::to_wstring(t.ix) + L"_" + std::to_wstring(t.iy) + L"\n\n";
+			std::wstring matNm3 = L"\n\ntile_normal_level" + std::to_wstring(t.lod) + L"_" + std::to_wstring(t.ix) + L"_" + std::to_wstring(t.iy) + L"\n\n";
+			std::wstring matNm4 = L"\n\ntile_height_level" + std::to_wstring(t.lod) + L"_" + std::to_wstring(t.ix) + L"_" + std::to_wstring(t.iy) + L"\n\n";
+
+			OutputDebugStringW(matNm2.c_str());
+			OutputDebugStringW(matNm3.c_str());
+			OutputDebugStringW(matNm4.c_str());
 		});
 
-	std::vector<TextureDesc> empty;
-	//LoadTextures(empty);
 
-	//BuildMaterials(matDescs);
-
-	UINT objIndex = (UINT)mAllRitems.size();
-	terrainRenderer->ForEachTile([&](const TerrainTile& t)
-		{
-			std::string key = std::to_string(t.lod) + "_" + std::to_string(t.ix) + "_" + std::to_string(t.iy);
-			std::string matNm = "M_Tile_" + key;
-
-			auto* ri = new RenderItem();
-			ri->ObjCBIndex = objIndex++;
-			ri->Mat = mMaterials[matNm];
-			ri->Geo = mGeometries["TerrainPatch"];
-
-			const float sx = t.worldRect.sizeX;
-			const float sz = t.worldRect.sizeZ;
-			const float cx = t.worldRect.x0 + sx * 0.5f;
-			const float cz = t.worldRect.z0 + sz * 0.5f;
-
-			XMMATRIX W = XMMatrixScaling(sx, 1.0f, sz) * XMMatrixTranslation(cx, 0.0f, cz);
-			XMStoreFloat4x4(&ri->World, W);
-			XMStoreFloat4x4(&ri->TexTransform, XMMatrixIdentity());
-
-			ri->bounds = t.bounds;
-
-			ri->currentLOD = 0;
-			ri->numLODs = 5 - 1; // LOD0..LOD4
-			ri->renderLayer = RenderLayer::Opaque;
-
-			ri->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
-			ri->IndexCount = ri->Geo->DrawArgs["LOD0"].IndexCount;
-			ri->StartIndexLocation = ri->Geo->DrawArgs["LOD0"].StartIndexLocation;
-			ri->BaseVertexLocation = ri->Geo->DrawArgs["LOD0"].BaseVertexLocation;
-
-			mRitemLayer[(int)RenderLayer::Opaque].push_back(ri);
-			mAllRitems.push_back(ri);
-		});
+	
 
 	//terrainRenderer->BuildGeometry();
 
 	terrainRenderer->ForEachTile([&](const TerrainTile& t)
 		{
-		OutputDebugStringW((L"[TERRAIN] LOD " + std::to_wstring(t.lod) + L" (" + std::to_wstring(t.ix) + L"," + std::to_wstring(t.iy) + L") : " + t.textures.diffusePath + L"\n").c_str());
+		OutputDebugStringW((L"[TERRAIN] LOD " + std::to_wstring(t.lod) + L" (" + std::to_wstring(t.ix) + L"," + std::to_wstring(t.iy) + L") : " + t.textures.diffusePath + L", " + t.textures.normalPath + L", " + t.textures.heightPath + L"\n").c_str());
 		}
 	);
 }
@@ -1515,11 +1568,25 @@ void RenderingSystem::BuildPSOs(MaterialDesc& MDesc, std::unordered_map<std::str
 		descPipelineState.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_PATCH;
 	}
 	else descPipelineState.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+
+	if (mShaders.find(MDesc.GeometryShaderName) != mShaders.end())
+	{
+		descPipelineState.GS =
+		{
+			reinterpret_cast<BYTE*>(mShaders[MDesc.GeometryShaderName]->GetBufferPointer()),
+			mShaders[MDesc.GeometryShaderName]->GetBufferSize()
+		};
+	}
+
 	descPipelineState.InputLayout = { mInputLayout.data(), (UINT)mInputLayout.size() };
 	descPipelineState.pRootSignature = RootSignatures["Default"].Get();
 	descPipelineState.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
 	descPipelineState.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
 	descPipelineState.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+	if (MDesc.bWireframe)
+		descPipelineState.RasterizerState.FillMode = D3D12_FILL_MODE_WIREFRAME;
+	else
+		descPipelineState.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
 	descPipelineState.SampleMask = UINT_MAX;
 	descPipelineState.NumRenderTargets = 5;
 	descPipelineState.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -1728,6 +1795,8 @@ void RenderingSystem::BuildFrameResources()
 
 void RenderingSystem::BuildMaterials(std::vector<MaterialDesc>& MaterialDescs)
 {
+	MaterialDescs.insert(MaterialDescs.end(), TerrainMaterialDescs.begin(), TerrainMaterialDescs.end());
+
 	for (int i = 0; i < MaterialDescs.size(); i++)
 	{
 		auto t = new Material;
@@ -2131,6 +2200,22 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 		mTextures[t->Name] = t;
 	}
 
+	for (int i = 0; i < MPRTerrainTextures.size(); i++)
+	{
+		auto t = new Texture;
+		t->srvHeapIndex = TexDescs.size() + MPRTextures.size() + i + 1;
+		t->Name = MPRTerrainTextures[i].Name;
+		t->Filename = MPRTerrainTextures[i].Path;
+
+		ThrowIfFailed(DirectX::CreateDDSTextureFromFile(
+			md3dDevice.Get(),
+			upload,
+			t->Filename.c_str(),
+			t->Resource.GetAddressOf()));
+
+		mTextures[t->Name] = t;
+	}
+
 	auto finish = upload.End(mCommandQueue.Get());
 	finish.get();
 
@@ -2139,7 +2224,7 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 	// Create the SRV heap.
 	//
 	D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
-	srvHeapDesc.NumDescriptors = TexDescs.size() + MPRTextures.size() + 1 + mAllLights.size() + mGbuffer->NumBuffers;
+	srvHeapDesc.NumDescriptors = TexDescs.size() + MPRTextures.size() + 1 + mAllLights.size() + mGbuffer->NumBuffers + MPRTerrainTextures.size();
 	srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 	srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	ThrowIfFailed(md3dDevice->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&mSrvDescriptorHeap)));
@@ -2278,6 +2363,71 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 		hDescriptor.Offset(1, mCbvSrvDescriptorSize);
 	}
 
+	for (TextureDesc& i : MPRTerrainTextures) {
+		auto it = mTextures.find(i.Name);
+		if (it == mTextures.end()) {
+			// ????????? ??????: ???????? ?? ???????
+			OutputDebugStringA(("Texture not found: " + i.Name + "\n").c_str());
+			continue;
+		}
+
+		auto& tex = it->second->Resource;
+		if (!tex) {
+			// ????????? ??????: ?????? ???????? ?? ???????????????
+			OutputDebugStringA(("Texture resource is null: " + i.Name + "\n").c_str());
+			continue;
+		}
+
+		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+		srvDesc.Format = tex->GetDesc().Format;
+		if (i.UseSRGB)
+		{
+			switch (srvDesc.Format)
+			{
+			case DXGI_FORMAT_R8G8B8A8_UNORM:
+				srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+				break;
+			case DXGI_FORMAT_BC1_UNORM:
+				srvDesc.Format = DXGI_FORMAT_BC1_UNORM_SRGB;
+				break;
+			case DXGI_FORMAT_BC2_UNORM:
+				srvDesc.Format = DXGI_FORMAT_BC2_UNORM_SRGB;
+				break;
+			case DXGI_FORMAT_BC3_UNORM:
+				srvDesc.Format = DXGI_FORMAT_BC3_UNORM_SRGB;
+				break;
+			case DXGI_FORMAT_B8G8R8A8_UNORM:
+				srvDesc.Format = DXGI_FORMAT_B8G8R8A8_UNORM_SRGB;
+				break;
+			case DXGI_FORMAT_B8G8R8X8_UNORM:
+				srvDesc.Format = DXGI_FORMAT_B8G8R8X8_UNORM_SRGB;
+				break;
+			case DXGI_FORMAT_BC7_UNORM:
+				srvDesc.Format = DXGI_FORMAT_BC7_UNORM_SRGB;
+				break;
+			}
+		}
+		switch (i.TexType)
+		{
+		case TextureDesc::Texture2D:
+			srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+			srvDesc.Texture2D.MostDetailedMip = 0;
+			srvDesc.Texture2D.MipLevels = tex->GetDesc().MipLevels;
+			break;
+		case TextureDesc::CubeMap:
+			srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
+			srvDesc.TextureCube.MostDetailedMip = 0;
+			srvDesc.TextureCube.MipLevels = tex->GetDesc().MipLevels;
+			srvDesc.TextureCube.ResourceMinLODClamp = 0.0f;
+			break;
+		}
+
+		md3dDevice->CreateShaderResourceView(tex.Get(), &srvDesc, hDescriptor);
+
+		hDescriptor.Offset(1, mCbvSrvDescriptorSize);
+	}
+
 	for (int i = 0; i < mGbuffer->NumBuffers; i++) {
 		md3dDevice->CreateShaderResourceView(nullptr, &srvDesc, hDescriptor);
 		hDescriptor.Offset(1, mCbvSrvUavDescriptorSize);
@@ -2389,7 +2539,6 @@ std::unordered_set<RenderItem*> alreadyCheckedRitems;
 
 void RenderingSystem::CollectVisibleRenderItems()
 {
-
 	std::vector<OctTreeNode*> leaves = mOctTree->GetAllNodesAtLevel(mOctTree->getNumDivisions() - 1);
 
 
@@ -2458,6 +2607,27 @@ void RenderingSystem::UpdateRenderItems(std::vector<DrawableObject*>& mAllObject
 
 		mOctTree->UpdateRenderItemTreeLocation(ri);
 	}
+
+	/*std::vector<RenderItem*> visibleTerrainTiles;
+	if (terrainRenderer) terrainRenderer->SelectLOD(mCamera, visibleTerrainTiles);
+
+	for (RenderItem* ri : mAllRitems)
+	{
+		if (ri->drawableObject && ri->drawableObject->isTerrainTile)
+		{
+			for (auto* leaf : ri->occupiedLeaves)
+			{
+				auto& vec = leaf->OverlappedRitems;
+				vec.erase(std::remove(vec.begin(), vec.end(), ri), vec.end());
+			}
+			ri->occupiedLeaves.clear();
+		}
+	}
+
+	for (RenderItem* ri : visibleTerrainTiles)
+	{
+		mOctTree->UpdateRenderItemTreeLocation(ri);
+	}*/
 
 	mAllVisibleRitems.clear();
 	alreadyCheckedRitems.clear();

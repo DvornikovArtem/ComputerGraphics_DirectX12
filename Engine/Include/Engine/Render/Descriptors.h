@@ -87,7 +87,9 @@ struct MaterialDesc
     std::string VertexShaderName = "standardVS";
     std::string HullShaderName = "standardHS";
     std::string DomainShaderName = "standardDS";
+    std::string GeometryShaderName = "";
     bool UseTesselation = false;
+    bool bWireframe = false;
 };
 
 struct MeshDesc

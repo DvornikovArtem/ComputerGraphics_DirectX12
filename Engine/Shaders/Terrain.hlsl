@@ -62,21 +62,26 @@ struct VS_INPUT
     float3 Pos : POSITION;
     float2 TexC : TEXCOORD;
     float3 Normal : NORMAL;
-    float3 Tangent : TANGENT;
 };
 
-struct DS_VS_OUTPUT_PS_INPUT
+struct DS_VS_OUTPUT_GS_INPUT
 {
-    float4 PosCS : SV_POSITION;
     float3 PosW : POSITION;
     float2 TexC : TEXCOORD;
     float3 Normal : NORMAL;
-    float3 Tangent : TANGENT;
 };
 
-DS_VS_OUTPUT_PS_INPUT VS(VS_INPUT vin)
+
+inline float2 ApplyTexTransform(float2 uv)
 {
-    DS_VS_OUTPUT_PS_INPUT vout = (DS_VS_OUTPUT_PS_INPUT) 0.0f;
+    float3 t = mul(float4(uv, 1.0f, 1.0f), gTexTransform).xyz;
+    return t.xy;
+}
+
+
+DS_VS_OUTPUT_GS_INPUT VS(VS_INPUT vin)
+{
+    DS_VS_OUTPUT_GS_INPUT vout = (DS_VS_OUTPUT_GS_INPUT) 0.0f;
 	
     // Transform to world space.
     float4 posW = mul(float4(vin.Pos, 1.0f), gWorld);
@@ -84,11 +89,6 @@ DS_VS_OUTPUT_PS_INPUT VS(VS_INPUT vin)
 
     // Assumes nonuniform scaling; otherwise, need to use inverse-transpose of world matrix.
     vout.Normal = normalize(mul(vin.Normal, (float3x3) gWorld));
-    
-    vout.Tangent = normalize(mul(vin.Tangent, (float3x3) gWorld));
-
-    // Transform to homogeneous clip space.
-    vout.PosCS = mul(posW, gViewProj);
 	
 	// Output vertex attributes for interpolation across triangle.
     float4 texC = mul(float4(vin.TexC, 0.0f, 1.0f), gTexTransform);
@@ -103,7 +103,8 @@ struct HS_CONSTANT_DATA_OUTPUT
     float Inside : SV_InsideTessFactor;
 };
 
-HS_CONSTANT_DATA_OUTPUT ConstantsHS(InputPatch<DS_VS_OUTPUT_PS_INPUT, 3> Patch, uint PatchID : SV_PrimitiveID)
+
+HS_CONSTANT_DATA_OUTPUT ConstantsHS(InputPatch<DS_VS_OUTPUT_GS_INPUT, 3> Patch, uint PatchID : SV_PrimitiveID)
 {
     HS_CONSTANT_DATA_OUTPUT Out;
     
@@ -140,7 +141,6 @@ struct HS_CONTROL_POINT_OUTPUT
     float3 vWorldPos : POSITION;
     float2 vTexCoord : TEXCOORD;
     float3 vNormal : NORMAL;
-    float3 vTangent : TANGENT;
 };
 
 [domain("tri")]
@@ -149,22 +149,21 @@ struct HS_CONTROL_POINT_OUTPUT
 [outputcontrolpoints(3)]
 [patchconstantfunc("ConstantsHS")]
 [maxtessfactor(64.0)]
-HS_CONTROL_POINT_OUTPUT HS(InputPatch<DS_VS_OUTPUT_PS_INPUT, 3> inputPatch, uint uCPID : SV_OutputControlPointID)
+HS_CONTROL_POINT_OUTPUT HS(InputPatch<DS_VS_OUTPUT_GS_INPUT, 3> inputPatch, uint uCPID : SV_OutputControlPointID)
 {
     HS_CONTROL_POINT_OUTPUT Out;
     Out.vWorldPos = inputPatch[uCPID].PosW.xyz;
     Out.vTexCoord = inputPatch[uCPID].TexC;
     Out.vNormal = inputPatch[uCPID].Normal;
-    Out.vTangent = inputPatch[uCPID].Tangent;
     return Out;
 }
 
 // Called once per tessellated vertex
 [domain("tri")] // indicates that triangle patches were used
 // The original patch is passed in, along with the vertex position in barycentric coordinates, and the patch constant phase hull shader output(tessellation factors)
-DS_VS_OUTPUT_PS_INPUT DS(HS_CONSTANT_DATA_OUTPUT input, float3 BarycentricCoordinates : SV_DomainLocation, const OutputPatch<HS_CONTROL_POINT_OUTPUT, 3> TrianglePatch)
+DS_VS_OUTPUT_GS_INPUT DS(HS_CONSTANT_DATA_OUTPUT input, float3 BarycentricCoordinates : SV_DomainLocation, const OutputPatch<HS_CONTROL_POINT_OUTPUT, 3> TrianglePatch)
 {
-    DS_VS_OUTPUT_PS_INPUT Out;
+    DS_VS_OUTPUT_GS_INPUT Out;
     // Interpolate world space position with barycentric coordinates
     float3 vWorldPos =
     BarycentricCoordinates.x * TrianglePatch[0].vWorldPos +
@@ -181,20 +180,129 @@ DS_VS_OUTPUT_PS_INPUT DS(HS_CONSTANT_DATA_OUTPUT input, float3 BarycentricCoordi
     BarycentricCoordinates.x * TrianglePatch[0].vNormal +
     BarycentricCoordinates.y * TrianglePatch[1].vNormal +
     BarycentricCoordinates.z * TrianglePatch[2].vNormal;
-    
-    Out.Tangent =
-    BarycentricCoordinates.x * TrianglePatch[0].vTangent +
-    BarycentricCoordinates.y * TrianglePatch[1].vTangent +
-    BarycentricCoordinates.z * TrianglePatch[2].vTangent;
 
+    
     // sample the displacement map for the magnitude of displacement
-    float fDisplacement = gHeightMap.SampleLevel(gsamAnisotropicWrap, Out.TexC.xy, 0).r;
+    //float fDisplacement = gHeightMap.SampleLevel(gsamAnisotropicWrap, Out.TexC.xy, 0).r;
+    float fDisplacement = gHeightMap.SampleLevel(gsamAnisotropicClamp, Out.TexC.xy, 0).r;
     
     // translate the position
-    vWorldPos += float3(0, 1, 0) * fDisplacement;
-    // transform to clip space
-    Out.PosCS = mul(float4(vWorldPos.xyz, 1), gViewProj);
+    vWorldPos += float3(0, 1, 0) * fDisplacement * 150;
+    Out.PosW = vWorldPos;
     return Out;
+}
+
+struct GS_OUT
+{
+    float4 PosCS : SV_POSITION;
+    float3 PosW : POSITION;
+    float2 TexC : TEXCOORD;
+    float3 Normal : NORMAL;
+};
+
+// Check if edge is on border
+bool isBorderEdge
+    (
+    float2 t0, float2 t1)
+{
+    const float epsilon = 0.001;
+        // Check left/right borders
+    if (abs(t0.x) < epsilon && abs(t1.x) < epsilon)
+        return true;
+    if (abs(t0.x - 1.0) < epsilon && abs(t1.x - 1.0) < epsilon)
+        return true;
+        // Check top/bottom borders
+    if (abs(t0.y) < epsilon && abs(t1.y) < epsilon)
+        return true;
+    if (abs(t0.y - 1.0) < epsilon && abs(t1.y - 1.0) < epsilon)
+        return true;
+    return false;
+}
+
+[maxvertexcount(21)]
+void GS(triangle DS_VS_OUTPUT_GS_INPUT input[3], inout TriangleStream<GS_OUT> stream)
+{
+    GS_OUT output;
+    
+    // Precompute clip space positions for original vertices
+    float4 origPosCS[3];
+    for (int i = 0; i < 3; i++)
+    {
+        origPosCS[i] = mul(float4(input[i].PosW, 1.0), gViewProj);
+    }
+    
+    // Output original triangle
+    for (int i = 0; i < 3; i++)
+    {
+        output.PosCS = origPosCS[i];
+        output.PosW = input[i].PosW;
+        output.Normal = input[i].Normal;
+        output.TexC = input[i].TexC;
+        stream.Append(output);
+    }
+    
+    float curtainHeight = 5.0; // ADJUST ME
+    int edges[3][2] = { { 0, 1 }, { 1, 2 }, { 2, 0 } };
+    
+    for (int e = 0; e < 3; e++)
+    {
+        int i = edges[e][0];
+        int j = edges[e][1];
+        
+        if (isBorderEdge(input[i].TexC, input[j].TexC))
+        {
+            // Create down vertices
+            GS_OUT i_down, j_down;
+            
+            i_down.PosW = input[i].PosW - float3(0, curtainHeight, 0);
+            i_down.PosCS = mul(float4(i_down.PosW, 1.0), gViewProj);
+            i_down.Normal = input[i].Normal;
+            i_down.TexC = input[i].TexC;
+            
+            j_down.PosW = input[j].PosW - float3(0, curtainHeight, 0);
+            j_down.PosCS = mul(float4(j_down.PosW, 1.0), gViewProj);
+            j_down.Normal = input[j].Normal;
+            j_down.TexC = input[j].TexC;
+            
+            // First curtain triangle
+            output.PosCS = origPosCS[i];
+            output.PosW = input[i].PosW;
+            output.Normal = input[i].Normal;
+            output.TexC = input[i].TexC;
+            stream.Append(output);
+            
+            output.PosCS = origPosCS[j];
+            output.PosW = input[j].PosW;
+            output.Normal = input[j].Normal;
+            output.TexC = input[j].TexC;
+            stream.Append(output);
+            
+            output.PosCS = j_down.PosCS;
+            output.PosW = j_down.PosW;
+            output.Normal = j_down.Normal;
+            output.TexC = j_down.TexC;
+            stream.Append(output);
+            
+            // Second curtain triangle
+            output.PosCS = origPosCS[i];
+            output.PosW = input[i].PosW;
+            output.Normal = input[i].Normal;
+            output.TexC = input[i].TexC;
+            stream.Append(output);
+            
+            output.PosCS = i_down.PosCS;
+            output.PosW = i_down.PosW;
+            output.Normal = i_down.Normal;
+            output.TexC = i_down.TexC;
+            stream.Append(output);
+            
+            output.PosCS = j_down.PosCS;
+            output.PosW = j_down.PosW;
+            output.Normal = j_down.Normal;
+            output.TexC = j_down.TexC;
+            stream.Append(output);
+        }
+    }
 }
 
 struct GBufferData
@@ -206,7 +314,7 @@ struct GBufferData
     float4 MaterialFresnelRoughness : SV_TARGET4;
 };
 
-GBufferData PS(DS_VS_OUTPUT_PS_INPUT pin)
+GBufferData PS(GS_OUT pin)
 {
     
     GBufferData pout;
@@ -225,8 +333,12 @@ GBufferData PS(DS_VS_OUTPUT_PS_INPUT pin)
     uv = rotateduv;
 #endif
     
-    float3 NormalMapSample = gNormalMap.Sample(gsamAnisotropicWrap, uv).rgb;
-    float4 diffuseAlbedo = gDiffuseMap.Sample(gsamAnisotropicWrap, uv);
+    //float3 NormalMapSample = gNormalMap.Sample(gsamAnisotropicWrap, uv).rgb;
+    //float4 diffuseAlbedo = gDiffuseMap.Sample(gsamAnisotropicWrap, uv);
+    
+    
+    float3 NormalMapSample = gNormalMap.Sample(gsamAnisotropicClamp, uv).rgb;
+    float4 diffuseAlbedo = gDiffuseMap.Sample(gsamAnisotropicClamp, uv);
 
     pout.diffuse = diffuseAlbedo;
     pout.emissive = float4(0.f, 0.f, 0.f, pin.PosCS.z); //xyz is free for now

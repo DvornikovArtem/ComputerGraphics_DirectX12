@@ -60,6 +60,8 @@ struct DrawableObject
     XMFLOAT3 WorldRotation = XMFLOAT3(0.f, 0.f, 0.f);
     XMFLOAT3 Scale = XMFLOAT3(1.f, 1.f, 1.f);
     XMMATRIX TexTransform = XMMatrixIdentity();
+
+    bool isTerrainTile = false;
 };
 
 

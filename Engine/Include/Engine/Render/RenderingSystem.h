@@ -90,6 +90,9 @@ public:
         mFrameResources.clear();
 
         if(mDebugDrawer) delete mDebugDrawer;
+
+        for (auto& i : terrainDrawableObjects)
+            delete i;
     }
 
 
@@ -271,12 +274,20 @@ protected:
 
     //holds generated textures to be added in main texture pipeline later
     std::vector<Texture*> MPRTextures;
+    std::vector<TextureDesc> MPRTerrainTextures;
+
+    std::vector<MaterialDesc> TerrainMaterialDescs;
 
     UINT TexDescsLength;
 
     std::vector <ParticleSystem*> mAllParticleSystems;
 
     TerrainRenderer* terrainRenderer = nullptr;
+
+    std::vector <DrawableObject*> terrainDrawableObjects;
+
+    std::vector<RenderItem*> mAllTerrainRitems;
+    std::vector<RenderItem*> mVisibleTerrainRitems;
 };
 
 

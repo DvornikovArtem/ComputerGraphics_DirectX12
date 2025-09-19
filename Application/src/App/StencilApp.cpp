@@ -218,6 +218,12 @@ void StencilApp::LoadShaders()
         ShaderDesc("SimulateCS2", SHADERS_ENGINE_DIR L"\\ParticleCS.hlsl", "SimulateCS2", nullptr, "cs_5_1"),
         ShaderDesc("EmitSmokeCS", SHADERS_ENGINE_DIR L"\\ParticleCS.hlsl", "EmitSmokeCS", nullptr, "cs_5_1"),
         ShaderDesc("SimulateSmokeCS", SHADERS_ENGINE_DIR L"\\ParticleCS.hlsl", "SimulateSmokeCS", nullptr, "cs_5_1"),
+        
+        ShaderDesc("TerrainVS", SHADERS_ENGINE_DIR L"\\Terrain.hlsl", "VS", nullptr, "vs_5_1"),
+        ShaderDesc("TerrainHS", SHADERS_ENGINE_DIR L"\\Terrain.hlsl", "HS", nullptr, "hs_5_1"),
+        ShaderDesc("TerrainDS", SHADERS_ENGINE_DIR L"\\Terrain.hlsl", "DS", nullptr, "ds_5_1"),
+        ShaderDesc("TerrainPS", SHADERS_ENGINE_DIR L"\\Terrain.hlsl", "PS", nullptr, "ps_5_1"),
+        ShaderDesc("TerrainGS", SHADERS_ENGINE_DIR L"\\Terrain.hlsl", "GS", nullptr, "gs_5_1"),
     };
 
     mRenderingSystem->BuildShaders(ShaderDescs);
@@ -280,7 +286,6 @@ void StencilApp::LoadTextures()
         TextureDesc("SkyPref", L"assets/textures/roomPrefilter.dds", TextureDesc::CubeMap, true),
         TextureDesc("SkyBRDF", L"assets/textures/roomBrdf.dds", TextureDesc::Texture2D, false),
         TextureDesc("SkyIrradiance", L"assets/textures/roomIrradiance.dds", TextureDesc::CubeMap, false),
-
     };
 
     mRenderingSystem->LoadTextures(TexDescs);

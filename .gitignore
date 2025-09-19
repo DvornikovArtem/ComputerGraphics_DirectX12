@@ -399,3 +399,38 @@ FodyWeavers.xsd
 
 # JetBrains Rider
 *.sln.iml
+
+# --- Keep specific debug/libs and assets (do NOT ignore these) ---
+# Note: If parent folders are ignored elsewhere, we need to unignore each parent too.
+# Engine/Extern/assimp/lib (entire folder)
+!Engine/
+!Engine/Extern/
+!Engine/Extern/assimp/
+!Engine/Extern/assimp/lib/
+!Engine/Extern/assimp/lib/**
+!Engine/Extern/DirectXTex/
+!Engine/Extern/DirectXTex/lib/
+!Engine/Extern/DirectXTex/lib/**
+
+# Engine/Include/Engine/Debug (entire folder)
+!Engine/Include/
+!Engine/Include/Engine/
+!Engine/Include/Engine/Debug/
+!Engine/Include/Engine/Debug/**
+
+# Engine/src/Debug (entire folder)
+!Engine/src/
+!Engine/src/Debug/
+!Engine/src/Debug/**
+
+# Keep a specific model file
+!Application/
+!Application/assets/
+!Application/assets/models/
+!Application/assets/models/*.obj
+
+# Keep a specific DLL
+!Application/x64/
+!Application/x64/Debug/
+!Application/x64/Debug/*.dll
+# --- end keep block ---

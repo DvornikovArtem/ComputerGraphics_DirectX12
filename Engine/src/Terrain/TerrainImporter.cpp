@@ -219,6 +219,44 @@ static LoadedImage8 CropTo(const LoadedImage8& src, int newW, int newH) {
 
 
 
+static void CopyFirstRow(Image& img, const uint8_t* srcRowBytes, int channels)
+{
+    const size_t rowBytes = size_t(img.width) * size_t(channels);
+    uint8_t* dst = img.pixels;
+    memcpy(dst, srcRowBytes, rowBytes);
+}
+
+static void ExtractLastRow(const Image& img, std::vector<uint8_t>& outRow, int channels)
+{
+    const size_t rowBytes = size_t(img.width) * size_t(channels);
+    outRow.resize(rowBytes);
+    const uint8_t* src = img.pixels + size_t(img.height - 1) * img.rowPitch;
+    memcpy(outRow.data(), src, rowBytes);
+}
+
+static void CopyFirstColumn(Image& img, const uint8_t* srcColBytes, int channels)
+{
+    for (uint32_t y = 0; y < img.height; ++y)
+    {
+        uint8_t* dstPix = img.pixels + size_t(y) * img.rowPitch;
+        const uint8_t* srcPix = srcColBytes + size_t(y) * size_t(channels);
+        memcpy(dstPix, srcPix, size_t(channels));
+    }
+}
+
+static void ExtractLastColumn(const Image& img, std::vector<uint8_t>& outCol, int channels)
+{
+    outCol.resize(size_t(img.height) * size_t(channels));
+    for (uint32_t y = 0; y < img.height; ++y)
+    {
+        const uint8_t* srcPix = img.pixels + size_t(y) * img.rowPitch + size_t(img.width - 1) * size_t(channels);
+        uint8_t* dstPix = outCol.data() + size_t(y) * size_t(channels);
+        memcpy(dstPix, srcPix, size_t(channels));
+    }
+}
+
+
+
 // Load all terrain textures and use them to generate the tile grid, filling in the information about the tiles and the terrain as a whole
 bool TerrainImporter::BuildTilesFromSource(
     const std::wstring& diffuse,
@@ -333,7 +371,13 @@ bool TerrainImporter::BuildTilesFromSource(
         const float worldTileX = outMeta.worldSizeX / float(tilesX_L);
         const float worldTileZ = outMeta.worldSizeZ / float(tilesY_L);
 
+        std::vector<std::vector<uint8_t>> prevBottomRowD(tilesX_L), prevBottomRowN(tilesX_L), prevBottomRowH(tilesX_L);
+
+        std::vector<uint8_t> prevRightColD, prevRightColN, prevRightColH;
+
         for (uint32_t ty = 0; ty < tilesY_L; ++ty)
+        {
+            prevRightColD.clear(); prevRightColN.clear(); prevRightColH.clear();
             for (uint32_t tx = 0; tx < tilesX_L; ++tx)
             {
                 // ---- DIFFUSE (RGBA8) ----
@@ -357,12 +401,30 @@ bool TerrainImporter::BuildTilesFromSource(
                     baseD = resizedD.GetImage(0, 0, 0);
                 }
 
+                /*{
+                    Image* mutD = const_cast<Image*>(baseD);
+
+                    const int chD = 4, chN = 4, chH = 1;
+
+                    if (tx > 0) {
+                        if (!prevRightColD.empty()) CopyFirstColumn(*mutD, prevRightColD.data(), chD);
+                    }
+
+                    if (ty > 0) {
+                        if (!prevBottomRowD[tx].empty()) CopyFirstRow(*mutD, prevBottomRowD[tx].data(), chD);
+                    }
+
+                    ExtractLastColumn(*mutD, prevRightColD, chD);
+
+                    ExtractLastRow(*mutD, prevBottomRowD[tx], chD);
+                }*/
+
                 // Generate mip-maps
                 ScratchImage mipD;
                 const size_t leafMipLevels = tileFullMipCount((std::max)(leafPixX, leafPixY));
                 GenerateMipMaps(*baseD, TEX_FILTER_DEFAULT, leafMipLevels, mipD);
 
-                const auto fileD = levelDir / L"diffuse" / (L"tile_" + std::to_wstring(tx) + L"_" + std::to_wstring(ty) + L".dds");
+                const auto fileD = levelDir / L"diffuse" / (L"tile_diffuse_level" + std::to_wstring(L) + L"_" + std::to_wstring(tx) + L"_" + std::to_wstring(ty) + L".dds");
                 SaveToDDSFile(mipD.GetImages(), mipD.GetImageCount(), mipD.GetMetadata(), DDS_FLAGS_NONE, fileD.c_str());
 
 
@@ -387,11 +449,29 @@ bool TerrainImporter::BuildTilesFromSource(
                     baseN = resizedN.GetImage(0, 0, 0);
                 }
 
+                /*{
+                    Image* mutN = const_cast<Image*>(baseN);
+
+                    const int chD = 4, chN = 4, chH = 1;
+
+                    if (tx > 0) {
+                        if (!prevRightColN.empty()) CopyFirstColumn(*mutN, prevRightColN.data(), chN);
+                    }
+
+                    if (ty > 0) {
+                        if (!prevBottomRowN[tx].empty()) CopyFirstRow(*mutN, prevBottomRowN[tx].data(), chN);
+                    }
+
+                    ExtractLastColumn(*mutN, prevRightColN, chN);
+
+                    ExtractLastRow(*mutN, prevBottomRowN[tx], chN);
+                }*/
+
                 ScratchImage mipN;
                 const size_t leafMipLevels2 = tileFullMipCount((std::max)(leafPixX, leafPixY));
                 GenerateMipMaps(*baseN, TEX_FILTER_DEFAULT, leafMipLevels2, mipN);
 
-                const auto fileN = levelDir / L"normal" / (L"tile_" + std::to_wstring(tx) + L"_" + std::to_wstring(ty) + L".dds");
+                const auto fileN = levelDir / L"normal" / (L"tile_normal_level" + std::to_wstring(L) + L"_" + std::to_wstring(tx) + L"_" + std::to_wstring(ty) + L".dds");
                 SaveToDDSFile(mipN.GetImages(), mipN.GetImageCount(), mipN.GetMetadata(), DDS_FLAGS_NONE, fileN.c_str());
 
 
@@ -423,11 +503,29 @@ bool TerrainImporter::BuildTilesFromSource(
                     baseH = resizedH.GetImage(0, 0, 0);
                 }
 
+                /*{
+                    Image* mutH = const_cast<Image*>(baseH);
+
+                    const int chD = 4, chN = 4, chH = 1;
+
+                    if (tx > 0) {
+                        if (!prevRightColH.empty()) CopyFirstColumn(*mutH, prevRightColH.data(), chH);
+                    }
+
+                    if (ty > 0) {
+                        if (!prevBottomRowH[tx].empty()) CopyFirstRow(*mutH, prevBottomRowH[tx].data(), chH);
+                    }
+
+                    ExtractLastColumn(*mutH, prevRightColH, chH);
+
+                    ExtractLastRow(*mutH, prevBottomRowH[tx], chH);
+                }*/
+
                 ScratchImage mipH;
                 const size_t leafMipLevels3 = tileFullMipCount((std::max)(leafPixX, leafPixY));
                 GenerateMipMaps(*baseH, TEX_FILTER_DEFAULT, leafMipLevels3, mipH);
 
-                const auto fileH = levelDir / L"height" / (L"tile_" + std::to_wstring(tx) + L"_" + std::to_wstring(ty) + L".dds");
+                const auto fileH = levelDir / L"height" / (L"tile_height_level" + std::to_wstring(L) + L"_" + std::to_wstring(tx) + L"_" + std::to_wstring(ty) + L".dds");
                 SaveToDDSFile(mipH.GetImages(), mipH.GetImageCount(), mipH.GetMetadata(), DDS_FLAGS_NONE, fileH.c_str());
 
                 // ---- META ----
@@ -454,6 +552,7 @@ bool TerrainImporter::BuildTilesFromSource(
 
                 outMeta.tiles.push_back(std::move(ti));
             }
+        }
     }
 
     return true;

@@ -40,6 +40,43 @@ void TerrainRenderer::Initialize(const TerrainRendererDesc& terrainRendererDesc)
     m_quad.BuildFromMeta(m_meta);
 }
 
+
+void TerrainRenderer::SelectLOD(const Camera& cam, std::vector<RenderItem*>& outVisible, float lodFactor) const
+{
+    BoundingFrustum fr;
+    BoundingFrustum::CreateFromMatrix(fr, cam.GetProj());
+    XMMATRIX invView = XMMatrixInverse(nullptr, cam.GetView());
+    fr.Transform(fr, invView);
+
+    std::function<void(const TerrainNode*)> recurse = [&](const TerrainNode* node)
+        {
+            if (!fr.Intersects(node->tile.bounds))
+                return;
+
+            float dist = XMVectorGetX(XMVector3Length(
+                XMLoadFloat3(&node->tile.bounds.Center) - XMLoadFloat3(&cam.GetPosition3f())
+            ));
+
+            float threshold = m_meta.baseTileWorldSize * (1 << node->tile.lod) * lodFactor;
+
+            if (dist < threshold && !node->IsLeaf())
+            {
+                for (auto* c : node->children)
+                    if (c) recurse(c);
+            }
+            else
+            {
+                if (node->renderItem)
+                    outVisible.push_back(node->renderItem);
+            }
+        };
+
+    if (m_quad.Levels() > 0)
+    {
+        for (auto* n : m_quad.LevelNodes(0)) recurse(n);
+    }
+}
+
 //void TerrainRenderer::BuildGeometry(Microsoft::WRL::ComPtr<ID3D12Device> md3dDevice, Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> mCommandList, std::unordered_map<std::string, MeshGeometry*> mGeometries)
 //{
 //	
