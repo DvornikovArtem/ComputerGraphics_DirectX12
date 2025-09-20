@@ -57,7 +57,11 @@ void TerrainRenderer::SelectLOD(const Camera& cam, std::vector<RenderItem*>& out
                 XMLoadFloat3(&node->tile.bounds.Center) - XMLoadFloat3(&cam.GetPosition3f())
             ));
 
-            float threshold = m_meta.baseTileWorldSize * (1 << node->tile.lod) * lodFactor;
+
+            float tileSizeX = m_meta.worldSizeX / float(1u << node->tile.lod);
+            float tileSizeZ = m_meta.worldSizeZ / float(1u << node->tile.lod);
+
+            float threshold = tileSizeX * tileSizeZ * 0.002f;
 
             if (dist < threshold && !node->IsLeaf())
             {

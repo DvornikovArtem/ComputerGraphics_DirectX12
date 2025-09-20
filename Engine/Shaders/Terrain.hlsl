@@ -129,10 +129,10 @@ HS_CONSTANT_DATA_OUTPUT ConstantsHS(InputPatch<DS_VS_OUTPUT_GS_INPUT, 3> Patch, 
 // Assign tessellation factors – in this case use a global
 // tessellation factor for all edges and the inside. These are
 // constant for the whole mesh.
-    Out.Edges[0] = gTesselationFactor;
-    Out.Edges[1] = gTesselationFactor;
-    Out.Edges[2] = gTesselationFactor;
-    Out.Inside = gTesselationFactor;
+    Out.Edges[0] = 1;
+    Out.Edges[1] = 1;
+    Out.Edges[2] = 1;
+    Out.Inside = 1;
     return Out;
 }
 
@@ -241,7 +241,7 @@ void GS(triangle DS_VS_OUTPUT_GS_INPUT input[3], inout TriangleStream<GS_OUT> st
         stream.Append(output);
     }
     
-    float curtainHeight = 5.0; // ADJUST ME
+    float curtainHeight = 50.0; // ADJUST ME
     int edges[3][2] = { { 0, 1 }, { 1, 2 }, { 2, 0 } };
     
     for (int e = 0; e < 3; e++)

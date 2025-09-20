@@ -122,7 +122,7 @@ void RenderingSystem::FinishInitialize()
 {
 	CreateRtvAndDsvDescriptorHeaps();
 
-	mGbuffer->Channel0SRVHeapIndex = TexDescsLength + MPRTextures.size() + 1;
+	mGbuffer->Channel0SRVHeapIndex = TexDescsLength + MPRTextures.size() + MPRTerrainTextures.size() + 1;
 
 	//copy GBuffer SRVs into main SRVHeap
 	md3dDevice->CopyDescriptorsSimple(mGbuffer->NumBuffers, GetCpuSrv(mGbuffer->Channel0SRVHeapIndex),
@@ -130,9 +130,15 @@ void RenderingSystem::FinishInitialize()
 		D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
 	int k = 0;
+	const int shadowBase =
+		static_cast<int>(TexDescsLength)
+		+ static_cast<int>(MPRTextures.size())
+		+ static_cast<int>(MPRTerrainTextures.size())
+		+ 1
+		+ mGbuffer->NumBuffers;
 	for (auto& litem : mAllLights) {
-		litem->shadowMap->BuildDescriptors(GetCpuSrv(TexDescsLength + MPRTextures.size() + 1 + mGbuffer->NumBuffers + k), GetGpuSrv(TexDescsLength + MPRTextures.size() + 1 + mGbuffer->NumBuffers + k), GetDsv(1 + k));
-		litem->shadowMap->SRVHeapIndex = TexDescsLength + MPRTextures.size() + 1 + mGbuffer->NumBuffers + k;
+		litem->shadowMap->BuildDescriptors(GetCpuSrv(shadowBase + k), GetGpuSrv(shadowBase + k), GetDsv(1 + k));
+		litem->shadowMap->SRVHeapIndex = shadowBase + k;
 		k++;
 	}
 
@@ -281,8 +287,11 @@ void RenderingSystem::Render()
 	mCommandList->ClearDepthStencilView(DepthStencilView(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
 
 	// Create frame shadow maps
-	DrawShadowMaps();
+	//DrawShadowMaps();
 	
+	for (auto& i : mAllLights)
+		mCommandList->ClearDepthStencilView(i->shadowMap->Dsv(),
+			D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
 
 	// Deferred Passes:
 	
@@ -477,7 +486,6 @@ void RenderingSystem::BuildRenderItems(std::unordered_map<std::string, DrawableO
 
 			//if (n.parent != nullptr) return;
 
-			if (n.tile.lod != 1) return;
 
 			const TerrainTile& t = n.tile;
 
@@ -520,8 +528,8 @@ void RenderingSystem::BuildRenderItems(std::unordered_map<std::string, DrawableO
 			XMStoreFloat4x4(&ri->World, W);
 			XMStoreFloat4x4(&ri->TexTransform, XMMatrixIdentity());
 
-			/*XMMATRIX texFlipV = XMMatrixScaling(1.0f, -1.0f, 1.0f) * XMMatrixTranslation(0.0f, 1.0f, 0.0f);
-			XMStoreFloat4x4(&ri->TexTransform, texFlipV);*/
+			XMMATRIX texFlipV = XMMatrixScaling(1.0f, -1.0f, 1.0f) * XMMatrixTranslation(0.0f, 1.0f, 0.0f);
+			XMStoreFloat4x4(&ri->TexTransform, texFlipV);
 
 			float u0 = t.worldRect.x0 / terrainRenderer->Meta().worldSizeX;
 			float v0 = t.worldRect.z0 / terrainRenderer->Meta().worldSizeZ;
@@ -662,7 +670,7 @@ void RenderingSystem::BuildTerrain()
 	//terrainRendererDesc.minHeight = 0.0f;
 	//terrainRendererDesc.maxHeight = 500.0f;
 	terrainRendererDesc.heightMapScale = 150.0f;
-	terrainRendererDesc.enableWireFrame = false;
+	terrainRendererDesc.enableWireFrame = true;
 
 	terrainRenderer = new TerrainRenderer();
 	terrainRenderer->Initialize(terrainRendererDesc);
@@ -2224,7 +2232,7 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 	// Create the SRV heap.
 	//
 	D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
-	srvHeapDesc.NumDescriptors = TexDescs.size() + MPRTextures.size() + 1 + mAllLights.size() + mGbuffer->NumBuffers + MPRTerrainTextures.size();
+	srvHeapDesc.NumDescriptors = TexDescs.size() + MPRTextures.size() + MPRTerrainTextures.size() + 1 + mAllLights.size() + mGbuffer->NumBuffers;
 	srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 	srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	ThrowIfFailed(md3dDevice->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&mSrvDescriptorHeap)));
@@ -2608,8 +2616,8 @@ void RenderingSystem::UpdateRenderItems(std::vector<DrawableObject*>& mAllObject
 		mOctTree->UpdateRenderItemTreeLocation(ri);
 	}
 
-	/*std::vector<RenderItem*> visibleTerrainTiles;
-	if (terrainRenderer) terrainRenderer->SelectLOD(mCamera, visibleTerrainTiles);
+	std::vector<RenderItem*> visibleTerrainTiles;
+	if (terrainRenderer) terrainRenderer->SelectLOD(mCamera, visibleTerrainTiles, 1000.f);
 
 	for (RenderItem* ri : mAllRitems)
 	{
@@ -2627,7 +2635,7 @@ void RenderingSystem::UpdateRenderItems(std::vector<DrawableObject*>& mAllObject
 	for (RenderItem* ri : visibleTerrainTiles)
 	{
 		mOctTree->UpdateRenderItemTreeLocation(ri);
-	}*/
+	}
 
 	mAllVisibleRitems.clear();
 	alreadyCheckedRitems.clear();

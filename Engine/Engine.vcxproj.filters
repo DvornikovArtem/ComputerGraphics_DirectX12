@@ -15,9 +15,6 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Include\Engine\Debug\DebugRenderSysImpl.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="Include\Engine\Math\GeometryGenerator.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -390,6 +387,9 @@
     <ClInclude Include="Include\Engine\Render\Descriptors.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Include\Engine\Debug\DebugRenderSysImpl.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="Include\Engine\Math\SimpleMath.inl">
@@ -431,9 +431,6 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="src\Core\GameTimer.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="src\Debug\DebugRenderSysImpl.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="src\Math\GeometryGenerator.cpp">
@@ -494,6 +491,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="src\Terrain\TerrainImporter.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Debug\DebugRenderSysImpl.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
