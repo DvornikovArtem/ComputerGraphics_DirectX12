@@ -667,11 +667,13 @@ void RenderingSystem::BuildTerrain()
 	//terrainRendererDesc.pathToDiffuseMap = SOLUTION_DIR L"assets/textures/terrain/mountains_png_8bit/mountains_DiffuseMap.png";
 	//terrainRendererDesc.pathToHeightMap = SOLUTION_DIR L"assets/textures/terrain/mountains_png_8bit/mountains_HeightMap.png";
 	//terrainRendererDesc.pathToNormalMap = SOLUTION_DIR L"assets/textures/terrain/mountains_png_8bit/mountains_NormalMap.png";
-	terrainRendererDesc.pathToDiffuseMap = SOLUTION_DIR L"assets/textures/terrain/rugged_terrain_png_8bit/ruggedTerrain_DiffuseMap.png";
-	terrainRendererDesc.pathToHeightMap = SOLUTION_DIR L"assets/textures/terrain/rugged_terrain_png_8bit/ruggedTerrain_HeightMap.png";
+	//terrainRendererDesc.pathToDiffuseMap = SOLUTION_DIR L"assets/textures/terrain/rugged_terrain_png_8bit/ruggedTerrain_DiffuseMap.png";
+	//terrainRendererDesc.pathToHeightMap = SOLUTION_DIR L"assets/textures/terrain/rugged_terrain_png_8bit/ruggedTerrain_HeightMap.png";
+	terrainRendererDesc.pathToDiffuseMap = SOLUTION_DIR L"assets/textures/terrain/mountain_8K_png_8bit/mountain_8K_DiffuseMap.png";
+	terrainRendererDesc.pathToHeightMap = SOLUTION_DIR L"assets/textures/terrain/mountain_8K_png_8bit/mountain_8K_HeightMap.png";
 	terrainRendererDesc.pathToNormalMap;
 	terrainRendererDesc.quadTreeLevels = 4;
-	terrainRendererDesc.heightMapScale = 1500.0f;
+	terrainRendererDesc.heightMapScale = 3500.0f;
 	terrainRendererDesc.enableWireFrame = false;
 
 	terrainRenderer = new TerrainRenderer();

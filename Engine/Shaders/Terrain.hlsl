@@ -189,7 +189,7 @@ DS_VS_OUTPUT_GS_INPUT DS(HS_CONSTANT_DATA_OUTPUT input, float3 BarycentricCoordi
     float fDisplacement = gHeightMap.SampleLevel(gsamAnisotropicClamp, Out.TexC.xy, 0).r;
     
     // translate the position
-    vWorldPos += float3(0, 1, 0) * fDisplacement * 1500;
+    vWorldPos += float3(0, 1, 0) * fDisplacement * 3500;
     Out.PosW = vWorldPos;
     return Out;
 }
