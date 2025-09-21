@@ -101,7 +101,7 @@ public:
     void Draw(gfw::DebugRenderSysImpl* debugDrawer)
     {
         //for (auto bbox : GetAllNodesAtLevel(this->numDivisions - 1)) if (bbox->OverlappedLightObjects.size() > 0) debugDrawer->DrawBoundingBox(bbox->bounds);
-        for (auto bbox : GetAllNodesAtLevel(this->numDivisions - 1)) debugDrawer->DrawBoundingBox(bbox->bounds, Color(0.f, 0.f, 1.f, 1.f));
+        for (auto bbox : GetAllNodesAtLevel(static_cast<int>(this->numDivisions - 1))) debugDrawer->DrawBoundingBox(bbox->bounds, Color(0.f, 0.f, 1.f, 1.f));
         //for (auto bbox : GetAllNodesAtLevel(0)) debugDrawer->DrawBoundingBox(bbox->bounds, Color(0.f, 0.f, 1.f, 1.f));
     }
 

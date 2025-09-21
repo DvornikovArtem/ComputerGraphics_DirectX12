@@ -122,7 +122,7 @@ void RenderingSystem::FinishInitialize()
 {
 	CreateRtvAndDsvDescriptorHeaps();
 
-	mGbuffer->Channel0SRVHeapIndex = TexDescsLength + MPRTextures.size() + MPRTerrainTextures.size() + 1;
+	mGbuffer->Channel0SRVHeapIndex = static_cast<int>(TexDescsLength + MPRTextures.size() + MPRTerrainTextures.size() + 1);
 
 	//copy GBuffer SRVs into main SRVHeap
 	md3dDevice->CopyDescriptorsSimple(mGbuffer->NumBuffers, GetCpuSrv(mGbuffer->Channel0SRVHeapIndex),
@@ -466,7 +466,7 @@ void RenderingSystem::BuildRenderItems(std::unordered_map<std::string, DrawableO
 		t->Geo->DrawArgs["LOD0"].Bounds.Transform(t->bounds, XMLoadFloat4x4(&t->World));
 
 		t->currentLOD = 0;
-		t->numLODs = t->Geo->DrawArgs.size() - 1;
+		t->numLODs = static_cast<UINT>(t->Geo->DrawArgs.size() - 1);
 
 		t->renderLayer = i->renderLayer;
 		t->drawableObject = i;
@@ -526,7 +526,7 @@ void RenderingSystem::BuildRenderItems(std::unordered_map<std::string, DrawableO
 			ri->bounds = t.bounds;
 
 			ri->currentLOD = 0;
-			ri->numLODs = ri->Geo->DrawArgs.size() - 1;
+			ri->numLODs = static_cast<UINT>(ri->Geo->DrawArgs.size() - 1);
 
 			ri->renderLayer = terrainTile->renderLayer;
 			ri->drawableObject = terrainTile;
@@ -868,7 +868,7 @@ void RenderingSystem::CreateRtvAndDsvDescriptorHeaps()
 
 
 	D3D12_DESCRIPTOR_HEAP_DESC dsvHeapDesc;
-	dsvHeapDesc.NumDescriptors = 1 + mAllLights.size();
+	dsvHeapDesc.NumDescriptors = static_cast<UINT>(1 + mAllLights.size());
 	dsvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
 	dsvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
 	dsvHeapDesc.NodeMask = 0;
@@ -1191,7 +1191,7 @@ void RenderingSystem::UpdateLightItems(std::vector<LightObject*>& mAllLightObjec
 void RenderingSystem::UpdateLightCBs(const GameTimer& gt)
 {
 	auto currObjectCB = mCurrFrameResource->LightCB.get();
-	float lightAngle;
+	//float lightAngle;
 
 	XMVECTOR lightDir;
 	XMVECTOR lightPos;
@@ -2155,7 +2155,7 @@ void RenderingSystem::UpdateMaterialCBs(const GameTimer& gt)
 void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 {
 
-	TexDescsLength = TexDescs.size();
+	TexDescsLength = static_cast<UINT>(TexDescs.size());
 
 	ThrowIfFailed(mCommandList->Reset(mDirectCmdListAlloc.Get(), nullptr));
 
@@ -2194,7 +2194,7 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 	for (int i = 0; i < MPRTextures.size(); i++)
 	{
 		auto t = MPRTextures[i];
-		t->srvHeapIndex = TexDescs.size() + i + 1;
+		t->srvHeapIndex = static_cast<int>(TexDescs.size() + i + 1);
 
 		mTextures[t->Name] = t;
 	}
@@ -2202,7 +2202,7 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 	for (int i = 0; i < MPRTerrainTextures.size(); i++)
 	{
 		auto t = new Texture;
-		t->srvHeapIndex = TexDescs.size() + MPRTextures.size() + i + 1;
+		t->srvHeapIndex = static_cast<int>(TexDescs.size() + MPRTextures.size() + i + 1);
 		t->Name = MPRTerrainTextures[i].Name;
 		t->Filename = MPRTerrainTextures[i].Path;
 
@@ -2223,7 +2223,7 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 	// Create the SRV heap.
 	//
 	D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
-	srvHeapDesc.NumDescriptors = TexDescs.size() + MPRTextures.size() + MPRTerrainTextures.size() + 1 + mAllLights.size() + mGbuffer->NumBuffers;
+	srvHeapDesc.NumDescriptors = static_cast<UINT>(TexDescs.size() + MPRTextures.size() + MPRTerrainTextures.size() + 1 + mAllLights.size() + mGbuffer->NumBuffers);
 	srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 	srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	ThrowIfFailed(md3dDevice->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&mSrvDescriptorHeap)));
@@ -2538,7 +2538,7 @@ std::unordered_set<RenderItem*> alreadyCheckedRitems;
 
 void RenderingSystem::CollectVisibleRenderItems()
 {
-	std::vector<OctTreeNode*> leaves = mOctTree->GetAllNodesAtLevel(mOctTree->getNumDivisions() - 1);
+	std::vector<OctTreeNode*> leaves = mOctTree->GetAllNodesAtLevel(static_cast<int>(mOctTree->getNumDivisions() - 1));
 
 
 	for (auto& leaf : leaves) {
@@ -2565,7 +2565,7 @@ void RenderingSystem::CollectVisibleRenderItems()
 
 void RenderingSystem::CollectVisibleLightItems()
 {
-	std::vector<OctTreeNode*> leaves = mOctTree->GetAllNodesAtLevel(mOctTree->getNumDivisions() - 1);
+	std::vector<OctTreeNode*> leaves = mOctTree->GetAllNodesAtLevel(static_cast<int>(mOctTree->getNumDivisions() - 1));
 
 	for (auto& leaf : leaves) {
 		if (ViewFrustum.Contains(leaf->bounds) != DirectX::ContainmentType::DISJOINT) {

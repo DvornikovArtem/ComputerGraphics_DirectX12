@@ -67,7 +67,7 @@ public:
     XMFLOAT3 getEmitterPosition() const { return mEmitterPosition; }
     UINT getMaxParticles() const { return mMaxParticles; }
     UINT getNumParticlesToEmit() const { return mNumParticlesToEmit; }
-    
+
     void setEmissiveTex(ComPtr<ID3D12Resource> emissiveTex, ComPtr<ID3D12Resource> normalTex);
 
 private:
@@ -122,5 +122,5 @@ private:
 
 public:
     XMFLOAT3 CameraPos;
-    XMFLOAT3 CameraDir;
+    XMFLOAT3 CameraDir{};
 };
