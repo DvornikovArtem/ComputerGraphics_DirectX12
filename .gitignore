@@ -434,3 +434,6 @@ FodyWeavers.xsd
 !Application/x64/Debug/
 !Application/x64/Debug/*.dll
 # --- end keep block ---
+
+# --- Terrain: ignore per-terrain Tiles folders ---
+/Application/assets/textures/terrain/*/Tiles/

@@ -486,6 +486,7 @@ void RenderingSystem::BuildRenderItems(std::unordered_map<std::string, DrawableO
 
 			//if (n.parent != nullptr) return;
 
+			// if (n.tile.lod != 4) return;
 
 			const TerrainTile& t = n.tile;
 
@@ -663,14 +664,15 @@ void RenderingSystem::BuildTerrain()
 {
 	TerrainRendererDesc terrainRendererDesc;
 	terrainRendererDesc.terrainName = L"Mountains";
-	terrainRendererDesc.pathToDiffuseMap = SOLUTION_DIR L"assets/textures/terrain/mountains_png_8bit/mountains_DiffuseMap.png";
-	terrainRendererDesc.pathToHeightMap = SOLUTION_DIR L"assets/textures/terrain/mountains_png_8bit/mountains_HeightMap.png";
-	terrainRendererDesc.pathToNormalMap = SOLUTION_DIR L"assets/textures/terrain/mountains_png_8bit/mountains_NormalMap.png";
-	terrainRendererDesc.quadTreeLevels = 3;
-	//terrainRendererDesc.minHeight = 0.0f;
-	//terrainRendererDesc.maxHeight = 500.0f;
-	terrainRendererDesc.heightMapScale = 150.0f;
-	terrainRendererDesc.enableWireFrame = true;
+	//terrainRendererDesc.pathToDiffuseMap = SOLUTION_DIR L"assets/textures/terrain/mountains_png_8bit/mountains_DiffuseMap.png";
+	//terrainRendererDesc.pathToHeightMap = SOLUTION_DIR L"assets/textures/terrain/mountains_png_8bit/mountains_HeightMap.png";
+	//terrainRendererDesc.pathToNormalMap = SOLUTION_DIR L"assets/textures/terrain/mountains_png_8bit/mountains_NormalMap.png";
+	terrainRendererDesc.pathToDiffuseMap = SOLUTION_DIR L"assets/textures/terrain/rugged_terrain_png_8bit/ruggedTerrain_DiffuseMap.png";
+	terrainRendererDesc.pathToHeightMap = SOLUTION_DIR L"assets/textures/terrain/rugged_terrain_png_8bit/ruggedTerrain_HeightMap.png";
+	terrainRendererDesc.pathToNormalMap;
+	terrainRendererDesc.quadTreeLevels = 4;
+	terrainRendererDesc.heightMapScale = 1500.0f;
+	terrainRendererDesc.enableWireFrame = false;
 
 	terrainRenderer = new TerrainRenderer();
 	terrainRenderer->Initialize(terrainRendererDesc);
@@ -679,9 +681,17 @@ void RenderingSystem::BuildTerrain()
 	if (mGeometries.find("TerrainPatch") == mGeometries.end())
 	{
 		GeometryGenerator geoGen;
-		auto mesh = geoGen.CreateGrid(1.0f, 1.0f, terrainRenderer->Meta().baseTilePixels, terrainRenderer->Meta().baseTilePixels);
+
+		const UINT kMaxVertsPerSide = 256;
+		const UINT vertsPerSide = (UINT)std::min<UINT>(terrainRenderer->Meta().baseTilePixels, kMaxVertsPerSide);
+
+		auto mesh = geoGen.CreateGrid(1.0f, 1.0f, vertsPerSide, vertsPerSide);
+
+		//auto mesh = geoGen.CreateGrid(1.0f, 1.0f, terrainRenderer->Meta().baseTilePixels, terrainRenderer->Meta().baseTilePixels);
 
 		//auto mesh = geoGen.CreatePlane(1.0f, 1.0f, 2.0f, 1.0f);
+
+
 
 		std::vector<Vertex> vertices(mesh.Vertices.size());
 		for (size_t i = 0; i < mesh.Vertices.size(); ++i)
