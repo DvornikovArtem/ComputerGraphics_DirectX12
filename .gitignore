@@ -400,6 +400,11 @@ FodyWeavers.xsd
 # JetBrains Rider
 *.sln.iml
 
+[Dd]ebug*/
+[Rr]elease*/
+*.exe
+*.idb
+
 # --- Keep specific debug/libs and assets (do NOT ignore these) ---
 # Note: If parent folders are ignored elsewhere, we need to unignore each parent too.
 # Engine/Extern/assimp/lib (entire folder)
@@ -423,6 +428,10 @@ FodyWeavers.xsd
 !Engine/src/Debug/
 !Engine/src/Debug/**
 
+# Engine/Shaders/Debug
+!Engine/Shaders/
+!Engine/Shaders/Debug.hlsl
+
 # Keep a specific model file
 !Application/
 !Application/assets/
@@ -433,7 +442,11 @@ FodyWeavers.xsd
 !Application/x64/
 !Application/x64/Debug/
 !Application/x64/Debug/*.dll
-# --- end keep block ---
 
 # --- Terrain: ignore per-terrain Tiles folders ---
 /Application/assets/textures/terrain/*/Tiles/
+
+# Application/x64/Debug/<trash_files>
+Application/x64/
+Application/x64/Debug/
+Application/x64/Debug/*.dll
