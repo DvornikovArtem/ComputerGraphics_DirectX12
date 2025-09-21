@@ -364,7 +364,7 @@ void RenderingSystem::Render()
 	mCommandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
 
 	// Swap the back and front buffers
-	ThrowIfFailed(mSwapChain->Present(0, 0));
+	ThrowIfFailed(mSwapChain->Present(1, 0));
 	mCurrBackBuffer = (mCurrBackBuffer + 1) % SwapChainBufferCount;
 
 
@@ -482,20 +482,15 @@ void RenderingSystem::BuildRenderItems(std::unordered_map<std::string, DrawableO
 
 	terrainRenderer->Quad().ForEachNode([&](TerrainNode& n)
 		{
-			//if (!n.IsLeaf()) return;
-
-			//if (n.parent != nullptr) return;
-
-			// if (n.tile.lod != 4) return;
-
 			const TerrainTile& t = n.tile;
 
-			std::string matNm = "tile_level" + std::to_string(t.lod) + "_" + std::to_string(t.ix) + "_" + std::to_string(t.iy);
+			std::string materialName = "tile_level" + std::to_string(t.lod) + "_" + std::to_string(t.ix) + "_" + std::to_string(t.iy);
+			std::string geoName = "TerrainTile";
 
 			DrawableObject* terrainTile = new DrawableObject();
-			terrainTile->Name = matNm;
-			terrainTile->GeometryName = "TerrainPatch";
-			terrainTile->MaterialName = matNm;
+			terrainTile->Name = materialName;
+			terrainTile->GeometryName = geoName;
+			terrainTile->MaterialName = materialName;
 			terrainTile->renderLayer = RenderLayer::Landscape;
 			terrainTile->WorldLocation = XMFLOAT3(0.f, 0.f, 0.f);
 			terrainTile->Scale = XMFLOAT3(1.0f, 1.0f, 1.0f);
@@ -513,52 +508,47 @@ void RenderingSystem::BuildRenderItems(std::unordered_map<std::string, DrawableO
 
 			auto* ri = new RenderItem();
 			ri->ObjCBIndex = k;
-			ri->Mat = mMaterials[matNm];
-			ri->Geo = mGeometries["TerrainPatch"];
+			ri->Mat = mMaterials[materialName];
+			ri->Geo = mGeometries[geoName];
+			ri->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+			ri->IndexCount = ri->Geo->DrawArgs["LOD0"].IndexCount;
+			ri->StartIndexLocation = ri->Geo->DrawArgs["LOD0"].StartIndexLocation;
+			ri->BaseVertexLocation = ri->Geo->DrawArgs["LOD0"].BaseVertexLocation;
 
-			XMMATRIX W = XMMatrixScaling(sx, 1.0f, sz) * XMMatrixTranslation(cx, 0.0f, cz);
-			XMStoreFloat4x4(&ri->World, W);
-			XMStoreFloat4x4(&ri->TexTransform, XMMatrixIdentity());
-
-			XMMATRIX texFlipV = XMMatrixScaling(1.0f, -1.0f, 1.0f) * XMMatrixTranslation(0.0f, 1.0f, 0.0f);
-			XMStoreFloat4x4(&ri->TexTransform, texFlipV);
+			XMStoreFloat4x4(&ri->World, XMMatrixScaling(sx, 1.0f, sz) * XMMatrixTranslation(cx, 0.0f, cz));
+			XMStoreFloat4x4(&ri->TexTransform, XMMatrixScaling(1.0f, -1.0f, 1.0f) * XMMatrixTranslation(0.0f, 1.0f, 0.0f));
 
 			float u0 = t.worldRect.x0 / terrainRenderer->Meta().worldSizeX;
 			float v0 = t.worldRect.z0 / terrainRenderer->Meta().worldSizeZ;
 			float u1 = (t.worldRect.x0 + t.worldRect.sizeX) / terrainRenderer->Meta().worldSizeX;
 			float v1 = (t.worldRect.z0 + t.worldRect.sizeZ) / terrainRenderer->Meta().worldSizeZ;
 
-			//XMStoreFloat4x4(&ri->TexTransform, XMMatrixScaling(u1 - u0, v1 - v0, 1.0f) * XMMatrixTranslation(u0, v0, 0.0f));
-
 			ri->bounds = t.bounds;
 
-
 			ri->currentLOD = 0;
-			ri->numLODs = 5 - 1; // LOD0..LOD4
-			ri->renderLayer = RenderLayer::Landscape;
+			ri->numLODs = ri->Geo->DrawArgs.size() - 1;
 
-			ri->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
-			ri->IndexCount = ri->Geo->DrawArgs["LOD0"].IndexCount;
-			ri->StartIndexLocation = ri->Geo->DrawArgs["LOD0"].StartIndexLocation;
-			ri->BaseVertexLocation = ri->Geo->DrawArgs["LOD0"].BaseVertexLocation;
-
+			ri->renderLayer = terrainTile->renderLayer;
 			ri->drawableObject = terrainTile;
-			terrainTile->renderItem = ri;
-			n.renderItem = ri;
 
 			mRitemLayer[(int)terrainTile->renderLayer].push_back(ri);
 			mAllRitems.push_back(ri);
+
+			terrainTile->renderItem = ri;
+			n.terrainTileItem = ri;
 			
 			terrainDrawableObjects.push_back(terrainTile);
 
 			k++;
 		});
 	
+	
 
 
 	//generate OctTree
 	OctTreeDesc octTreeDesc;
 	octTreeDesc.ritems = &mAllRitems;
+	octTreeDesc.titemLOD0 = terrainRenderer->Quad().Find(0, 0, 0)->terrainTileItem;
 	octTreeDesc.litems = &mAllLights;
 	octTreeDesc.numDivisions = 4;
 	octTreeDesc.autoFitBox = true;
@@ -671,82 +661,85 @@ void RenderingSystem::BuildTerrain()
 	terrainRenderer->Initialize(terrainRendererDesc);
 
 
-	if (mGeometries.find("TerrainPatch") == mGeometries.end())
+	// Create geometry for a single quadtree tile as a grid with 6 LODs 
+	const std::vector<std::pair<std::string, UINT>> lodMeshes = {
+		{"LOD0", 256},
+		{"LOD1", 128},
+		{"LOD2", 64},
+		{"LOD3", 32},
+		{"LOD4", 16},
+		{"LOD5", 8},
+	};
+
+	GeometryGenerator geoGen;
+
+	auto geo = new MeshGeometry;
+	geo->Name = "TerrainTile";
+
+	std::vector<Vertex> vertices;
+	std::vector<std::int32_t> indices;
+
+
+	for (const auto& pair : lodMeshes)
 	{
-		GeometryGenerator geoGen;
+		const std::string& lodName = pair.first;
+		const UINT vertsPerSide = pair.second;
 
-		//const UINT kMaxVertsPerSide = 256;
-		//const UINT vertsPerSide = (UINT)std::min<UINT>(terrainRenderer->Meta().baseTilePixels, kMaxVertsPerSide);
+		auto mesh = geoGen.CreateGrid(1.0f, 1.0f, vertsPerSide, vertsPerSide);
 
-		//auto mesh = geoGen.CreateGrid(1.0f, 1.0f, vertsPerSide, vertsPerSide);
-
-		////auto mesh = geoGen.CreateGrid(1.0f, 1.0f, terrainRenderer->Meta().baseTilePixels, terrainRenderer->Meta().baseTilePixels);
-
-		////auto mesh = geoGen.CreatePlane(1.0f, 1.0f, 2.0f, 1.0f);
+		UINT baseVertexLocation = (UINT)vertices.size();
+		UINT startIndexLocation = (UINT)indices.size();
 
 
-		const UINT kMaxVertsPerSide = 256;
-
-		GeometryGenerator::MeshData mesh = geoGen.CreateGrid(1.0f, 1.0f, kMaxVertsPerSide, kMaxVertsPerSide);
-
-
-		std::vector<Vertex> vertices(mesh.Vertices.size());
-		for (size_t i = 0; i < mesh.Vertices.size(); ++i)
+		vertices.reserve(vertices.size() + mesh.Vertices.size());
+		for (const auto& mv : mesh.Vertices)
 		{
-			vertices[i].Pos = mesh.Vertices[i].Position;
-			vertices[i].Normal = XMFLOAT3(0, 1, 0);
-			vertices[i].TexC = mesh.Vertices[i].TexC;
-			vertices[i].Tangent = XMFLOAT3(1, 0, 0);
+			Vertex v;
+			v.Pos = mv.Position;
+			v.Normal = XMFLOAT3(0, 1, 0);
+			v.TexC = mv.TexC;
+			v.Tangent = XMFLOAT3(1, 0, 0);
+			vertices.push_back(v);
 		}
 
-		//std::vector<std::uint16_t> indices;
-		//indices.insert(indices.end(), mesh.GetIndices16().begin(), mesh.GetIndices16().end());
+		indices.reserve(indices.size() + mesh.Indices32.size());
+		for (uint32_t idx : mesh.Indices32) indices.push_back(idx + baseVertexLocation);
 
-		std::vector<uint32_t> indices = mesh.Indices32;
 
-		const UINT vbByteSize = (UINT)vertices.size() * sizeof(Vertex);
-		const UINT ibByteSize = (UINT)indices.size() * sizeof(std::uint32_t);
-
-		auto geo = new MeshGeometry;
-		geo->Name = "TerrainPatch";
-
-		ThrowIfFailed(D3DCreateBlob(vbByteSize, &geo->VertexBufferCPU));
-		CopyMemory(geo->VertexBufferCPU->GetBufferPointer(), vertices.data(), vbByteSize);
-
-		ThrowIfFailed(D3DCreateBlob(ibByteSize, &geo->IndexBufferCPU));
-		CopyMemory(geo->IndexBufferCPU->GetBufferPointer(), indices.data(), ibByteSize);
-
-		geo->VertexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(),
-			mCommandList.Get(), vertices.data(), vbByteSize, geo->VertexBufferUploader);
-
-		geo->IndexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(),
-			mCommandList.Get(), indices.data(), ibByteSize, geo->IndexBufferUploader);
-
-		geo->VertexByteStride = sizeof(Vertex);
-		geo->VertexBufferByteSize = vbByteSize;
-		geo->IndexFormat = DXGI_FORMAT_R32_UINT;
-		geo->IndexBufferByteSize = ibByteSize;
-
-		// Submesh
 		SubmeshGeometry sub;
-		sub.IndexCount = (UINT)indices.size();
-		sub.StartIndexLocation = 0;
+		sub.IndexCount = (UINT)mesh.Indices32.size();
+		sub.StartIndexLocation = startIndexLocation;
 		sub.BaseVertexLocation = 0;
 
-		// Bounds
 		std::vector<XMFLOAT3> positions; positions.reserve(vertices.size());
-		for (auto& v : vertices) positions.push_back(v.Pos);
+		for (auto& v : mesh.Vertices) positions.push_back(v.Position);
 		BoundingBox::CreateFromPoints(sub.Bounds, (UINT)positions.size(), positions.data(), sizeof(XMFLOAT3));
 
-		// LOD0..LOD4
-		geo->DrawArgs["LOD0"] = sub;
-		geo->DrawArgs["LOD1"] = sub;
-		geo->DrawArgs["LOD2"] = sub;
-		geo->DrawArgs["LOD3"] = sub;
-		geo->DrawArgs["LOD4"] = sub;
-
-		mGeometries[geo->Name] = geo;
+		geo->DrawArgs[lodName] = sub;
 	}
+
+	const UINT vbByteSize = (UINT)vertices.size() * sizeof(Vertex);
+	const UINT ibByteSize = (UINT)indices.size() * sizeof(std::uint32_t);
+
+	ThrowIfFailed(D3DCreateBlob(vbByteSize, &geo->VertexBufferCPU));
+	CopyMemory(geo->VertexBufferCPU->GetBufferPointer(), vertices.data(), vbByteSize);
+
+	ThrowIfFailed(D3DCreateBlob(ibByteSize, &geo->IndexBufferCPU));
+	CopyMemory(geo->IndexBufferCPU->GetBufferPointer(), indices.data(), ibByteSize);
+
+	geo->VertexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(),
+		mCommandList.Get(), vertices.data(), vbByteSize, geo->VertexBufferUploader);
+
+	geo->IndexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(),
+		mCommandList.Get(), indices.data(), ibByteSize, geo->IndexBufferUploader);
+
+	geo->VertexByteStride = sizeof(Vertex);
+	geo->VertexBufferByteSize = vbByteSize;
+	geo->IndexFormat = DXGI_FORMAT_R32_UINT;
+	geo->IndexBufferByteSize = ibByteSize;
+
+	mGeometries[geo->Name] = geo;
+
 
 
 	terrainRenderer->ForEachTile([&](const TerrainTile& t)
@@ -1790,7 +1783,7 @@ void RenderingSystem::BuildFrameResources()
 	for (int i = 0; i < gNumFrameResources; ++i)
 	{
 		mFrameResources.push_back(std::make_unique<FrameResource>(md3dDevice.Get(),
-			2, (UINT)mAllRitems.size(), (UINT)mMaterials.size(), (UINT)mAllLights.size(), (UINT)mAllParticleSystems.size()));
+			2, (UINT)(mAllRitems.size()), (UINT)mMaterials.size(), (UINT)mAllLights.size(), (UINT)mAllParticleSystems.size()));
 	}
 }
 
@@ -1869,53 +1862,6 @@ void RenderingSystem::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const 
 }
 
 
-void RenderingSystem::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::unordered_set<RenderItem*>& ritems, std::string PSOName)
-{
-	UINT objCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(ObjectConstants));
-	UINT matCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(MaterialConstants));
-
-	auto objectCB = mCurrFrameResource->ObjectCB->Resource();
-	auto matCB = mCurrFrameResource->MaterialCB->Resource();
-
-	auto passCB = mCurrFrameResource->PassCB->Resource();
-	mCommandList->SetGraphicsRootConstantBufferView(4, passCB->GetGPUVirtualAddress());
-
-	// For each render item...
-	for (auto* ri : ritems)
-	{
-		if (!ri->IsInViewFrustum) continue;
-		cmdList->IASetVertexBuffers(0, 1, &ri->Geo->VertexBufferView());
-		cmdList->IASetIndexBuffer(&ri->Geo->IndexBufferView());
-		cmdList->IASetPrimitiveTopology(ri->Mat->UseTesselation ? D3D_PRIMITIVE_TOPOLOGY_3_CONTROL_POINT_PATCHLIST : D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-		cmdList->SetPipelineState(ri->Mat->PSOs[PSOName].Get());
-
-		ID3D12DescriptorHeap* descriptorHeaps[] = { mSrvDescriptorHeap.Get() };
-		cmdList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
-
-		D3D12_GPU_VIRTUAL_ADDRESS objCBAddress = objectCB->GetGPUVirtualAddress() + ri->ObjCBIndex * objCBByteSize;
-		D3D12_GPU_VIRTUAL_ADDRESS matCBAddress = matCB->GetGPUVirtualAddress() + ri->Mat->MatCBIndex * matCBByteSize;
-
-		cmdList->SetGraphicsRootDescriptorTable(0, GetGpuSrv(ri->Mat->DiffuseSrvHeapIndex));
-		cmdList->SetGraphicsRootDescriptorTable(1, GetGpuSrv(ri->Mat->NormalSrvHeapIndex));
-		cmdList->SetGraphicsRootDescriptorTable(2, GetGpuSrv(ri->Mat->HeightSrvHeapIndex));
-
-		cmdList->SetGraphicsRootConstantBufferView(3, objCBAddress);
-		//cmdList->SetGraphicsRootConstantBufferView(4, passCBAddress);
-		cmdList->SetGraphicsRootConstantBufferView(5, matCBAddress);
-
-
-
-		std::string subMeshName = "LOD" + std::to_string(ri->currentLOD);
-
-		UINT IndexCount = ri->Geo->DrawArgs[subMeshName].IndexCount;
-		UINT StartIndexLocation = ri->Geo->DrawArgs[subMeshName].StartIndexLocation;
-		UINT BaseVertexLocation = ri->Geo->DrawArgs[subMeshName].BaseVertexLocation;
-
-		cmdList->DrawIndexedInstanced(IndexCount, 1, StartIndexLocation, BaseVertexLocation, 0);
-
-		ri->IsInViewFrustum = false;
-	}
-}
 
 void RenderingSystem::GBufferGeometryPass()
 {
@@ -2597,14 +2543,22 @@ void RenderingSystem::CollectVisibleRenderItems()
 
 	for (auto& leaf : leaves) {
 		if (ViewFrustum.Contains(leaf->bounds) != DirectX::ContainmentType::DISJOINT) {
-			for (RenderItem* ri : leaf->OverlappedRitems) {
-				if (ri->renderLayer == RenderLayer::Landscape && mVisibleTerrainRitems.find(ri) == mVisibleTerrainRitems.end()) continue;
-				
+			for (RenderItem* ri : leaf->OverlappedRitems) {				
 				if (alreadyCheckedRitems.find(ri) != alreadyCheckedRitems.end()) continue;
 				alreadyCheckedRitems.insert(ri);
 				ri->IsInViewFrustum = ViewFrustum.Intersects(ri->bounds);
 				if (ri->IsInViewFrustum) mAllVisibleRitems.push_back(ri);
 			}
+
+			// Might be useful in the future
+			/*for (TerrainTileItem* ti : leaf->OverlappedTitems) {
+				if (!ti->isRendered) continue;
+				if (alreadyCheckedRitems.find(ti) != alreadyCheckedRitems.end()) continue;
+				alreadyCheckedRitems.insert(ti);
+
+				ti->IsInViewFrustum = ViewFrustum.Intersects(ti->bounds);
+				if (ti->IsInViewFrustum) mVisibleTerrainRitems.push_back(ti);
+			}*/
 		}
 	}
 }
@@ -2660,23 +2614,28 @@ void RenderingSystem::UpdateRenderItems(std::vector<DrawableObject*>& mAllObject
 		mOctTree->UpdateRenderItemTreeLocation(ri);
 	}
 
-	mVisibleTerrainRitems.clear();
-	if (terrainRenderer) terrainRenderer->SelectLOD(mCamera, mVisibleTerrainRitems, 1000.f);
 
-	/*for (RenderItem* ri : mRitemLayer[(int)RenderLayer::Landscape])
+	mChosenTerrainRitems.clear();
+	mVisibleTerrainRitems.clear();
+	if (terrainRenderer) terrainRenderer->SelectLOD(mCamera, mChosenTerrainRitems, 1000.f);
+
+	// Iterate over all OctTree leaves containing the current terrain tile,
+	// and if at least one leaf is inside the frustum —> render this tile
+	for (auto* terrainTile : mChosenTerrainRitems)
 	{
-		for (auto* leaf : ri->occupiedLeaves)
+		for (auto leaf : terrainTile->occupiedLeaves)
 		{
-			auto& vec = leaf->OverlappedRitems;
-			vec.erase(std::remove(vec.begin(), vec.end(), ri), vec.end());
+			if (ViewFrustum.Contains(leaf->bounds) != DirectX::ContainmentType::DISJOINT)
+			{
+				terrainTile->IsInViewFrustum = true;
+				mVisibleTerrainRitems.push_back(terrainTile);
+				break;
+			}
 		}
-		ri->occupiedLeaves.clear();
+		
 	}
 
-	for (RenderItem* ri : mVisibleTerrainRitems)
-	{
-		mOctTree->UpdateRenderItemTreeLocation(ri);
-	}*/
+
 
 	mAllVisibleRitems.clear();
 	alreadyCheckedRitems.clear();

@@ -93,6 +93,9 @@ public:
 
         for (auto& i : terrainDrawableObjects)
             delete i;
+
+        for (auto& i : mAllTerrainRitems)
+            delete i;
     }
 
 
@@ -138,7 +141,6 @@ public:
     void BuildTerrain();
 
     void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems, std::string PSOName);
-    void RenderingSystem::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::unordered_set<RenderItem*>& ritems, std::string PSOName);
 
     void GBufferGeometryPass();
     void GBufferLightPass();
@@ -288,7 +290,9 @@ protected:
     std::vector <DrawableObject*> terrainDrawableObjects;
 
     std::vector<RenderItem*> mAllTerrainRitems;
-    std::unordered_set<RenderItem*> mVisibleTerrainRitems;
+
+    std::vector<RenderItem*> mChosenTerrainRitems;
+    std::vector<RenderItem*> mVisibleTerrainRitems;
 };
 
 
