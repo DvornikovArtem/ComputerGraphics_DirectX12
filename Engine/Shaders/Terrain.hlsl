@@ -106,6 +106,22 @@ struct HS_CONSTANT_DATA_OUTPUT
 };
 
 
+float TessFromDist(float3 a, float3 b)
+{
+    float3 mid = 0.5f * (a + b);
+    float dist = distance(mid, gEyePosW);
+
+    // Use the factor already provided from C++, but with a default fallback
+    float maxTess = (gTesselationFactor > 0.0f) ? gTesselationFactor : 12.0f;
+    maxTess = clamp(maxTess, 1.0f, 64.0f); // [maxtessfactor(64)]
+
+    // Threshold curve: close — high, far — 1
+    const float nearDist = 50.0f; // for oneself
+    const float farDist = 400.0f; // for oneself
+    float t = saturate((dist - nearDist) / (farDist - nearDist));
+    return lerp(maxTess, 1.0f, t);
+}
+
 HS_CONSTANT_DATA_OUTPUT ConstantsHS(InputPatch<DS_VS_OUTPUT_GS_INPUT, 3> Patch, uint PatchID : SV_PrimitiveID)
 {
     HS_CONSTANT_DATA_OUTPUT Out;
@@ -128,13 +144,24 @@ HS_CONSTANT_DATA_OUTPUT ConstantsHS(InputPatch<DS_VS_OUTPUT_GS_INPUT, 3> Patch, 
         return Out; // early exit
     }
     
-// Assign tessellation factors – in this case use a global
-// tessellation factor for all edges and the inside. These are
-// constant for the whole mesh.
+    // Assign tessellation factors – in this case use a global
+    // tessellation factor for all edges and the inside. These are
+    // constant for the whole mesh.
+    
     Out.Edges[0] = 1;
     Out.Edges[1] = 1;
     Out.Edges[2] = 1;
     Out.Inside = 1;
+    
+    /*float3 p0 = Patch[0].PosW;
+    float3 p1 = Patch[1].PosW;
+    float3 p2 = Patch[2].PosW;
+
+    Out.Edges[0] = TessFromDist(p0, p1);
+    Out.Edges[1] = TessFromDist(p1, p2);
+    Out.Edges[2] = TessFromDist(p2, p0);
+    Out.Inside = (Out.Edges[0] + Out.Edges[1] + Out.Edges[2]) / 3.0f;*/
+    
     return Out;
 }
 

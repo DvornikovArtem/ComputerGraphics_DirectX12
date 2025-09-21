@@ -684,15 +684,19 @@ void RenderingSystem::BuildTerrain()
 	{
 		GeometryGenerator geoGen;
 
-		const UINT kMaxVertsPerSide = 256;
-		const UINT vertsPerSide = (UINT)std::min<UINT>(terrainRenderer->Meta().baseTilePixels, kMaxVertsPerSide);
+		//const UINT kMaxVertsPerSide = 256;
+		//const UINT vertsPerSide = (UINT)std::min<UINT>(terrainRenderer->Meta().baseTilePixels, kMaxVertsPerSide);
 
-		auto mesh = geoGen.CreateGrid(1.0f, 1.0f, vertsPerSide, vertsPerSide);
+		//auto mesh = geoGen.CreateGrid(1.0f, 1.0f, vertsPerSide, vertsPerSide);
 
-		//auto mesh = geoGen.CreateGrid(1.0f, 1.0f, terrainRenderer->Meta().baseTilePixels, terrainRenderer->Meta().baseTilePixels);
+		////auto mesh = geoGen.CreateGrid(1.0f, 1.0f, terrainRenderer->Meta().baseTilePixels, terrainRenderer->Meta().baseTilePixels);
 
-		//auto mesh = geoGen.CreatePlane(1.0f, 1.0f, 2.0f, 1.0f);
+		////auto mesh = geoGen.CreatePlane(1.0f, 1.0f, 2.0f, 1.0f);
 
+
+		const UINT kMaxVertsPerSide = 1024;
+
+		GeometryGenerator::MeshData mesh = geoGen.CreateGrid(1.0f, 1.0f, kMaxVertsPerSide, kMaxVertsPerSide);
 
 
 		std::vector<Vertex> vertices(mesh.Vertices.size());
@@ -704,11 +708,13 @@ void RenderingSystem::BuildTerrain()
 			vertices[i].Tangent = XMFLOAT3(1, 0, 0);
 		}
 
-		std::vector<std::uint16_t> indices;
-		indices.insert(indices.end(), mesh.GetIndices16().begin(), mesh.GetIndices16().end());
+		//std::vector<std::uint16_t> indices;
+		//indices.insert(indices.end(), mesh.GetIndices16().begin(), mesh.GetIndices16().end());
+
+		std::vector<uint32_t> indices = mesh.Indices32;
 
 		const UINT vbByteSize = (UINT)vertices.size() * sizeof(Vertex);
-		const UINT ibByteSize = (UINT)indices.size() * sizeof(std::uint16_t);
+		const UINT ibByteSize = (UINT)indices.size() * sizeof(std::uint32_t);
 
 		auto geo = new MeshGeometry;
 		geo->Name = "TerrainPatch";
@@ -727,7 +733,7 @@ void RenderingSystem::BuildTerrain()
 
 		geo->VertexByteStride = sizeof(Vertex);
 		geo->VertexBufferByteSize = vbByteSize;
-		geo->IndexFormat = DXGI_FORMAT_R16_UINT;
+		geo->IndexFormat = DXGI_FORMAT_R32_UINT;
 		geo->IndexBufferByteSize = ibByteSize;
 
 		// Submesh
