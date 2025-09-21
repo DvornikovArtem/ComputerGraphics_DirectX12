@@ -503,7 +503,7 @@ void RenderingSystem::BuildRenderItems(std::unordered_map<std::string, DrawableO
 			terrainTile->Name = matNm;
 			terrainTile->GeometryName = "TerrainPatch";
 			terrainTile->MaterialName = matNm;
-			terrainTile->renderLayer = RenderLayer::Opaque;
+			terrainTile->renderLayer = RenderLayer::Landscape;
 			terrainTile->WorldLocation = XMFLOAT3(0.f, 0.f, 0.f);
 			terrainTile->Scale = XMFLOAT3(1.0f, 1.0f, 1.0f);
 			terrainTile->TexTransform = XMMatrixScaling(1.0f, 1.0f, 1.0f);
@@ -515,8 +515,6 @@ void RenderingSystem::BuildRenderItems(std::unordered_map<std::string, DrawableO
 
 			terrainTile->WorldLocation = XMFLOAT3(cx, 0.0f, cz);
 			terrainTile->Scale = XMFLOAT3(sx, 0.0f, sz);
-
-			terrainTile->isTerrainTile = true;
 
 
 
@@ -544,7 +542,7 @@ void RenderingSystem::BuildRenderItems(std::unordered_map<std::string, DrawableO
 
 			ri->currentLOD = 0;
 			ri->numLODs = 5 - 1; // LOD0..LOD4
-			ri->renderLayer = RenderLayer::Opaque;
+			ri->renderLayer = RenderLayer::Landscape;
 
 			ri->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 			ri->IndexCount = ri->Geo->DrawArgs["LOD0"].IndexCount;
@@ -555,9 +553,9 @@ void RenderingSystem::BuildRenderItems(std::unordered_map<std::string, DrawableO
 			terrainTile->renderItem = ri;
 			n.renderItem = ri;
 
-			mRitemLayer[(int)RenderLayer::Opaque].push_back(ri);
+			mRitemLayer[(int)terrainTile->renderLayer].push_back(ri);
 			mAllRitems.push_back(ri);
-
+			
 			terrainDrawableObjects.push_back(terrainTile);
 
 			k++;
@@ -2637,17 +2635,14 @@ void RenderingSystem::UpdateRenderItems(std::vector<DrawableObject*>& mAllObject
 	std::vector<RenderItem*> visibleTerrainTiles;
 	if (terrainRenderer) terrainRenderer->SelectLOD(mCamera, visibleTerrainTiles, 1000.f);
 
-	for (RenderItem* ri : mAllRitems)
+	for (RenderItem* ri : mRitemLayer[idx(RenderLayer::Landscape)])
 	{
-		if (ri->drawableObject && ri->drawableObject->isTerrainTile)
+		for (auto* leaf : ri->occupiedLeaves)
 		{
-			for (auto* leaf : ri->occupiedLeaves)
-			{
-				auto& vec = leaf->OverlappedRitems;
-				vec.erase(std::remove(vec.begin(), vec.end(), ri), vec.end());
-			}
-			ri->occupiedLeaves.clear();
+			auto& vec = leaf->OverlappedRitems;
+			vec.erase(std::remove(vec.begin(), vec.end(), ri), vec.end());
 		}
+		ri->occupiedLeaves.clear();
 	}
 
 	for (RenderItem* ri : visibleTerrainTiles)
