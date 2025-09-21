@@ -287,11 +287,7 @@ void RenderingSystem::Render()
 	mCommandList->ClearDepthStencilView(DepthStencilView(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
 
 	// Create frame shadow maps
-	//DrawShadowMaps();
-	
-	for (auto& i : mAllLights)
-		mCommandList->ClearDepthStencilView(i->shadowMap->Dsv(),
-			D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
+	DrawShadowMaps();
 
 	// Deferred Passes:
 	
@@ -1209,6 +1205,44 @@ void RenderingSystem::UpdateLightItems(std::vector<LightObject*>& mAllLightObjec
 	alreadyCheckedLitems.clear();
 	CollectVisibleLightItems();
 
+	std::unordered_set<RenderItem*> alreadyCheckedRitemsforLights;
+	for (auto& i : mAllLights)
+	{
+		i->VisibleRitems.clear();
+		alreadyCheckedRitemsforLights.clear();
+		std::vector<OctTreeNode*> leaves = mOctTree->GetAllNodesAtLevel(mOctTree->getNumDivisions() - 1);
+
+		if (i->LightType != LightType::Pointlight)
+		{
+			BoundingFrustum LightFrustum;
+			BoundingFrustum::CreateFromMatrix(LightFrustum, XMLoadFloat4x4(&i->VisibilityProj));
+			LightFrustum.Transform(LightFrustum, XMMatrixInverse(nullptr, XMLoadFloat4x4(&i->VisibilityView)));
+			//mDebugDrawer->DrawFrustrum(XMLoadFloat4x4(&i->VisibilityView), XMLoadFloat4x4(&i->VisibilityProj));
+
+			for (auto& leaf : leaves) {
+				if (LightFrustum.Contains(leaf->bounds) != DirectX::ContainmentType::DISJOINT) {
+					for (RenderItem* ri : leaf->OverlappedRitems) {
+						if (alreadyCheckedRitemsforLights.find(ri) != alreadyCheckedRitemsforLights.end()) continue;
+						alreadyCheckedRitemsforLights.insert(ri);
+						if (LightFrustum.Intersects(ri->bounds)) i->VisibleRitems.push_back(ri);
+					}
+				}
+			}
+		}
+		else
+		{
+			for (auto& leaf : leaves) {
+				if (i->bounds.Contains(leaf->bounds) != DirectX::ContainmentType::DISJOINT) {
+					for (RenderItem* ri : leaf->OverlappedRitems) {
+						if (alreadyCheckedRitemsforLights.find(ri) != alreadyCheckedRitemsforLights.end()) continue;
+						alreadyCheckedRitemsforLights.insert(ri);
+						if (i->bounds.Intersects(ri->bounds)) i->VisibleRitems.push_back(ri);
+					}
+				}
+			}
+		}
+	}
+
 	mAllLightObjectsToUpdate.clear();
 }
 
@@ -1280,6 +1314,11 @@ void RenderingSystem::UpdateLightCBs(const GameTimer& gt)
 					XMStoreFloat4x4(&LightConstants.Proj[i], XMMatrixTranspose(lightProj));
 					XMStoreFloat4x4(&LightConstants.ShadowTransform[i], XMMatrixTranspose(S));
 					XMStoreFloat4(&LightConstants.CascadeDistances, XMVectorSet(SphereRadiuses[0], SphereRadiuses[1], SphereRadiuses[2], SphereRadiuses[3]));
+					if (i == 3)
+					{
+						XMStoreFloat4x4(&e->VisibilityView, lightView);
+						XMStoreFloat4x4(&e->VisibilityProj, lightProj);
+					}
 				}
 			}
 				break;
@@ -1298,6 +1337,8 @@ void RenderingSystem::UpdateLightCBs(const GameTimer& gt)
 				XMStoreFloat4x4(&LightConstants.View[0], XMMatrixTranspose(lightView));
 				XMStoreFloat4x4(&LightConstants.Proj[0], XMMatrixTranspose(lightProj));
 				XMStoreFloat4x4(&LightConstants.ShadowTransform[0], XMMatrixTranspose(S));
+				XMStoreFloat4x4(&e->VisibilityView, lightView);
+				XMStoreFloat4x4(&e->VisibilityProj, lightProj);
 				break;
 
 			case LightType::Pointlight:
@@ -2080,9 +2121,9 @@ void RenderingSystem::DrawShadowMaps()
 		auto objectCB = mCurrFrameResource->ObjectCB->Resource();
 		auto matCB = mCurrFrameResource->MaterialCB->Resource();
 
-		for (size_t j = 0; j < mRitemLayer[(int)RenderLayer::Opaque].size(); ++j)
+		for (size_t j = 0; j < i->VisibleRitems.size(); ++j)
 		{
-			auto& ri = mRitemLayer[(int)RenderLayer::Opaque][j];
+			auto& ri = i->VisibleRitems[j];
 
 			mCommandList->IASetVertexBuffers(0, 1, &ri->Geo->VertexBufferView());
 			mCommandList->IASetIndexBuffer(&ri->Geo->IndexBufferView());
@@ -2551,10 +2592,7 @@ void RenderingSystem::ProcessEmbeddedTexture(const aiTexture* texture, std::stri
 	}
 }
 
-
-
 std::unordered_set<RenderItem*> alreadyCheckedRitems;
-
 void RenderingSystem::CollectVisibleRenderItems()
 {
 	std::vector<OctTreeNode*> leaves = mOctTree->GetAllNodesAtLevel(mOctTree->getNumDivisions() - 1);
