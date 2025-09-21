@@ -692,7 +692,7 @@ void RenderingSystem::BuildTerrain()
 		////auto mesh = geoGen.CreatePlane(1.0f, 1.0f, 2.0f, 1.0f);
 
 
-		const UINT kMaxVertsPerSide = 1024;
+		const UINT kMaxVertsPerSide = 256;
 
 		GeometryGenerator::MeshData mesh = geoGen.CreateGrid(1.0f, 1.0f, kMaxVertsPerSide, kMaxVertsPerSide);
 
@@ -2649,7 +2649,6 @@ void RenderingSystem::UpdateRenderItems(std::vector<DrawableObject*>& mAllObject
 
 	for (RenderItem* ri : visibleTerrainTiles)
 	{
-		OutputDebugStringW(L"\n111111111111111111\n");
 		mOctTree->UpdateRenderItemTreeLocation(ri);
 	}
 
