@@ -279,13 +279,13 @@ void StencilApp::LoadTextures()
         TextureDesc("ShinyStones_HeightMap", L"assets/textures/ShinyStones_HeightMap.dds", TextureDesc::Texture2D, false),
         TextureDesc("SkyCubeMap", L"assets/skyboxes/snowcube1024.dds", TextureDesc::CubeMap, true),
 
-        //TextureDesc("SkyPref", L"../Textures/skyPrefilter.dds", TextureDesc::CubeMap, true),
-        //TextureDesc("SkyBRDF", L"../Textures/skyBrdf.dds", TextureDesc::Texture2D, false),
-        //TextureDesc("SkyIrradiance", L"../Textures/skyIrradiance.dds", TextureDesc::CubeMap, false),
+        TextureDesc("SkyPref", L"assets/textures/skyPrefilter.dds", TextureDesc::CubeMap, true),
+        TextureDesc("SkyBRDF", L"assets/textures/skyBrdf.dds", TextureDesc::Texture2D, false),
+        TextureDesc("SkyIrradiance", L"assets/textures/skyIrradiance.dds", TextureDesc::CubeMap, false),
 
-        TextureDesc("SkyPref", L"assets/textures/roomPrefilter.dds", TextureDesc::CubeMap, true),
-        TextureDesc("SkyBRDF", L"assets/textures/roomBrdf.dds", TextureDesc::Texture2D, false),
-        TextureDesc("SkyIrradiance", L"assets/textures/roomIrradiance.dds", TextureDesc::CubeMap, false),
+        //TextureDesc("SkyPref", L"assets/textures/roomPrefilter.dds", TextureDesc::CubeMap, true),
+        //TextureDesc("SkyBRDF", L"assets/textures/roomBrdf.dds", TextureDesc::Texture2D, false),
+        //TextureDesc("SkyIrradiance", L"assets/textures/roomIrradiance.dds", TextureDesc::CubeMap, false),
     };
 
     mRenderingSystem->LoadTextures(TexDescs);

@@ -276,19 +276,19 @@ float4 PS(VertexOut pin) : SV_Target
         
         float3 F0 = lerp(0.04.xxx, Diffuse.rgb, Metallic);
         
-        bool gUsePBR = false;
+        bool gUsePBR = true;
         if (gUsePBR == 0)
             {
                 // Lambert
                 float3 diffuse = Diffuse.rgb * NdotL;
 
-                // Blinn-Phong (спек-гладкость от roughness)
-                // подберём показатель степени так, чтобы roughness=0 => острый блик
+                // Blinn-Phong (????-????????? ?? roughness)
+                // ???????? ?????????? ??????? ???, ????? roughness=0 => ?????? ????
                 float specPower = lerp(4.0, 128.0, 1.0 - MatRoughness);
                 float NdotH = max(dot(Normal, halfVec), 0.0);
                 float specTerm = pow(NdotH, specPower);
 
-                // цвет блика: возьмём MatFresnelR0 как «specular color»
+                // ???? ?????: ??????? MatFresnelR0 ??? «specular color»
                 float3 specular = MatFresnelR0 * specTerm;
 
                 float3 radiance = CurrentLight.Strength * CurrentLight.Color;
@@ -299,7 +299,7 @@ float4 PS(VertexOut pin) : SV_Target
             }
         else
             {
-                // PBR как было
+                // PBR ??? ????
                 float3 F = FresnelSchlick(max(dot(halfVec, toEyeW), 0.0), F0);
                 float NDF = DistributionGGX(Normal, halfVec, MatRoughness);
                 float G = GeometrySmith(Normal, toEyeW, lightDir, MatRoughness);
@@ -357,7 +357,7 @@ float4 PS(VertexOut pin) : SV_Target
         float NdotL = max(dot(Normal, L), 0.0);
         float3 H = normalize(L + toEyeW);
         
-        bool gUsePBR = false;
+        bool gUsePBR = true;
         if (gUsePBR == 0)
         {
             float3 radiance = CurrentLight.Strength * CurrentLight.Color;
@@ -413,10 +413,10 @@ float4 PS_AddAmbient(VertexOut pin) : SV_Target
     if(length(normal) < 0.01f)
         discard;
     
-    bool gUsePBR = false;
+    bool gUsePBR = true;
     if (gUsePBR == 0)
     {
-        float3 ambient = gAmbientLight.rgb * Diffuse.rgb; // можно умножить на 0.1f, если нужно темнее
+        float3 ambient = gAmbientLight.rgb * Diffuse.rgb; // ????? ???????? ?? 0.1f, ???? ????? ??????
         return float4(ambient, Diffuse.a);
     }
     

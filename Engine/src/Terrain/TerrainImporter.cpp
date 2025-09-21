@@ -59,6 +59,14 @@ struct LoadedImage8 {
 
 
 
+// Common 16-bit image container
+struct LoadedImage16 {
+    std::vector<uint16_t> pixels; // rowPitch = width * channels * 2
+    int width = 0, height = 0, channels = 0;
+};
+
+
+
 static LoadedImage8 LoadWithStbAs8(const std::wstring& path, int desired_channels);
 static LoadedImage8 LoadDDSAs8(const std::wstring& path, int desired_channels);
 
@@ -69,6 +77,44 @@ static LoadedImage8 LoadAnyAs8(const std::wstring& path, int desired_channels) {
     EnsureSupportedOrThrow(path, L"image");
     if (ExtLower(path) == L".dds") return LoadDDSAs8(path, desired_channels);
     else return LoadWithStbAs8(path, desired_channels); // .png/.jpg/.jpeg (8 or 16 bpc)
+}
+
+
+
+static LoadedImage16 LoadAnyAs16(const std::wstring& path, int desired_channels) {
+    EnsureSupportedOrThrow(path, L"image");
+    if (ExtLower(path) == L".dds") {
+        // DDS: to R16_UNORM through DirectXTex
+        ScratchImage img;
+        ThrowIfFailed(LoadFromDDSFile(path.c_str(), DDS_FLAGS_NONE, nullptr, img));
+        ScratchImage conv;
+        ThrowIfFailed(Convert(*img.GetImage(0, 0, 0), DXGI_FORMAT_R16_UNORM, TEX_FILTER_DEFAULT, TEX_THRESHOLD_DEFAULT, conv));
+
+        const Image* im = conv.GetImage(0, 0, 0);
+        LoadedImage16 out;
+        out.width = (int)im->width; out.height = (int)im->height; out.channels = 1;
+        out.pixels.resize((size_t)out.width * out.height);
+        // Copy by rows
+        for (int y = 0; y < out.height; ++y) {
+            auto* src = reinterpret_cast<const uint16_t*>(im->pixels + y * im->rowPitch);
+            std::memcpy(out.pixels.data() + (size_t)y * out.width, src, (size_t)out.width * sizeof(uint16_t));
+        }
+        return out;
+    }
+    else {
+        FILE* f = _wfopen(path.c_str(), L"rb");
+        if (!f) { std::wstringstream ss; ss << L"Can't open file: " << MakeNoWrap(path); ThrowError(L"Load Image (stb16)", ss.str()); }
+        int w = 0, h = 0, c = 0;
+        stbi_us* data16 = stbi_load_from_file_16(f, &w, &h, &c, desired_channels);
+        fclose(f);
+        if (!data16) { const char* why = stbi_failure_reason(); std::wstringstream ss; ss << L"stb_image failed: " << (why ? std::wstring(why, why + strlen(why)) : L"(unknown)"); ThrowError(L"Load Image (stb16)", ss.str()); }
+        int ch = desired_channels ? desired_channels : c;
+        LoadedImage16 out; out.width = w; out.height = h; out.channels = ch;
+        out.pixels.resize((size_t)w * (size_t)h * (size_t)ch);
+        std::memcpy(out.pixels.data(), data16, out.pixels.size() * sizeof(uint16_t));
+        stbi_image_free(data16);
+        return out;
+    }
 }
 
 
@@ -189,7 +235,7 @@ static int AlignDown(int x, int m) { return (x / m) * m; }
 
 
 // Crops the source image src to the size newW x newH, copying only the top-left portion
-static LoadedImage8 CropTo(const LoadedImage8& src, int newW, int newH) {
+static LoadedImage8 CropTo8(const LoadedImage8& src, int newW, int newH) {
 
     // "Copy of the input image
     LoadedImage8 out = src;
@@ -212,6 +258,41 @@ static LoadedImage8 CropTo(const LoadedImage8& src, int newW, int newH) {
 
         // memcpy copies only the first newW * channels bytes (the new width)
         memcpy(d, s, size_t(newW) * size_t(src.channels));
+    }
+
+    return out;
+}
+
+
+
+// Crops the source 16-bit height image to newW x newH, copying only the top-left portion.
+// If newW/newH exceed src size, the extra area is zero-filled.
+static LoadedImage16 CropTo16(const LoadedImage16& src, int newW, int newH)
+{
+    LoadedImage16 out;
+
+    if (src.width == 0 || src.height == 0 || newW <= 0 || newH <= 0)
+        return out;
+
+    out.width = static_cast<uint32_t>(newW);
+    out.height = static_cast<uint32_t>(newH);
+
+    // Allocate and zero-fill (black/zero height)
+    out.pixels.assign(static_cast<size_t>(newW) * static_cast<size_t>(newH), uint16_t(0));
+
+    // Copy dimensions (don’t read outside src)
+    const int copyW = std::min<int>(newW, static_cast<int>(src.width));
+    const int copyH = std::min<int>(newH, static_cast<int>(src.height));
+
+    // Row-by-row copy from top-left
+    for (int y = 0; y < copyH; ++y)
+    {
+        const uint16_t* s = src.pixels.data()
+            + static_cast<size_t>(y) * static_cast<size_t>(src.width);
+        uint16_t* d = out.pixels.data()
+            + static_cast<size_t>(y) * static_cast<size_t>(newW);
+
+        std::memcpy(d, s, static_cast<size_t>(copyW) * sizeof(uint16_t));
     }
 
     return out;
@@ -257,6 +338,58 @@ static void ExtractLastColumn(const Image& img, std::vector<uint8_t>& outCol, in
 
 
 
+// Generation of an RGBA8 normal map from an R8 height map.
+// Normal = normalize(-dh / dx * heightScale, 1, -dh / dy * heightScale)
+static LoadedImage8 GenerateNormalsFromHeight(const LoadedImage16& imgH, float heightScale)
+{
+    LoadedImage8 out;
+    out.width = imgH.width;
+    out.height = imgH.height;
+    out.channels = 4;
+    out.pixels.resize(size_t(out.width) * size_t(out.height) * 4);
+
+    auto H = [&](int x, int y) -> float {
+        x = (x < 0) ? 0 : (x >= imgH.width ? imgH.width - 1 : x);
+        y = (y < 0) ? 0 : (y >= imgH.height ? imgH.height - 1 : y);
+        // R8 -> [0..1]
+        return float(imgH.pixels[size_t(y) * size_t(imgH.width) + size_t(x)]) / 65535.0f;
+        };
+
+    for (int y = 0; y < imgH.height; ++y)
+    {
+        for (int x = 0; x < imgH.width; ++x)
+        {
+            float hl = H(x - 1, y);
+            float hr = H(x + 1, y);
+            float hb = H(x, y - 1);
+            float ht = H(x, y + 1);
+
+            // Central differences (texel step = 1 in world), scaled by height
+            float dhdx = (hr - hl) * 0.5f * heightScale;
+            float dhdy = (ht - hb) * 0.5f * heightScale;
+
+            // Geometric normal (Y is up)
+            float nx = -dhdx;
+            float ny = 1.0f;
+            float nz = -dhdy;
+            float invLen = 1.0f / sqrtf(nx * nx + ny * ny + nz * nz);
+            nx *= invLen; ny *= invLen; nz *= invLen;
+
+            // In RGBA8 (0..255), A = 255
+            uint8_t r = (uint8_t)std::roundf((nx * 0.5f + 0.5f) * 255.0f);
+            uint8_t g = (uint8_t)std::roundf((ny * 0.5f + 0.5f) * 255.0f);
+            uint8_t b = (uint8_t)std::roundf((nz * 0.5f + 0.5f) * 255.0f);
+            size_t i = (size_t(y) * size_t(out.width) + size_t(x)) * 4;
+            out.pixels[i + 0] = r;
+            out.pixels[i + 1] = g;
+            out.pixels[i + 2] = b;
+            out.pixels[i + 3] = 255;
+        }
+    }
+    return out;
+}
+
+
 // Load all terrain textures and use them to generate the tile grid, filling in the information about the tiles and the terrain as a whole
 bool TerrainImporter::BuildTilesFromSource(
     const std::wstring& diffuse,
@@ -268,15 +401,32 @@ bool TerrainImporter::BuildTilesFromSource(
 {
     // Load all three images (accept .png/.jpg/.jpeg/.dds; 8-bit or 16-bit for png/jpg)
     auto imgD = LoadAnyAs8(diffuse, 4); // RGBA8
-    auto imgN = LoadAnyAs8(normal, 4);  // RGBA8
-    auto imgH = LoadAnyAs8(height, 1);  // R8
+    //auto imgH = LoadAnyAs8(height, 1);  // R8
+    auto imgH = LoadAnyAs16(height, 1);  // R16
 
+    LoadedImage8 imgN;
+    const bool hasNormal = !normal.empty();
 
-    // Validate equal resolution
-    if (imgD.width != imgN.width || imgD.height != imgN.height || imgD.width != imgH.width || imgD.height != imgH.height)
+    if (hasNormal)
     {
-        ThrowError(L"TerrainImporter::BuildTilesFromSource", L"All source textures must have identical resolution (diffuse/normal/height).");
+        imgN = LoadAnyAs8(normal, 4);  // RGBA8
+
+        // Check that all three textures have the same dimensions
+        if (imgD.width != imgN.width || imgD.height != imgN.height || imgD.width != imgH.width || imgD.height != imgH.height)
+        {
+            ThrowError(L"TerrainImporter::BuildTilesFromSource", L"All source textures must have identical resolution (diffuse/normal/height).");
+        }
     }
+    else
+    {
+        // Check that only the Diffuse and Height textures have the same dimensions
+        if (imgD.width != imgH.width || imgD.height != imgH.height)
+        {
+            ThrowError(L"TerrainImporter::BuildTilesFromSource",
+                L"Diffuse and height must have identical resolution.");
+        }
+    }
+
 
 
     // Compute the number by which width/height must be divisible to properly split into a tile grid for the given number of LOD levels
@@ -289,17 +439,30 @@ bool TerrainImporter::BuildTilesFromSource(
     int newH = AlignDown(imgD.height, requiredMultiple);
 
     // Synchronize the new target resolution across all three maps: take the minimum of their rounded values so that all three become equal and divisible
-    newW = (std::min)({ newW, AlignDown(imgN.width,  requiredMultiple), AlignDown(imgH.width,  requiredMultiple) });
-    newH = (std::min)({ newH, AlignDown(imgN.height, requiredMultiple), AlignDown(imgH.height, requiredMultiple) });
+    newW = (std::min)(newW, AlignDown(imgH.width, requiredMultiple));
+    newH = (std::min)(newH, AlignDown(imgH.height, requiredMultiple));
+
+    if (hasNormal)
+    {
+        newW = (std::min)(newW, AlignDown(imgN.width, requiredMultiple));
+        newH = (std::min)(newH, AlignDown(imgN.height, requiredMultiple));
+    }
 
     if (newW <= 0 || newH <= 0) ThrowError(L"TerrainImporter::BuildTilesFromSource", L"Source images are too small for requested tiles/LODs.");
 
+
     // If the size had to be reduced, carefully crop all three images to (newW, newH) (copy the top-left rectangle row by row).
     // This ensures both divisibility and identical dimensions
-    if (newW != imgD.width || newH != imgD.height) {
-        imgD = CropTo(imgD, newW, newH);
-        imgN = CropTo(imgN, newW, newH);
-        imgH = CropTo(imgH, newW, newH);
+    if (newW != imgD.width || newH != imgD.height) imgD = CropTo8(imgD, newW, newH);
+    if (newW != imgH.width || newH != imgH.height) imgH = CropTo16(imgH, newW, newH);
+    if (hasNormal)
+    {
+        if (newW != imgN.width || newH != imgN.height) imgN = CropTo8(imgN, newW, newH);
+    }
+    else
+    {
+        // No normals present — generating a full normal map from the already cropped height map
+        imgN = GenerateNormalsFromHeight(imgH, outMeta.heightScale);
     }
 
 
@@ -477,7 +640,7 @@ bool TerrainImporter::BuildTilesFromSource(
 
 
                 // ---- HEIGHT (R8) + min/max ----
-                std::vector<uint8_t> tileH(size_t(tilePixX) * tilePixY);
+                /*std::vector<uint8_t> tileH(size_t(tilePixX) * tilePixY);
                 uint8_t minV = (std::numeric_limits<uint8_t>::max)();
                 uint8_t maxV = (std::numeric_limits<uint8_t>::min)();
                 for (uint32_t y = 0; y < tilePixY; ++y) {
@@ -493,7 +656,27 @@ bool TerrainImporter::BuildTilesFromSource(
                     }
                 }
                 Image dxImgH{ tilePixX, tilePixY, DXGI_FORMAT_R8_UNORM,
-                              size_t(tilePixX) * 1, size_t(tilePixX) * 1 * tilePixY, tileH.data() };
+                              size_t(tilePixX) * 1, size_t(tilePixX) * 1 * tilePixY, tileH.data() };*/
+
+                std::vector<uint16_t> tileH((size_t)tilePixX * tilePixY);
+                uint16_t minV = (std::numeric_limits<uint16_t>::max)();
+                uint16_t maxV = (std::numeric_limits<uint16_t>::min)();
+
+                for (uint32_t y = 0; y < tilePixY; ++y) {
+                    const uint16_t* srcRow = imgH.pixels.data()
+                        + ((size_t)ty * tilePixY + y) * (size_t)imgH.width
+                        + (size_t)tx * tilePixX;
+                    uint16_t* dstRow = tileH.data() + (size_t)y * (size_t)tilePixX;
+                    std::memcpy(dstRow, srcRow, (size_t)tilePixX * sizeof(uint16_t));
+                    for (uint32_t x = 0; x < tilePixX; ++x) { uint16_t v = srcRow[x]; if (v < minV) minV = v; if (v > maxV) maxV = v; }
+                }
+
+                Image dxImgH{
+                    tilePixX, tilePixY, DXGI_FORMAT_R16_UNORM,
+                    (size_t)tilePixX * sizeof(uint16_t),
+                    (size_t)tilePixX * sizeof(uint16_t) * tilePixY,
+                    reinterpret_cast<uint8_t*>(tileH.data())
+                };
 
                 const Image* baseH = &dxImgH;
                 ScratchImage resizedH;
@@ -536,7 +719,8 @@ bool TerrainImporter::BuildTilesFromSource(
                 ti.diffusePath = std::filesystem::relative(fileD, tilesRoot).wstring();
                 ti.normalPath = std::filesystem::relative(fileN, tilesRoot).wstring();
                 ti.heightPath = std::filesystem::relative(fileH, tilesRoot).wstring();
-                ti.minH = float(minV) / 255.0f; ti.maxH = float(maxV) / 255.0f;
+                //ti.minH = float(minV) / 255.0f; ti.maxH = float(maxV) / 255.0f;
+                ti.minH = float(minV) / 65535.0f; ti.maxH = float(maxV) / 65535.0f;
 
                 const float x0 = float(tx) * worldTileX;
                 const float z0 = float(ty) * worldTileZ;
