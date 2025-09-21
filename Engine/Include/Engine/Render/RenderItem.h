@@ -22,14 +22,6 @@ enum class RenderLayer : int
     Count
 };
 
-constexpr auto idx(RenderLayer rl) noexcept {
-#if __cpp_lib_to_underlying
-    return std::to_underlying(rl);
-#else
-    return static_cast<int>(rl);
-#endif
-}
-
 struct RenderItem;
 struct OctTreeNode;
 

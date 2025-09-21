@@ -65,13 +65,11 @@ void TerrainRenderer::SelectLOD(const Camera& cam, std::vector<RenderItem*>& out
 
             if (dist < threshold && !node->IsLeaf())
             {
-                for (auto* c : node->children)
-                    if (c) recurse(c);
+                for (auto* c : node->children) if (c) recurse(c);
             }
             else
             {
-                if (node->renderItem)
-                    outVisible.push_back(node->renderItem);
+                if (node->renderItem) outVisible.push_back(node->renderItem);
             }
         };
 

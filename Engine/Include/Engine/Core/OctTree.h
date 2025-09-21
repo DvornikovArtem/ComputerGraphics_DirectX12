@@ -59,7 +59,7 @@ public:
 
         if (octTreeDesc.autoFitBox) {
             // Calculate Common Bbox As The Parallelepiped That Covers All RenderItems On The Scene ===============================================================
-            std::set<RenderLayer> includedRitemsLayers = { RenderLayer::Opaque, RenderLayer::Transparent };
+            std::set<RenderLayer> includedRitemsLayers = { RenderLayer::Opaque, RenderLayer::Transparent, RenderLayer::Landscape };
             for (auto& ritem : (*octTreeDesc.ritems)) if (includedRitemsLayers.count(ritem->renderLayer)) DirectX::BoundingBox::CreateMerged(sceneBBox, sceneBBox, ritem->bounds);
             std::set<LightType> includedLitemsLayers = { LightType::Pointlight, LightType::Spotlight };
             for (auto& litem : (*octTreeDesc.litems)) if (includedLitemsLayers.count(litem->LightType)) DirectX::BoundingBox::CreateMerged(sceneBBox, sceneBBox, litem->bounds);

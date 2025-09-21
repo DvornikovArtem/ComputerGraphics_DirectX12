@@ -1918,6 +1918,8 @@ void RenderingSystem::GBufferGeometryPass()
 
 
 	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Opaque], "GBufferGeometryPass");
+
+	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Landscape], "GBufferGeometryPass");
 }
 
 void RenderingSystem::GBufferLightPass()
@@ -2635,7 +2637,7 @@ void RenderingSystem::UpdateRenderItems(std::vector<DrawableObject*>& mAllObject
 	std::vector<RenderItem*> visibleTerrainTiles;
 	if (terrainRenderer) terrainRenderer->SelectLOD(mCamera, visibleTerrainTiles, 1000.f);
 
-	for (RenderItem* ri : mRitemLayer[idx(RenderLayer::Landscape)])
+	for (RenderItem* ri : mRitemLayer[(int)RenderLayer::Landscape])
 	{
 		for (auto* leaf : ri->occupiedLeaves)
 		{
@@ -2647,6 +2649,7 @@ void RenderingSystem::UpdateRenderItems(std::vector<DrawableObject*>& mAllObject
 
 	for (RenderItem* ri : visibleTerrainTiles)
 	{
+		OutputDebugStringW(L"\n111111111111111111\n");
 		mOctTree->UpdateRenderItemTreeLocation(ri);
 	}
 
