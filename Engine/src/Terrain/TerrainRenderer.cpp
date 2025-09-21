@@ -41,7 +41,7 @@ void TerrainRenderer::Initialize(const TerrainRendererDesc& terrainRendererDesc)
 }
 
 
-void TerrainRenderer::SelectLOD(const Camera& cam, std::vector<RenderItem*>& outVisible, float lodFactor) const
+void TerrainRenderer::SelectLOD(const Camera& cam, std::unordered_set<RenderItem*>& outVisible, float lodFactor) const
 {
     BoundingFrustum fr;
     BoundingFrustum::CreateFromMatrix(fr, cam.GetProj());
@@ -50,12 +50,9 @@ void TerrainRenderer::SelectLOD(const Camera& cam, std::vector<RenderItem*>& out
 
     std::function<void(const TerrainNode*)> recurse = [&](const TerrainNode* node)
         {
-            if (!fr.Intersects(node->tile.bounds))
-                return;
+            if (!fr.Intersects(node->tile.bounds)) return;
 
-            float dist = XMVectorGetX(XMVector3Length(
-                XMLoadFloat3(&node->tile.bounds.Center) - XMLoadFloat3(&cam.GetPosition3f())
-            ));
+            float dist = XMVectorGetX(XMVector3Length(XMLoadFloat3(&node->tile.bounds.Center) - XMLoadFloat3(&cam.GetPosition3f())));
 
 
             float tileSizeX = m_meta.worldSizeX / float(1u << node->tile.lod);
@@ -69,7 +66,7 @@ void TerrainRenderer::SelectLOD(const Camera& cam, std::vector<RenderItem*>& out
             }
             else
             {
-                if (node->renderItem) outVisible.push_back(node->renderItem);
+                if (node->renderItem) outVisible.insert(node->renderItem);
             }
         };
 

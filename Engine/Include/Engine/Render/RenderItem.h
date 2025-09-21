@@ -65,7 +65,7 @@ struct DrawableObject
 
 
 // Lightweight structure stores parameters to draw a shape.
-struct RenderItem 
+struct RenderItem
 {
     RenderItem() = default;
 
@@ -111,6 +111,13 @@ struct RenderItem
     UINT currentLOD = 0;
 
     bool IsInViewFrustum = false;
+};
+
+struct TerrainTileItem : RenderItem
+{
+    uint16_t lod;
+
+
 };
 
 struct LightObject

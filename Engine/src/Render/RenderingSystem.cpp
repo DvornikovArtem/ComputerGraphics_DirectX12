@@ -492,13 +492,6 @@ void RenderingSystem::BuildRenderItems(std::unordered_map<std::string, DrawableO
 
 			std::string matNm = "tile_level" + std::to_string(t.lod) + "_" + std::to_string(t.ix) + "_" + std::to_string(t.iy);
 
-			std::wstring matNm2 = L"\n\ntile_level"
-				+ std::to_wstring(t.lod) + L"_"
-				+ std::to_wstring(t.ix) + L"_"
-				+ std::to_wstring(t.iy) + L"\n\n";
-
-			OutputDebugStringW(matNm2.c_str());
-
 			DrawableObject* terrainTile = new DrawableObject();
 			terrainTile->Name = matNm;
 			terrainTile->GeometryName = "TerrainPatch";
@@ -785,26 +778,10 @@ void RenderingSystem::BuildTerrain()
 			Tile.Metallic = 0.f;
 
 			TerrainMaterialDescs.push_back(Tile);
-
-			std::wstring matNm2 = L"\n\ntile_diffuse_level" + std::to_wstring(t.lod) + L"_" + std::to_wstring(t.ix) + L"_" + std::to_wstring(t.iy) + L"\n\n";
-			std::wstring matNm3 = L"\n\ntile_normal_level" + std::to_wstring(t.lod) + L"_" + std::to_wstring(t.ix) + L"_" + std::to_wstring(t.iy) + L"\n\n";
-			std::wstring matNm4 = L"\n\ntile_height_level" + std::to_wstring(t.lod) + L"_" + std::to_wstring(t.ix) + L"_" + std::to_wstring(t.iy) + L"\n\n";
-
-			OutputDebugStringW(matNm2.c_str());
-			OutputDebugStringW(matNm3.c_str());
-			OutputDebugStringW(matNm4.c_str());
 		});
 
 
-	
-
 	//terrainRenderer->BuildGeometry();
-
-	terrainRenderer->ForEachTile([&](const TerrainTile& t)
-		{
-		OutputDebugStringW((L"[TERRAIN] LOD " + std::to_wstring(t.lod) + L" (" + std::to_wstring(t.ix) + L"," + std::to_wstring(t.iy) + L") : " + t.textures.diffusePath + L", " + t.textures.normalPath + L", " + t.textures.heightPath + L"\n").c_str());
-		}
-	);
 }
 
 
@@ -1891,6 +1868,55 @@ void RenderingSystem::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const 
 	}
 }
 
+
+void RenderingSystem::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::unordered_set<RenderItem*>& ritems, std::string PSOName)
+{
+	UINT objCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(ObjectConstants));
+	UINT matCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(MaterialConstants));
+
+	auto objectCB = mCurrFrameResource->ObjectCB->Resource();
+	auto matCB = mCurrFrameResource->MaterialCB->Resource();
+
+	auto passCB = mCurrFrameResource->PassCB->Resource();
+	mCommandList->SetGraphicsRootConstantBufferView(4, passCB->GetGPUVirtualAddress());
+
+	// For each render item...
+	for (auto* ri : ritems)
+	{
+		if (!ri->IsInViewFrustum) continue;
+		cmdList->IASetVertexBuffers(0, 1, &ri->Geo->VertexBufferView());
+		cmdList->IASetIndexBuffer(&ri->Geo->IndexBufferView());
+		cmdList->IASetPrimitiveTopology(ri->Mat->UseTesselation ? D3D_PRIMITIVE_TOPOLOGY_3_CONTROL_POINT_PATCHLIST : D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+		cmdList->SetPipelineState(ri->Mat->PSOs[PSOName].Get());
+
+		ID3D12DescriptorHeap* descriptorHeaps[] = { mSrvDescriptorHeap.Get() };
+		cmdList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
+
+		D3D12_GPU_VIRTUAL_ADDRESS objCBAddress = objectCB->GetGPUVirtualAddress() + ri->ObjCBIndex * objCBByteSize;
+		D3D12_GPU_VIRTUAL_ADDRESS matCBAddress = matCB->GetGPUVirtualAddress() + ri->Mat->MatCBIndex * matCBByteSize;
+
+		cmdList->SetGraphicsRootDescriptorTable(0, GetGpuSrv(ri->Mat->DiffuseSrvHeapIndex));
+		cmdList->SetGraphicsRootDescriptorTable(1, GetGpuSrv(ri->Mat->NormalSrvHeapIndex));
+		cmdList->SetGraphicsRootDescriptorTable(2, GetGpuSrv(ri->Mat->HeightSrvHeapIndex));
+
+		cmdList->SetGraphicsRootConstantBufferView(3, objCBAddress);
+		//cmdList->SetGraphicsRootConstantBufferView(4, passCBAddress);
+		cmdList->SetGraphicsRootConstantBufferView(5, matCBAddress);
+
+
+
+		std::string subMeshName = "LOD" + std::to_string(ri->currentLOD);
+
+		UINT IndexCount = ri->Geo->DrawArgs[subMeshName].IndexCount;
+		UINT StartIndexLocation = ri->Geo->DrawArgs[subMeshName].StartIndexLocation;
+		UINT BaseVertexLocation = ri->Geo->DrawArgs[subMeshName].BaseVertexLocation;
+
+		cmdList->DrawIndexedInstanced(IndexCount, 1, StartIndexLocation, BaseVertexLocation, 0);
+
+		ri->IsInViewFrustum = false;
+	}
+}
+
 void RenderingSystem::GBufferGeometryPass()
 {
 	mCommandList->RSSetViewports(1, &mScreenViewport);
@@ -1919,7 +1945,8 @@ void RenderingSystem::GBufferGeometryPass()
 
 	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Opaque], "GBufferGeometryPass");
 
-	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Landscape], "GBufferGeometryPass");
+	//DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Landscape], "GBufferGeometryPass");
+	DrawRenderItems(mCommandList.Get(), mVisibleTerrainRitems, "GBufferGeometryPass");
 }
 
 void RenderingSystem::GBufferLightPass()
@@ -2571,13 +2598,12 @@ void RenderingSystem::CollectVisibleRenderItems()
 	for (auto& leaf : leaves) {
 		if (ViewFrustum.Contains(leaf->bounds) != DirectX::ContainmentType::DISJOINT) {
 			for (RenderItem* ri : leaf->OverlappedRitems) {
+				if (ri->renderLayer == RenderLayer::Landscape && mVisibleTerrainRitems.find(ri) == mVisibleTerrainRitems.end()) continue;
+				
 				if (alreadyCheckedRitems.find(ri) != alreadyCheckedRitems.end()) continue;
 				alreadyCheckedRitems.insert(ri);
 				ri->IsInViewFrustum = ViewFrustum.Intersects(ri->bounds);
-				if (ri->IsInViewFrustum) {
-					//if (ri->Name.rfind("Patrick", 0) == std::string::npos) {
-					mAllVisibleRitems.push_back(ri);
-				}
+				if (ri->IsInViewFrustum) mAllVisibleRitems.push_back(ri);
 			}
 		}
 	}
@@ -2634,10 +2660,10 @@ void RenderingSystem::UpdateRenderItems(std::vector<DrawableObject*>& mAllObject
 		mOctTree->UpdateRenderItemTreeLocation(ri);
 	}
 
-	std::vector<RenderItem*> visibleTerrainTiles;
-	if (terrainRenderer) terrainRenderer->SelectLOD(mCamera, visibleTerrainTiles, 1000.f);
+	mVisibleTerrainRitems.clear();
+	if (terrainRenderer) terrainRenderer->SelectLOD(mCamera, mVisibleTerrainRitems, 1000.f);
 
-	for (RenderItem* ri : mRitemLayer[(int)RenderLayer::Landscape])
+	/*for (RenderItem* ri : mRitemLayer[(int)RenderLayer::Landscape])
 	{
 		for (auto* leaf : ri->occupiedLeaves)
 		{
@@ -2647,10 +2673,10 @@ void RenderingSystem::UpdateRenderItems(std::vector<DrawableObject*>& mAllObject
 		ri->occupiedLeaves.clear();
 	}
 
-	for (RenderItem* ri : visibleTerrainTiles)
+	for (RenderItem* ri : mVisibleTerrainRitems)
 	{
 		mOctTree->UpdateRenderItemTreeLocation(ri);
-	}
+	}*/
 
 	mAllVisibleRitems.clear();
 	alreadyCheckedRitems.clear();

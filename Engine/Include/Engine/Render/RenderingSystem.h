@@ -138,6 +138,7 @@ public:
     void BuildTerrain();
 
     void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems, std::string PSOName);
+    void RenderingSystem::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::unordered_set<RenderItem*>& ritems, std::string PSOName);
 
     void GBufferGeometryPass();
     void GBufferLightPass();
@@ -287,7 +288,7 @@ protected:
     std::vector <DrawableObject*> terrainDrawableObjects;
 
     std::vector<RenderItem*> mAllTerrainRitems;
-    std::vector<RenderItem*> mVisibleTerrainRitems;
+    std::unordered_set<RenderItem*> mVisibleTerrainRitems;
 };
 
 
