@@ -247,7 +247,7 @@ float4 PS(VertexOut pin) : SV_Target
         float shadowFactor = 1.f;
         float distanceFromEye = length(WorldPosition - gEyePosW);
         
-        for (uint cascade = 0; cascade < 4; cascade++)
+        for (uint cascade = 0; cascade < 5; cascade++)
         {
             float factor = CalcShadowFactor(WorldPosition, Normal, cascade);
             if (factor < 0.3f)

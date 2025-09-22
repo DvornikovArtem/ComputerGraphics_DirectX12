@@ -1190,17 +1190,12 @@ void RenderingSystem::UpdateLightItems(std::vector<LightObject*>& mAllLightObjec
 
 		if (i->LightType != LightType::Pointlight)
 		{
-			BoundingFrustum LightFrustum;
-			BoundingFrustum::CreateFromMatrix(LightFrustum, XMLoadFloat4x4(&i->VisibilityProj));
-			LightFrustum.Transform(LightFrustum, XMMatrixInverse(nullptr, XMLoadFloat4x4(&i->VisibilityView)));
-			//mDebugDrawer->DrawFrustrum(XMLoadFloat4x4(&i->VisibilityView), XMLoadFloat4x4(&i->VisibilityProj));
-
 			for (auto& leaf : leaves) {
-				if (LightFrustum.Contains(leaf->bounds) != DirectX::ContainmentType::DISJOINT) {
+				if (i->LightFrustum.Contains(leaf->bounds) != DirectX::ContainmentType::DISJOINT) {
 					for (RenderItem* ri : leaf->OverlappedRitems) {
-						if (alreadyCheckedRitemsforLights.find(ri) != alreadyCheckedRitemsforLights.end()) continue;
+						if (ri->renderLayer == RenderLayer::Landscape || alreadyCheckedRitemsforLights.find(ri) != alreadyCheckedRitemsforLights.end()) continue;
 						alreadyCheckedRitemsforLights.insert(ri);
-						if (LightFrustum.Intersects(ri->bounds)) i->VisibleRitems.push_back(ri);
+						if (i->LightFrustum.Intersects(ri->bounds)) i->VisibleRitems.push_back(ri);
 					}
 				}
 			}
@@ -1210,13 +1205,14 @@ void RenderingSystem::UpdateLightItems(std::vector<LightObject*>& mAllLightObjec
 			for (auto& leaf : leaves) {
 				if (i->bounds.Contains(leaf->bounds) != DirectX::ContainmentType::DISJOINT) {
 					for (RenderItem* ri : leaf->OverlappedRitems) {
-						if (alreadyCheckedRitemsforLights.find(ri) != alreadyCheckedRitemsforLights.end()) continue;
+						if (ri->renderLayer == RenderLayer::Landscape || alreadyCheckedRitemsforLights.find(ri) != alreadyCheckedRitemsforLights.end()) continue;
 						alreadyCheckedRitemsforLights.insert(ri);
 						if (i->bounds.Intersects(ri->bounds)) i->VisibleRitems.push_back(ri);
 					}
 				}
 			}
 		}
+
 	}
 
 	mAllLightObjectsToUpdate.clear();
@@ -1261,10 +1257,10 @@ void RenderingSystem::UpdateLightCBs(const GameTimer& gt)
 			{
 			case LightType::Directional:
 			{
-				float SphereRadiuses[4] = { 10, 50, 150, 400 };
+				float SphereRadiuses[5] = { 10, 50, 150, 400, 1000 };
 				
 				//for each cascade
-				for (int i = 0; i < 4; i++)
+				for (int i = 0; i < 5; i++)
 				{
 					lightDir = XMLoadFloat3(&e->WorldDirection);
 					lightPos = mCamera.GetPosition() - 2.0f * SphereRadiuses[i] * lightDir;
@@ -1292,8 +1288,8 @@ void RenderingSystem::UpdateLightCBs(const GameTimer& gt)
 					XMStoreFloat4(&LightConstants.CascadeDistances, XMVectorSet(SphereRadiuses[0], SphereRadiuses[1], SphereRadiuses[2], SphereRadiuses[3]));
 					if (i == 3)
 					{
-						XMStoreFloat4x4(&e->VisibilityView, lightView);
-						XMStoreFloat4x4(&e->VisibilityProj, lightProj);
+						BoundingFrustum::CreateFromMatrix(e->LightFrustum, lightProj);
+						e->LightFrustum.Transform(e->LightFrustum, XMMatrixInverse(nullptr, lightView));
 					}
 				}
 			}
@@ -1313,8 +1309,8 @@ void RenderingSystem::UpdateLightCBs(const GameTimer& gt)
 				XMStoreFloat4x4(&LightConstants.View[0], XMMatrixTranspose(lightView));
 				XMStoreFloat4x4(&LightConstants.Proj[0], XMMatrixTranspose(lightProj));
 				XMStoreFloat4x4(&LightConstants.ShadowTransform[0], XMMatrixTranspose(S));
-				XMStoreFloat4x4(&e->VisibilityView, lightView);
-				XMStoreFloat4x4(&e->VisibilityProj, lightProj);
+				BoundingFrustum::CreateFromMatrix(e->LightFrustum, lightProj);
+				e->LightFrustum.Transform(e->LightFrustum, XMMatrixInverse(nullptr, lightView));
 				break;
 
 			case LightType::Pointlight:
@@ -2582,7 +2578,7 @@ void RenderingSystem::CollectVisibleRenderItems()
 	for (auto& leaf : leaves) {
 		if (ViewFrustum.Contains(leaf->bounds) != DirectX::ContainmentType::DISJOINT) {
 			for (RenderItem* ri : leaf->OverlappedRitems) {				
-				if (alreadyCheckedRitems.find(ri) != alreadyCheckedRitems.end()) continue;
+				if (ri->renderLayer == RenderLayer::Landscape || alreadyCheckedRitems.find(ri) != alreadyCheckedRitems.end()) continue;
 				alreadyCheckedRitems.insert(ri);
 				ri->IsInViewFrustum = ViewFrustum.Intersects(ri->bounds);
 				if (ri->IsInViewFrustum) mAllVisibleRitems.push_back(ri);

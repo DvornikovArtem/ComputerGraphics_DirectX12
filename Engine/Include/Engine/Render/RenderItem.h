@@ -192,12 +192,8 @@ struct LightObject
     bool IsInViewFrustum = false;
 
     std::vector<RenderItem*> VisibleRitems;
-    //matrices that define the bounding frustum for frustum culling
-    //directional - biggest cascade [3]
-    //spot - only matrix [0]
-    //point - no matrices used, we are using culling by distance
-    XMFLOAT4X4 VisibilityView = MathHelper::Identity4x4();
-    XMFLOAT4X4 VisibilityProj = MathHelper::Identity4x4();
+    //frustum that defines the bounds for frustum culling
+    BoundingFrustum LightFrustum;
 };
 
 
