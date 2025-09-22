@@ -102,7 +102,12 @@ static LoadedImage16 LoadAnyAs16(const std::wstring& path, int desired_channels)
         return out;
     }
     else {
-        FILE* f = _wfopen(path.c_str(), L"rb");
+        FILE* f = nullptr;
+        if (_wfopen_s(&f, path.c_str(), L"rb") != 0 || !f) {
+            std::wstringstream ss;
+            ss << L"Can't open file: " << MakeNoWrap(path);
+            ThrowError(L"Load Image (stb)", ss.str());
+        }
         if (!f) { std::wstringstream ss; ss << L"Can't open file: " << MakeNoWrap(path); ThrowError(L"Load Image (stb16)", ss.str()); }
         int w = 0, h = 0, c = 0;
         stbi_us* data16 = stbi_load_from_file_16(f, &w, &h, &c, desired_channels);
@@ -122,8 +127,13 @@ static LoadedImage16 LoadAnyAs16(const std::wstring& path, int desired_channels)
 // Load png, jpg, jpeg
 static LoadedImage8 LoadWithStbAs8(const std::wstring& path, int desired_channels) {
 
-    // Open the file in binary read mode using _wfopen to avoid Unicode path issues on Windows.
-    FILE* f = _wfopen(path.c_str(), L"rb");
+    // Open the file in binary read mode using _wfopen to avoid Unicode path issues on Windows
+    FILE* f = nullptr;
+    if (_wfopen_s(&f, path.c_str(), L"rb") != 0 || !f) {
+        std::wstringstream ss;
+        ss << L"Can't open file: " << MakeNoWrap(path);
+        ThrowError(L"Load Image (stb)", ss.str());
+    }
 
     if (!f) {
         std::wstringstream ss; ss << L"Can't open file: " << MakeNoWrap(path);
@@ -486,8 +496,8 @@ bool TerrainImporter::BuildTilesFromSource(
     const uint32_t leafPixX = imgD.width / leafTilesPerAxis;
     const uint32_t leafPixY = imgD.height / leafTilesPerAxis;
 
-    std::wstring msg = L"\n\nleafTilesPerAxis = " + std::to_wstring(leafTilesPerAxis) + L"\n\n";
-    OutputDebugStringW(msg.c_str());
+    //std::wstring msg = L"\n\nleafTilesPerAxis = " + std::to_wstring(leafTilesPerAxis) + L"\n\n";
+    //OutputDebugStringW(msg.c_str());
 
 
     // Store the base tile size in pixels (the side of the square)

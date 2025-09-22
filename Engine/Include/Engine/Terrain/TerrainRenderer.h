@@ -9,6 +9,7 @@
 #include <Engine/Terrain/TerrainImporter.h>
 #include <Engine/Terrain/TerrainQuadTree.h>
 #include <Engine/Scene/Camera.h>
+#include <unordered_set>
 
 
 struct TerrainRendererDesc

@@ -93,6 +93,9 @@ public:
 
         for (auto& i : terrainDrawableObjects)
             delete i;
+
+        for (auto& i : mAllTerrainRitems)
+            delete i;
     }
 
 
@@ -287,6 +290,8 @@ protected:
     std::vector <DrawableObject*> terrainDrawableObjects;
 
     std::vector<RenderItem*> mAllTerrainRitems;
+
+    std::vector<RenderItem*> mChosenTerrainRitems;
     std::vector<RenderItem*> mVisibleTerrainRitems;
 };
 

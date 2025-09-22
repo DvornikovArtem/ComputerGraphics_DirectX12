@@ -227,7 +227,7 @@ namespace gfw
 	{
 		if (isPrimitivesDirty) {
 			UpdateLinesBuffer(currIndex);
-			pointsCount = lines.size();
+			pointsCount = static_cast<int>(lines.size());
 		
 			isPrimitivesDirty = false;
 		}

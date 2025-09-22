@@ -50,12 +50,9 @@ void TerrainRenderer::SelectLOD(const Camera& cam, std::vector<RenderItem*>& out
 
     std::function<void(const TerrainNode*)> recurse = [&](const TerrainNode* node)
         {
-            if (!fr.Intersects(node->tile.bounds))
-                return;
+            if (!fr.Intersects(node->tile.bounds)) return;
 
-            float dist = XMVectorGetX(XMVector3Length(
-                XMLoadFloat3(&node->tile.bounds.Center) - XMLoadFloat3(&cam.GetPosition3f())
-            ));
+            float dist = XMVectorGetX(XMVector3Length(XMLoadFloat3(&node->tile.bounds.Center) - XMLoadFloat3(&cam.GetPosition3f())));
 
 
             float tileSizeX = m_meta.worldSizeX / float(1u << node->tile.lod);
@@ -65,13 +62,21 @@ void TerrainRenderer::SelectLOD(const Camera& cam, std::vector<RenderItem*>& out
 
             if (dist < threshold && !node->IsLeaf())
             {
-                for (auto* c : node->children)
-                    if (c) recurse(c);
+                for (auto* c : node->children) if (c) recurse(c);
             }
             else
             {
-                if (node->renderItem)
-                    outVisible.push_back(node->renderItem);
+                //if (node->terrainTileItem) outVisible.push_back(node->terrainTileItem);
+                if (node->terrainTileItem)
+                {
+                    if (dist < 100.f) node->terrainTileItem->currentLOD = 0;
+                    else if (dist < 200.f) node->terrainTileItem->currentLOD = (std::min)(node->terrainTileItem->numLODs - 1, (UINT)1);
+                    else if (dist < 300.f) node->terrainTileItem->currentLOD = (std::min)(node->terrainTileItem->numLODs - 1, (UINT)2);
+                    else if (dist < 400.f) node->terrainTileItem->currentLOD = (std::min)(node->terrainTileItem->numLODs - 1, (UINT)3);
+                    else node->terrainTileItem->currentLOD = (std::min)(node->terrainTileItem->numLODs - 1, (UINT)4);
+
+                    outVisible.push_back(node->terrainTileItem);
+                }
             }
         };
 

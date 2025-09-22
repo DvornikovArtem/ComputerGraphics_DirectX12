@@ -18,7 +18,8 @@ enum class RenderLayer : int
     Transparent,
     Shadow,
     Sky,
-    Count,
+    Landscape,
+    Count
 };
 
 struct RenderItem;
@@ -60,13 +61,11 @@ struct DrawableObject
     XMFLOAT3 WorldRotation = XMFLOAT3(0.f, 0.f, 0.f);
     XMFLOAT3 Scale = XMFLOAT3(1.f, 1.f, 1.f);
     XMMATRIX TexTransform = XMMatrixIdentity();
-
-    bool isTerrainTile = false;
 };
 
 
 // Lightweight structure stores parameters to draw a shape.
-struct RenderItem 
+struct RenderItem
 {
     RenderItem() = default;
 
@@ -113,6 +112,53 @@ struct RenderItem
 
     bool IsInViewFrustum = false;
 };
+
+
+
+// ===== JUST EXAMPLE how we can do the 'key + hash + indexer' pattern for fast data access in std::unordered_map ======================
+//
+//struct TerrainTileItem : RenderItem
+//{
+//    uint16_t lod;
+//    uint32_t ix, iy;
+//    bool isRendered = false;
+//};
+//
+//struct TerrainTileKey {
+//    uint16_t lod;
+//    uint32_t ix, iy;
+//    bool operator==(const TerrainTileKey& o) const noexcept {
+//        return lod == o.lod && ix == o.ix && iy == o.iy;
+//    }
+//};
+//
+//struct TerrainTileKeyHash {
+//    size_t operator()(const TerrainTileKey& k) const noexcept {
+//        size_t h = std::hash<int>{}(k.lod);
+//        h ^= std::hash<int>{}(k.ix) + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2);
+//        h ^= std::hash<int>{}(k.iy) + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2);
+//        return h;
+//    }
+//};
+//
+//static TerrainTileItem* FindTerrainTile(uint16_t lod, uint32_t x, uint32_t y, std::vector<TerrainTileItem*>& objs, const std::unordered_map<TerrainTileKey, size_t, TerrainTileKeyHash>& idx)
+//{
+//    if (auto it = idx.find(TerrainTileKey{ lod, x, y }); it != idx.end()) return objs[it->second];
+//    return nullptr;
+//}
+//
+//idx.clear();
+//idx.reserve(mAllTerrainRitems.size());
+//for (size_t i = 0; i < mAllTerrainRitems.size(); i++) {
+//    TerrainTileItem* terrainTileItem = mAllTerrainRitems[i];
+//    idx.emplace(TerrainTileKey{ terrainTileItem->lod, terrainTileItem->ix, terrainTileItem->iy }, i);
+//}
+// 
+//octTreeDesc.titemLOD0 = FindTerrainTile(0, 0, 0, mAllTerrainRitems, idx);
+//
+// ================================================================================================================================
+
+
 
 struct LightObject
 {

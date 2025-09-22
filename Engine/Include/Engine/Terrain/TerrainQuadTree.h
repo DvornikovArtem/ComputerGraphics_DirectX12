@@ -11,6 +11,7 @@
 #include <cassert>
 #include <Engine/Terrain/TerrainTile.h>
 #include <Engine/Terrain/TerrainImporter.h>
+#include <Engine/Render/RenderItem.h>
 
 
 
@@ -23,7 +24,7 @@ struct TerrainNode
 
     bool IsLeaf() const { return !children[0] && !children[1] && !children[2] && !children[3]; }
 
-    RenderItem* renderItem = nullptr;
+    RenderItem* terrainTileItem = nullptr;
 };
 
 
