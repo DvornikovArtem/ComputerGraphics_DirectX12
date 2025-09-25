@@ -28,6 +28,8 @@ struct TerrainRendererDesc
 	uint8_t quadTreeLevels = 4;
 
 	bool enableWireFrame = false;
+
+	bool skipTileReimportIfPresent = true;
 };
 
 

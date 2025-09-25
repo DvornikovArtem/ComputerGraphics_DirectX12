@@ -29,7 +29,8 @@ void TerrainRenderer::Initialize(const TerrainRendererDesc& terrainRendererDesc)
         terrainRendererDesc.pathToNormalMap,
         terrainRendererDesc.pathToHeightMap,
         terrainRendererDesc.quadTreeLevels,
-        meta
+        meta,
+        terrainRendererDesc.skipTileReimportIfPresent
     );
 
     if (!ok) ThrowError(L"TerrainRenderer::Initialize", L"BuildTilesFromSource failed");

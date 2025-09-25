@@ -9,7 +9,8 @@ struct ObjectConstants
     DirectX::XMFLOAT4X4 World = MathHelper::Identity4x4();
 	DirectX::XMFLOAT4X4 TexTransform = MathHelper::Identity4x4();
     float TesselationFactor = 1;
-    DirectX::XMFLOAT3 pad;
+    float HeightMapScale = 1.0f;
+    DirectX::XMFLOAT2 pad;
 };
 
 struct PassConstants

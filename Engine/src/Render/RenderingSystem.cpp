@@ -652,6 +652,7 @@ void RenderingSystem::BuildTerrain()
 	terrainRendererDesc.quadTreeLevels = 6;
 	terrainRendererDesc.heightMapScale = 3500.0f;
 	terrainRendererDesc.enableWireFrame = false;
+	terrainRendererDesc.skipTileReimportIfPresent = true;
 
 	terrainRenderer = new TerrainRenderer();
 	terrainRenderer->Initialize(terrainRendererDesc);
@@ -1126,6 +1127,8 @@ void RenderingSystem::UpdateObjectCBs(const GameTimer& gt)
 
 			if (e->renderLayer == RenderLayer::Landscape) objConstants.TesselationFactor = 1.0f;
 			else objConstants.TesselationFactor = 50 / XMVectorGetX(XMVector3Length(diff));
+
+			objConstants.HeightMapScale = terrainRenderer->Meta().heightScale;
 
 			currObjectCB->CopyData(e->ObjCBIndex, objConstants);
 
@@ -2052,7 +2055,6 @@ void RenderingSystem::DrawParticleSystems()
 			CD3DX12_RESOURCE_BARRIER::Transition(particleSystem->GetAliveList(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE)
 		};
 		mCommandList->ResourceBarrier(_countof(toSrv), toSrv);
-
 		particleSystem->Draw(passCBAddress);
 
 		CD3DX12_RESOURCE_BARRIER barriers[2] = {

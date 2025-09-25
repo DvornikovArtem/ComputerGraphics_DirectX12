@@ -2,6 +2,7 @@
 
 #include <cstdio>
 #include <cwctype>
+#include <optional>
 
 // From solution
 #include <Engine/Terrain/TerrainImporter.h>
@@ -574,7 +575,7 @@ bool TerrainImporter::BuildTilesFromSource(
                     baseD = resizedD.GetImage(0, 0, 0);
                 }
 
-                /*{
+                {
                     Image* mutD = const_cast<Image*>(baseD);
 
                     const int chD = 4, chN = 4, chH = 1;
@@ -590,7 +591,7 @@ bool TerrainImporter::BuildTilesFromSource(
                     ExtractLastColumn(*mutD, prevRightColD, chD);
 
                     ExtractLastRow(*mutD, prevBottomRowD[tx], chD);
-                }*/
+                }
 
                 // Generate mip-maps
                 ScratchImage mipD;
@@ -622,7 +623,7 @@ bool TerrainImporter::BuildTilesFromSource(
                     baseN = resizedN.GetImage(0, 0, 0);
                 }
 
-                /*{
+                {
                     Image* mutN = const_cast<Image*>(baseN);
 
                     const int chD = 4, chN = 4, chH = 1;
@@ -638,7 +639,7 @@ bool TerrainImporter::BuildTilesFromSource(
                     ExtractLastColumn(*mutN, prevRightColN, chN);
 
                     ExtractLastRow(*mutN, prevBottomRowN[tx], chN);
-                }*/
+                }
 
                 ScratchImage mipN;
                 const size_t leafMipLevels2 = tileFullMipCount((std::max)(leafPixX, leafPixY));
@@ -696,7 +697,7 @@ bool TerrainImporter::BuildTilesFromSource(
                     baseH = resizedH.GetImage(0, 0, 0);
                 }
 
-                /*{
+                {
                     Image* mutH = const_cast<Image*>(baseH);
 
                     const int chD = 4, chN = 4, chH = 1;
@@ -712,7 +713,7 @@ bool TerrainImporter::BuildTilesFromSource(
                     ExtractLastColumn(*mutH, prevRightColH, chH);
 
                     ExtractLastRow(*mutH, prevBottomRowH[tx], chH);
-                }*/
+                }
 
                 ScratchImage mipH;
                 const size_t leafMipLevels3 = tileFullMipCount((std::max)(leafPixX, leafPixY));
@@ -750,4 +751,226 @@ bool TerrainImporter::BuildTilesFromSource(
     }
 
     return true;
+}
+
+
+
+
+static bool ends_with(const std::wstring& s, const std::wstring& suff) {
+    if (s.size() < suff.size()) return false;
+    return std::equal(suff.rbegin(), suff.rend(), s.rbegin());
+}
+
+// Extract ix, iy from the filename (tile_*_levelL_ix_iy.dds)
+static bool ParseTileName(const std::wstring& filename, uint32_t& ix, uint32_t& iy) {
+    // except ..._level{L}_{ix}_{iy}.dds
+    size_t us1 = filename.rfind(L'_');
+    if (us1 == std::wstring::npos) return false;
+    size_t us2 = filename.rfind(L'_', us1 - 1);
+    if (us2 == std::wstring::npos) return false;
+
+    try {
+        iy = (uint32_t)std::stoul(filename.substr(us1 + 1, filename.size() - us1 - 1 - 4)); // -4 = ".dds"
+        ix = (uint32_t)std::stoul(filename.substr(us2 + 1, us1 - us2 - 1));
+        return true;
+    }
+    catch (...) { return false; }
+}
+
+// Fast reading of DDS metadata (w, h, format), along with min/max for a height tile (R16)
+struct DDSTileInfo {
+    uint32_t width = 0, height = 0;
+    bool ok = false;
+    uint16_t minH = 0, maxH = 0; // only for HEIGHT
+};
+
+static DDSTileInfo ReadDDSTileInfo(const std::filesystem::path& file, bool isHeight) {
+    DDSTileInfo out;
+    DirectX::ScratchImage img;
+    HRESULT hr = DirectX::LoadFromDDSFile(file.c_str(), DirectX::DDS_FLAGS_NONE, nullptr, img);
+    if (FAILED(hr) || img.GetImageCount() == 0) return out;
+    const DirectX::Image* im = img.GetImage(0, 0, 0);
+    out.width = (uint32_t)im->width;
+    out.height = (uint32_t)im->height;
+    out.ok = true;
+
+    if (isHeight && im->format == DXGI_FORMAT_R16_UNORM) {
+        out.minH = (std::numeric_limits<uint16_t>::max)();
+        out.maxH = (std::numeric_limits<uint16_t>::min)();
+        for (uint32_t y = 0; y < out.height; ++y) {
+            const uint16_t* row = reinterpret_cast<const uint16_t*>(im->pixels + y * im->rowPitch);
+            for (uint32_t x = 0; x < out.width; ++x) {
+                uint16_t v = row[x];
+                if (v < out.minH) out.minH = v;
+                if (v > out.maxH) out.maxH = v;
+            }
+        }
+    }
+    return out;
+}
+
+
+static void ValidateTilesAndFillMeta(
+    const std::filesystem::path& tilesRoot,
+    uint32_t quadLevels,
+    const std::wstring& haveNormalsPath, // empty -> normals generated before
+    float heightScale,
+    TerrainMeta& outMeta
+) {
+    using std::filesystem::path;
+    if (quadLevels == 0) ThrowError(L"TerrainImporter::BuildTilesFromSource(skip)", L"quadLevels must be > 0");
+
+    uint32_t leafL = quadLevels - 1;
+    path leafDir = tilesRoot / (L"L" + std::to_wstring(leafL));
+    path dDir = leafDir / L"diffuse";
+    path nDir = leafDir / L"normal";
+    path hDir = leafDir / L"height";
+
+    if (!std::filesystem::exists(dDir) || !std::filesystem::exists(hDir))
+        ThrowError(L"TerrainImporter::BuildTilesFromSource(skip)", L"Tiles structure is missing for the leaf level.");
+    if (!haveNormalsPath.empty() && !std::filesystem::exists(nDir))
+        ThrowError(L"TerrainImporter::BuildTilesFromSource(skip)", L"Normal tiles folder is missing while normals were provided originally.");
+
+    std::optional<DDSTileInfo> anyLeafD;
+    for (auto& e : std::filesystem::directory_iterator(dDir)) {
+        if (e.is_regular_file() && ends_with(e.path().filename().wstring(), L".dds")) {
+            auto infoD = ReadDDSTileInfo(e.path(), false);
+            if (!infoD.ok) continue;
+            anyLeafD = infoD;
+            break;
+        }
+    }
+    if (!anyLeafD) ThrowError(L"TerrainImporter::BuildTilesFromSource(skip)", L"Leaf diffuse tiles not found or are invalid.");
+
+    const uint32_t leafW = anyLeafD->width;
+    const uint32_t leafH = anyLeafD->height;
+
+    outMeta.baseTilePixels = (std::max)(leafW, leafH);
+    outMeta.quadLevels = quadLevels;
+    outMeta.worldSizeX = float(leafW * (1u << leafL));
+    outMeta.worldSizeZ = float(leafH * (1u << leafL));
+    outMeta.heightScale = heightScale;
+    outMeta.tilesRootDir = tilesRoot.wstring();
+    outMeta.tiles.clear();
+
+    for (uint32_t L = 0; L < quadLevels; ++L) {
+        path lvl = tilesRoot / (L"L" + std::to_wstring(L));
+        path d = lvl / L"diffuse";
+        path h = lvl / L"height";
+        path n = lvl / L"normal";
+
+        if (!std::filesystem::exists(d) || !std::filesystem::exists(h))
+            ThrowError(L"TerrainImporter::BuildTilesFromSource(skip)", L"Missing diffuse/height folders on some level.");
+        if (!haveNormalsPath.empty() && !std::filesystem::exists(n))
+            ThrowError(L"TerrainImporter::BuildTilesFromSource(skip)", L"Missing normal folder on some level.");
+
+        const uint32_t tilesPerSide = 1u << L;
+        const uint32_t expected = tilesPerSide * tilesPerSide;
+
+        auto countDDS = [](const path& p)->uint32_t {
+            uint32_t c = 0;
+            for (auto& e : std::filesystem::directory_iterator(p))
+                if (e.is_regular_file() && ends_with(e.path().filename().wstring(), L".dds")) ++c;
+            return c;
+            };
+        const uint32_t cd = countDDS(d);
+        const uint32_t ch = countDDS(h);
+        if (cd != expected || ch != expected)
+            ThrowError(L"TerrainImporter::BuildTilesFromSource(skip)", L"Tiles count mismatch for some level (diffuse/height).");
+
+        if (!haveNormalsPath.empty()) {
+            const uint32_t cn = countDDS(n);
+            if (cn != expected) ThrowError(L"TerrainImporter::BuildTilesFromSource(skip)", L"Tiles count mismatch for normals.");
+        }
+
+        for (uint32_t iy = 0; iy < tilesPerSide; ++iy) {
+            for (uint32_t ix = 0; ix < tilesPerSide; ++ix) {
+                std::wstring base = L"tile_*_level" + std::to_wstring(L) + L"_" + std::to_wstring(ix) + L"_" + std::to_wstring(iy) + L".dds";
+                path df = d / (L"tile_diffuse_level" + std::to_wstring(L) + L"_" + std::to_wstring(ix) + L"_" + std::to_wstring(iy) + L".dds");
+                path hf = h / (L"tile_height_level" + std::to_wstring(L) + L"_" + std::to_wstring(ix) + L"_" + std::to_wstring(iy) + L".dds");
+                path nf = n / (L"tile_normal_level" + std::to_wstring(L) + L"_" + std::to_wstring(ix) + L"_" + std::to_wstring(iy) + L".dds");
+
+                if (!std::filesystem::exists(df) || !std::filesystem::exists(hf))
+                    ThrowError(L"TerrainImporter::BuildTilesFromSource(skip)", L"Missing tile file(s) for some ix/iy.");
+
+                if (!haveNormalsPath.empty() && !std::filesystem::exists(nf))
+                    ThrowError(L"TerrainImporter::BuildTilesFromSource(skip)", L"Missing normal tile file for some ix/iy.");
+
+                auto id = ReadDDSTileInfo(df, false);
+                auto ih = ReadDDSTileInfo(hf, true);
+                if (!id.ok || !ih.ok) ThrowError(L"TerrainImporter::BuildTilesFromSource(skip)", L"Failed to read DDS metadata.");
+
+                const uint32_t expectedW = leafW * (1u << (leafL - L));
+                const uint32_t expectedH = leafH * (1u << (leafL - L));
+                //if (id.width != expectedW || id.height != expectedH || ih.width != expectedW || ih.height != expectedH)
+                if (id.width != leafW || id.height != leafH || ih.width != leafW || ih.height != leafH)
+                    ThrowError(L"TerrainImporter::BuildTilesFromSource(skip)", L"Tile dimensions mismatch for level vs leaf scale.");
+
+                TerrainTileInfo ti{};
+                ti.lod = (uint16_t)L;
+                ti.ix = ix;
+                ti.iy = iy;
+                ti.diffusePath = std::filesystem::relative(df, tilesRoot).wstring();
+                ti.heightPath = std::filesystem::relative(hf, tilesRoot).wstring();
+                //if (!haveNormalsPath.empty())
+                //    ti.normalPath = std::filesystem::relative(nf, tilesRoot).wstring();
+                //else
+                //    ti.normalPath.clear();
+                if (std::filesystem::exists(nf))
+                    ti.normalPath = std::filesystem::relative(nf, tilesRoot).wstring();
+                else
+                    ti.normalPath.clear();
+
+                ti.minH = float(ih.minH) / 65535.0f;
+                ti.maxH = float(ih.maxH) / 65535.0f;
+
+                const float worldTileX = outMeta.worldSizeX / float(tilesPerSide);
+                const float worldTileZ = outMeta.worldSizeZ / float(tilesPerSide);
+                const float x0 = float(ix) * worldTileX;
+                const float z0 = float(iy) * worldTileZ;
+                const float cx = x0 + 0.5f * worldTileX;
+                const float cz = z0 + 0.5f * worldTileZ;
+                const float minY = ti.minH * outMeta.heightScale;
+                const float maxY = ti.maxH * outMeta.heightScale;
+                const float cy = 0.5f * (minY + maxY);
+                const float ex = 0.5f * worldTileX;
+                const float ez = 0.5f * worldTileZ;
+                const float ey = 0.5f * (maxY - minY);
+
+                outMeta.tiles.push_back(ti);
+
+                // Already fill in QuadTree
+                outMeta.tiles.back().bounds = DirectX::BoundingBox(DirectX::XMFLOAT3(cx, cy, cz), DirectX::XMFLOAT3(ex, ey, ez));
+            }
+        }
+    }
+}
+
+
+
+// Load all terrain textures and use them to generate the tile grid, filling in the information about the tiles and the terrain as a whole (added skipIfTilesExist flag)
+bool TerrainImporter::BuildTilesFromSource(
+    const std::wstring& diffuse,
+    const std::wstring& normal,
+    const std::wstring& height,
+    uint32_t quadLevels,
+    TerrainMeta& outMeta,
+    bool skipIfTilesExist
+)
+{
+    // Path to "Tiles"
+    const std::filesystem::path tilesRoot = std::filesystem::path(diffuse).parent_path() / L"Tiles";
+
+    if (skipIfTilesExist && std::filesystem::exists(tilesRoot)) {
+        try {
+            ValidateTilesAndFillMeta(tilesRoot, quadLevels, normal, outMeta.heightScale, outMeta);
+            return true;
+        }
+        catch (const DxException&) {
+            throw;
+        }
+    }
+
+    OutputDebugStringW(L"\n\nWell, well, well\n\n");
+    return BuildTilesFromSource(diffuse, normal, height, quadLevels, outMeta);
 }
