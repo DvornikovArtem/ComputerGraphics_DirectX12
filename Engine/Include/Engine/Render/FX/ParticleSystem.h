@@ -21,11 +21,6 @@ struct Particle
 
 struct FrameResource;
 
-enum PARTICLE_SHAPE {
-    QUAD    = 0,
-    CIRCLE  = 1
-};
-
 enum PARTICLE_SYSTEM_EFFECT {
     FIREWORK    = 0,
     FIRE        = 1,
@@ -39,13 +34,13 @@ struct ParticleSystemDescriptor
     UINT numParticlesToEmit;
     UINT maxParticles = 1000;
     float particleSize = 0.2f;
-    PARTICLE_SHAPE particleShape = PARTICLE_SHAPE::QUAD;
     std::string emitComputeShaderName;
     std::string simulateComputeShaderName;
     ComPtr<ID3DBlob> emitComputeShader;
     ComPtr<ID3DBlob> simulateComputeShader;
     UINT CBIndex;
-    //PARTICLE_SYSTEM_EFFECT effect = PARTICLE_SYSTEM_EFFECT::"; // for the future
+    std::string particleGeometryName;
+    std::vector<D3D12_INPUT_ELEMENT_DESC> InputLayout;
 };
 
 
@@ -61,7 +56,7 @@ public:
     void Update(float dt, FrameResource* currentFrameResource);
     void Draw(D3D12_GPU_VIRTUAL_ADDRESS passCBAddress);
 
-    MeshGeometry* GetQuadGeometry() const { return mQuadGeo.get(); }
+    MeshGeometry* GetQuadGeometry() const { return mGeometry; }
     ID3D12Resource* GetAliveList() const { return mAliveList.Get(); }
     ID3D12Resource* GetParticlePool() const { return mParticlePool.Get(); }
     XMFLOAT3 getEmitterPosition() const { return mEmitterPosition; }
@@ -69,6 +64,7 @@ public:
     UINT getNumParticlesToEmit() const { return mNumParticlesToEmit; }
 
     void setEmissiveTex(ComPtr<ID3D12Resource> emissiveTex, ComPtr<ID3D12Resource> normalTex);
+    void SetGeometry(MeshGeometry* NewGeometry);
 
 private:
     void BuildResources();
@@ -81,7 +77,6 @@ private:
     UINT mMaxParticles;
     UINT mNumParticlesToEmit;
     float mParticleSize;
-    PARTICLE_SHAPE mParticleShape;
     ComPtr<ID3DBlob> mEmitComputeShader;
     ComPtr<ID3DBlob> mSimulateComputeShader;
     UINT mCBIndex;
@@ -105,7 +100,7 @@ private:
 
     ComPtr<ID3D12DescriptorHeap> mUavSrvHeap;
 
-    std::unique_ptr<MeshGeometry> mQuadGeo;
+    MeshGeometry* mGeometry;
 
     ComPtr<ID3D12Resource> mDrawArgsUpload;
     ComPtr<ID3D12Resource> mCounterUpload;
@@ -113,6 +108,8 @@ private:
 
     ID3D12Device* mDevice;
     ID3D12GraphicsCommandList* mCommandList;
+    std::vector<D3D12_INPUT_ELEMENT_DESC> mInputLayout;
+
 
     float mTime = 0.0f;
     static UINT sGlobalFrame;

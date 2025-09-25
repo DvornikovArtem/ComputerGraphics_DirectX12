@@ -148,10 +148,12 @@ HS_CONSTANT_DATA_OUTPUT ConstantsHS(InputPatch<DS_VS_OUTPUT_GS_INPUT, 3> Patch, 
     // tessellation factor for all edges and the inside. These are
     // constant for the whole mesh.
     
-    Out.Edges[0] = 1;
-    Out.Edges[1] = 1;
-    Out.Edges[2] = 1;
-    Out.Inside = 1;
+    float tessfactor = 1.f;
+    
+    Out.Edges[0] = tessfactor;
+    Out.Edges[1] = tessfactor;
+    Out.Edges[2] = tessfactor;
+    Out.Inside = tessfactor;
     
     /*float3 p0 = Patch[0].PosW;
     float3 p1 = Patch[1].PosW;
@@ -230,17 +232,13 @@ struct GS_OUT
 };
 
 // Check if edge is on border
-bool isBorderEdge
-    (
-    float2 t0, float2 t1)
+bool isBorderEdge(float2 t0, float2 t1)
 {
     const float epsilon = 0.001;
-        // Check left/right borders
     if (abs(t0.x) < epsilon && abs(t1.x) < epsilon)
         return true;
     if (abs(t0.x - 1.0) < epsilon && abs(t1.x - 1.0) < epsilon)
         return true;
-        // Check top/bottom borders
     if (abs(t0.y) < epsilon && abs(t1.y) < epsilon)
         return true;
     if (abs(t0.y - 1.0) < epsilon && abs(t1.y - 1.0) < epsilon)
@@ -349,22 +347,6 @@ GBufferData PS(GS_OUT pin)
     GBufferData pout;
     
     float2 uv = pin.TexC;
-    
-#ifdef ROTATINGTILES 
-    float2 tileid = floor(pin.TexC);
-    float2 localuv = frac(pin.TexC) - 0.5;
-    float parity = fmod(tileid.x + tileid.y, 2.0);
-    float angle = (parity == 0) ? -gTotalTime : gTotalTime;
-    float2 rotateduv;
-    rotateduv.x = localuv.x * cos(angle) - localuv.y * sin(angle);
-    rotateduv.y = localuv.x * sin(angle) + localuv.y * cos(angle);
-    rotateduv += 0.5;
-    uv = rotateduv;
-#endif
-    
-    //float3 NormalMapSample = gNormalMap.Sample(gsamAnisotropicWrap, uv).rgb;
-    //float4 diffuseAlbedo = gDiffuseMap.Sample(gsamAnisotropicWrap, uv);
-    
     
     float3 NormalMapSample = gNormalMap.Sample(gsamAnisotropicClamp, uv).rgb;
     float4 diffuseAlbedo = gDiffuseMap.Sample(gsamAnisotropicClamp, uv);

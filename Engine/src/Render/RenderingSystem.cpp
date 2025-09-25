@@ -620,11 +620,18 @@ void RenderingSystem::BuildParticleSystems(std::unordered_map<std::string, Parti
 		particleSystemDescriptor.emitComputeShader = mShaders[particleSystemDescriptor.emitComputeShaderName];
 		particleSystemDescriptor.simulateComputeShader = mShaders[particleSystemDescriptor.simulateComputeShaderName];
 		particleSystemDescriptor.CBIndex = k;
+		particleSystemDescriptor.InputLayout = mInputLayout;
 
 		ParticleSystem* particleSystem = new ParticleSystem();
+
+		//need to add warning if geometry not found later
+		particleSystem->SetGeometry(mGeometries[particleSystemDescriptor.particleGeometryName]);
+
 		particleSystem->Initialize(particleSystemDescriptor);
 		particleSystem->Build(md3dDevice, mCommandList);
 
+
+		
 		mAllParticleSystems.push_back(particleSystem);
 
 		k++;
@@ -1257,7 +1264,7 @@ void RenderingSystem::UpdateLightCBs(const GameTimer& gt)
 			{
 			case LightType::Directional:
 			{
-				float SphereRadiuses[5] = { 10, 50, 150, 400, 1000 };
+				float SphereRadiuses[5] = { 10, 50, 150, 400, 1500 };
 				
 				//for each cascade
 				for (int i = 0; i < 5; i++)
@@ -1286,7 +1293,7 @@ void RenderingSystem::UpdateLightCBs(const GameTimer& gt)
 					XMStoreFloat4x4(&LightConstants.Proj[i], XMMatrixTranspose(lightProj));
 					XMStoreFloat4x4(&LightConstants.ShadowTransform[i], XMMatrixTranspose(S));
 					XMStoreFloat4(&LightConstants.CascadeDistances, XMVectorSet(SphereRadiuses[0], SphereRadiuses[1], SphereRadiuses[2], SphereRadiuses[3]));
-					if (i == 3)
+					if (i == 4)
 					{
 						BoundingFrustum::CreateFromMatrix(e->LightFrustum, lightProj);
 						e->LightFrustum.Transform(e->LightFrustum, XMMatrixInverse(nullptr, lightView));
@@ -1665,6 +1672,30 @@ void RenderingSystem::BuildPSOs(MaterialDesc& MDesc, std::unordered_map<std::str
 	ShadowMapPSODesc.RTVFormats[3] = DXGI_FORMAT_UNKNOWN;
 	ShadowMapPSODesc.RTVFormats[4] = DXGI_FORMAT_UNKNOWN;
 	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&ShadowMapPSODesc, IID_PPV_ARGS(&mPSOs["ShadowOpaque"])));
+
+	ShadowMapPSODesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_PATCH;
+	ShadowMapPSODesc.VS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["ShadowOpaqueVS_Terrain"]->GetBufferPointer()),
+		mShaders["ShadowOpaqueVS_Terrain"]->GetBufferSize()
+	};
+	ShadowMapPSODesc.GS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["ShadowOpaqueGS_Terrain"]->GetBufferPointer()),
+		mShaders["ShadowOpaqueGS_Terrain"]->GetBufferSize()
+	};
+	ShadowMapPSODesc.HS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["ShadowOpaqueHS_Terrain"]->GetBufferPointer()),
+		mShaders["ShadowOpaqueHS_Terrain"]->GetBufferSize()
+	};
+	ShadowMapPSODesc.DS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["ShadowOpaqueDS_Terrain"]->GetBufferPointer()),
+		mShaders["ShadowOpaqueDS_Terrain"]->GetBufferSize()
+	};
+	ShadowMapPSODesc.PS = { nullptr, 0 };
+	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&ShadowMapPSODesc, IID_PPV_ARGS(&mPSOs["ShadowOpaque_terrain"])));
 }
 
 void RenderingSystem::BuildGlobalPSOs()
@@ -2098,6 +2129,12 @@ void RenderingSystem::DrawShadowMaps()
 		auto objectCB = mCurrFrameResource->ObjectCB->Resource();
 		auto matCB = mCurrFrameResource->MaterialCB->Resource();
 
+		ID3D12DescriptorHeap* descriptorHeaps[] = { mSrvDescriptorHeap.Get() };
+		mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
+
+		D3D12_GPU_VIRTUAL_ADDRESS lightCBAddress = lightCB->GetGPUVirtualAddress() + i->LightCBIndex * lightCBByteSize;
+		mCommandList->SetGraphicsRootConstantBufferView(4, lightCBAddress);
+
 		for (size_t j = 0; j < i->VisibleRitems.size(); ++j)
 		{
 			auto& ri = i->VisibleRitems[j];
@@ -2106,20 +2143,15 @@ void RenderingSystem::DrawShadowMaps()
 			mCommandList->IASetIndexBuffer(&ri->Geo->IndexBufferView());
 			mCommandList->SetPipelineState(ri->Mat->PSOs["ShadowOpaque"].Get());
 
-			ID3D12DescriptorHeap* descriptorHeaps[] = { mSrvDescriptorHeap.Get() };
-			mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
-
-
-			D3D12_GPU_VIRTUAL_ADDRESS objCBAddress = objectCB->GetGPUVirtualAddress() + ri->ObjCBIndex * objCBByteSize;
-			D3D12_GPU_VIRTUAL_ADDRESS matCBAddress = matCB->GetGPUVirtualAddress() + ri->Mat->MatCBIndex * matCBByteSize;
-			D3D12_GPU_VIRTUAL_ADDRESS lightCBAddress = lightCB->GetGPUVirtualAddress() + i->LightCBIndex * lightCBByteSize;
-
 			mCommandList->SetGraphicsRootDescriptorTable(0, GetGpuSrv(ri->Mat->DiffuseSrvHeapIndex));
 			mCommandList->SetGraphicsRootDescriptorTable(1, GetGpuSrv(ri->Mat->NormalSrvHeapIndex));
 			mCommandList->SetGraphicsRootDescriptorTable(2, GetGpuSrv(ri->Mat->HeightSrvHeapIndex));
 
+
+			D3D12_GPU_VIRTUAL_ADDRESS objCBAddress = objectCB->GetGPUVirtualAddress() + ri->ObjCBIndex * objCBByteSize;
+			D3D12_GPU_VIRTUAL_ADDRESS matCBAddress = matCB->GetGPUVirtualAddress() + ri->Mat->MatCBIndex * matCBByteSize;
+
 			mCommandList->SetGraphicsRootConstantBufferView(3, objCBAddress);
-			mCommandList->SetGraphicsRootConstantBufferView(4, lightCBAddress);
 			mCommandList->SetGraphicsRootConstantBufferView(5, matCBAddress);
 
 
@@ -2131,6 +2163,30 @@ void RenderingSystem::DrawShadowMaps()
 
 			mCommandList->DrawIndexedInstanced(IndexCount, 1, StartIndexLocation, BaseVertexLocation, 0);
 
+		}
+
+		//checking intesction with biggest tile of terrain, draw it into shadow map if true
+		auto& Terrain = terrainRenderer->Quad().Find(0, 0, 0)->terrainTileItem;
+		if (i->LightFrustum.Intersects(Terrain->bounds))
+		{
+			mCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_3_CONTROL_POINT_PATCHLIST);
+			mCommandList->SetPipelineState(Terrain->Mat->PSOs["ShadowOpaque_terrain"].Get());
+			mCommandList->IASetVertexBuffers(0, 1, &Terrain->Geo->VertexBufferView());
+			mCommandList->IASetIndexBuffer(&Terrain->Geo->IndexBufferView());
+			mCommandList->SetGraphicsRootDescriptorTable(2, GetGpuSrv(Terrain->Mat->HeightSrvHeapIndex));
+
+			D3D12_GPU_VIRTUAL_ADDRESS objCBAddress = objectCB->GetGPUVirtualAddress() + Terrain->ObjCBIndex * objCBByteSize;
+			D3D12_GPU_VIRTUAL_ADDRESS matCBAddress = matCB->GetGPUVirtualAddress() + Terrain->Mat->MatCBIndex * matCBByteSize;
+
+			mCommandList->SetGraphicsRootConstantBufferView(3, objCBAddress);
+			mCommandList->SetGraphicsRootConstantBufferView(5, matCBAddress);
+
+			std::string subMeshName = "LOD" + std::to_string(Terrain->currentLOD);
+			UINT IndexCount = Terrain->Geo->DrawArgs[subMeshName].IndexCount;
+			UINT StartIndexLocation = Terrain->Geo->DrawArgs[subMeshName].StartIndexLocation;
+			UINT BaseVertexLocation = Terrain->Geo->DrawArgs[subMeshName].BaseVertexLocation;
+
+			mCommandList->DrawIndexedInstanced(IndexCount, 1, StartIndexLocation, BaseVertexLocation, 0);
 		}
 
 		// Change back to GENERIC_READ so we can read the texture in a shader.
@@ -2717,6 +2773,11 @@ void RenderingSystem::BuildShaders(std::vector<ShaderDesc>& ShaderDescs)
 	mShaders["ShadowOpaquePS"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\Shadows.hlsl", nullptr, "PS", "ps_5_1");
 	mShaders["ShadowOpaqueGS"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\Shadows.hlsl", nullptr, "GS", "gs_5_1");
 
+	mShaders["ShadowOpaqueVS_Terrain"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\Shadows_Terrain.hlsl", nullptr, "VS", "vs_5_1");
+	mShaders["ShadowOpaqueGS_Terrain"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\Shadows_Terrain.hlsl", nullptr, "GS", "gs_5_1");
+	mShaders["ShadowOpaqueHS_Terrain"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\Shadows_Terrain.hlsl", nullptr, "HS", "hs_5_1");
+	mShaders["ShadowOpaqueDS_Terrain"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\Shadows_Terrain.hlsl", nullptr, "DS", "ds_5_1");
+
 	//for post-processing
 	mShaders["PPVS"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\PostProcessing.hlsl", nullptr, "VS_FSQuad", "vs_5_1");
 	mShaders["PPPS"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\PostProcessing.hlsl", nullptr, "PS", "ps_5_1");
@@ -2731,9 +2792,11 @@ void RenderingSystem::BuildBasicGeometry()
 	GeometryGenerator::MeshData cylinder = geoGen.CreateCylinder(0.5f, 0.3f, 3.0f, 20, 20);
 	GeometryGenerator::MeshData cone = geoGen.CreateCone(2.f, 3.f, 20, 20);
 	GeometryGenerator::MeshData sphere_lp = geoGen.CreateSphere(1.f, 10, 10);
+	GeometryGenerator::MeshData TwoDCircle = geoGen.CreateCircle(0.5f, 16);
+	GeometryGenerator::MeshData TwoDQuad = geoGen.CreateQuad(0.f, 0.f, 1.f, 1.f, 0.f);
 
-	std::vector<GeometryGenerator::MeshData*> Objects = { &box, &grid, &sphere, &cylinder, &cone, &sphere_lp };
-	std::vector<std::string> Names = { "Box", "Grid", "Sphere", "Cylinder", "Cone", "Sphere_LowPoly"};
+	std::vector<GeometryGenerator::MeshData*> Objects = { &box, &grid, &sphere, &cylinder, &cone, &sphere_lp, &TwoDCircle, &TwoDQuad };
+	std::vector<std::string> Names = { "Box", "Grid", "Sphere", "Cylinder", "Cone", "Sphere_LowPoly", "2DCircle", "2DQuad"};
 
 	for (int k = 0; k < Objects.size(); k++)
 	{
