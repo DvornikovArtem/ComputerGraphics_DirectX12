@@ -87,10 +87,10 @@ void GS(triangle DS_VS_OUTPUT_PS_INPUT p[3], in uint id : SV_GSInstanceID, inout
 {
     if(CurrentLight.LightType == 0)
     {
-        // draw 4 cascades for directional lights
+        // draw 5 cascades for directional lights
         
-        //first 4 instances only
-        if (id > 3)
+        //first 5 instances only
+        if (id > 4)
             return;
         
         for (int i = 0; i < 3; i++)
