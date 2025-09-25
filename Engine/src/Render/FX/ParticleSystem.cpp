@@ -12,7 +12,6 @@ void ParticleSystem::Initialize(const ParticleSystemDescriptor& particleSystemDe
     mMaxParticles = particleSystemDesc.maxParticles;
     mNumParticlesToEmit = particleSystemDesc.numParticlesToEmit;
     mParticleSize = particleSystemDesc.particleSize;
-    mParticleShape = particleSystemDesc.particleShape;
     mEmitComputeShader = particleSystemDesc.emitComputeShader;
     mSimulateComputeShader = particleSystemDesc.simulateComputeShader;
     mCBIndex = particleSystemDesc.CBIndex;

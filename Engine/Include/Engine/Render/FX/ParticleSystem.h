@@ -21,11 +21,6 @@ struct Particle
 
 struct FrameResource;
 
-enum PARTICLE_SHAPE {
-    QUAD    = 0,
-    CIRCLE  = 1
-};
-
 enum PARTICLE_SYSTEM_EFFECT {
     FIREWORK    = 0,
     FIRE        = 1,
@@ -39,7 +34,6 @@ struct ParticleSystemDescriptor
     UINT numParticlesToEmit;
     UINT maxParticles = 1000;
     float particleSize = 0.2f;
-    PARTICLE_SHAPE particleShape = PARTICLE_SHAPE::QUAD;
     std::string emitComputeShaderName;
     std::string simulateComputeShaderName;
     ComPtr<ID3DBlob> emitComputeShader;
@@ -83,7 +77,6 @@ private:
     UINT mMaxParticles;
     UINT mNumParticlesToEmit;
     float mParticleSize;
-    PARTICLE_SHAPE mParticleShape;
     ComPtr<ID3DBlob> mEmitComputeShader;
     ComPtr<ID3DBlob> mSimulateComputeShader;
     UINT mCBIndex;

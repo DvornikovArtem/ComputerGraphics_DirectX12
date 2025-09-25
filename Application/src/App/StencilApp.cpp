@@ -494,7 +494,6 @@ void StencilApp::MakeParticleSystems()
     fireworkParticleSystemDesc.numParticlesToEmit = 10;
     fireworkParticleSystemDesc.maxParticles = 256;
     fireworkParticleSystemDesc.particleSize = 0.07f;
-    fireworkParticleSystemDesc.particleShape = PARTICLE_SHAPE::CIRCLE;
     fireworkParticleSystemDesc.emitComputeShaderName = "EmitCS";
     fireworkParticleSystemDesc.simulateComputeShaderName = "SimulateCS2";
     fireworkParticleSystemDesc.particleGeometryName = MeshParsingResults["Svidetel"][0].GeometryName;
@@ -509,7 +508,6 @@ void StencilApp::MakeParticleSystems()
     smokeParticleSystemDesc.numParticlesToEmit = 1000;
     smokeParticleSystemDesc.maxParticles = 300000;
     smokeParticleSystemDesc.particleSize = 0.02f; // 0.03f
-    smokeParticleSystemDesc.particleShape = PARTICLE_SHAPE::CIRCLE;
     smokeParticleSystemDesc.emitComputeShaderName = "EmitSmokeCS";
     smokeParticleSystemDesc.simulateComputeShaderName = "SimulateSmokeCS";
     smokeParticleSystemDesc.particleGeometryName = "2DCircle";
