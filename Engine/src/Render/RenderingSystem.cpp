@@ -757,16 +757,14 @@ void RenderingSystem::BuildTerrain()
 
 			Tile.Name = "tile_level" + std::to_string(t.lod) + "_" + std::to_string(t.ix) + "_" + std::to_string(t.iy);
 			Tile.VertexShaderName = "TerrainVS";
-			Tile.HullShaderName = "TerrainHS";
 			Tile.GeometryShaderName = "TerrainGS";
-			Tile.DomainShaderName = "TerrainDS";
 			Tile.PixelShaderName = "TerrainPS";
 
 			Tile.DiffuseTexName = "tile_diffuse_level" + std::to_string(t.lod) + "_" + std::to_string(t.ix) + "_" + std::to_string(t.iy);
 			Tile.NormalMapName = "tile_normal_level" + std::to_string(t.lod) + "_" + std::to_string(t.ix) + "_" + std::to_string(t.iy);
 			Tile.HeightMapName = "tile_height_level" + std::to_string(t.lod) + "_" + std::to_string(t.ix) + "_" + std::to_string(t.iy);
 
-			Tile.UseTesselation = true;
+			Tile.UseTesselation = false;
 			Tile.bWireframe = terrainRendererDesc.enableWireFrame;
 
 			Tile.DiffuseAlbedo = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
@@ -1132,8 +1130,7 @@ void RenderingSystem::UpdateObjectCBs(const GameTimer& gt)
 
 			XMVECTOR diff = XMVectorSubtract(XMLoadFloat4x4(&e->World).r[3], mCamera.GetPosition());
 
-			if (e->renderLayer == RenderLayer::Landscape) objConstants.TesselationFactor = 1.0f;
-			else objConstants.TesselationFactor = 50 / XMVectorGetX(XMVector3Length(diff));
+			objConstants.TesselationFactor = 50 / XMVectorGetX(XMVector3Length(diff));
 
 			objConstants.HeightMapScale = terrainRenderer->Meta().heightScale;
 
@@ -1677,7 +1674,6 @@ void RenderingSystem::BuildPSOs(MaterialDesc& MDesc, std::unordered_map<std::str
 	ShadowMapPSODesc.RTVFormats[4] = DXGI_FORMAT_UNKNOWN;
 	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&ShadowMapPSODesc, IID_PPV_ARGS(&mPSOs["ShadowOpaque"])));
 
-	ShadowMapPSODesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_PATCH;
 	ShadowMapPSODesc.VS =
 	{
 		reinterpret_cast<BYTE*>(mShaders["ShadowOpaqueVS_Terrain"]->GetBufferPointer()),
@@ -1687,16 +1683,6 @@ void RenderingSystem::BuildPSOs(MaterialDesc& MDesc, std::unordered_map<std::str
 	{
 		reinterpret_cast<BYTE*>(mShaders["ShadowOpaqueGS_Terrain"]->GetBufferPointer()),
 		mShaders["ShadowOpaqueGS_Terrain"]->GetBufferSize()
-	};
-	ShadowMapPSODesc.HS =
-	{
-		reinterpret_cast<BYTE*>(mShaders["ShadowOpaqueHS_Terrain"]->GetBufferPointer()),
-		mShaders["ShadowOpaqueHS_Terrain"]->GetBufferSize()
-	};
-	ShadowMapPSODesc.DS =
-	{
-		reinterpret_cast<BYTE*>(mShaders["ShadowOpaqueDS_Terrain"]->GetBufferPointer()),
-		mShaders["ShadowOpaqueDS_Terrain"]->GetBufferSize()
 	};
 	ShadowMapPSODesc.PS = { nullptr, 0 };
 	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&ShadowMapPSODesc, IID_PPV_ARGS(&mPSOs["ShadowOpaque_terrain"])));
@@ -2172,7 +2158,6 @@ void RenderingSystem::DrawShadowMaps()
 		auto& Terrain = terrainRenderer->Quad().Find(0, 0, 0)->terrainTileItem;
 		if (i->LightFrustum.Intersects(Terrain->bounds))
 		{
-			mCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_3_CONTROL_POINT_PATCHLIST);
 			mCommandList->SetPipelineState(Terrain->Mat->PSOs["ShadowOpaque_terrain"].Get());
 			mCommandList->IASetVertexBuffers(0, 1, &Terrain->Geo->VertexBufferView());
 			mCommandList->IASetIndexBuffer(&Terrain->Geo->IndexBufferView());
@@ -2778,8 +2763,6 @@ void RenderingSystem::BuildShaders(std::vector<ShaderDesc>& ShaderDescs)
 
 	mShaders["ShadowOpaqueVS_Terrain"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\Shadows_Terrain.hlsl", nullptr, "VS", "vs_5_1");
 	mShaders["ShadowOpaqueGS_Terrain"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\Shadows_Terrain.hlsl", nullptr, "GS", "gs_5_1");
-	mShaders["ShadowOpaqueHS_Terrain"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\Shadows_Terrain.hlsl", nullptr, "HS", "hs_5_1");
-	mShaders["ShadowOpaqueDS_Terrain"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\Shadows_Terrain.hlsl", nullptr, "DS", "ds_5_1");
 
 	//for post-processing
 	mShaders["PPVS"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\PostProcessing.hlsl", nullptr, "VS_FSQuad", "vs_5_1");

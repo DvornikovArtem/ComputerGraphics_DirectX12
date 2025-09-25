@@ -86,142 +86,18 @@ DS_VS_OUTPUT_GS_INPUT VS(VS_INPUT vin)
 {
     DS_VS_OUTPUT_GS_INPUT vout = (DS_VS_OUTPUT_GS_INPUT) 0.0f;
 	
-    // Transform to world space.
     float4 posW = mul(float4(vin.Pos, 1.0f), gWorld);
     vout.PosW = posW.xyz;
 
-    // Assumes nonuniform scaling; otherwise, need to use inverse-transpose of world matrix.
     vout.Normal = normalize(mul(vin.Normal, (float3x3) gWorld));
 	
-	// Output vertex attributes for interpolation across triangle.
     float4 texC = mul(float4(vin.TexC, 0.0f, 1.0f), gTexTransform);
     vout.TexC = mul(texC, gMatTransform).xy;
+    
+    float fDisplacement = gHeightMap.SampleLevel(gsamAnisotropicClamp, vout.TexC, 0).r;
+    vout.PosW += float3(0, 1, 0) * fDisplacement * gHeightMapScale;
 
     return vout;
-}
-
-struct HS_CONSTANT_DATA_OUTPUT
-{
-    float Edges[3] : SV_TessFactor;
-    float Inside : SV_InsideTessFactor;
-};
-
-
-float TessFromDist(float3 a, float3 b)
-{
-    float3 mid = 0.5f * (a + b);
-    float dist = distance(mid, gEyePosW);
-
-    // Use the factor already provided from C++, but with a default fallback
-    float maxTess = (gTesselationFactor > 0.0f) ? gTesselationFactor : 12.0f;
-    maxTess = clamp(maxTess, 1.0f, 64.0f); // [maxtessfactor(64)]
-
-    // Threshold curve: close — high, far — 1
-    const float nearDist = 50.0f; // for oneself
-    const float farDist = 400.0f; // for oneself
-    float t = saturate((dist - nearDist) / (farDist - nearDist));
-    return lerp(maxTess, 1.0f, t);
-}
-
-HS_CONSTANT_DATA_OUTPUT ConstantsHS(InputPatch<DS_VS_OUTPUT_GS_INPUT, 3> Patch, uint PatchID : SV_PrimitiveID)
-{
-    HS_CONSTANT_DATA_OUTPUT Out;
-    
-    // Backface Culling
-    float3 vEdge0 = Patch[1].PosW - Patch[0].PosW;
-    float3 vEdge2 = Patch[2].PosW - Patch[0].PosW;
-    float3 vFaceNormal = normalize(cross(vEdge2, vEdge0));
-    float3 vView = normalize(Patch[0].PosW - gEyePosW);
-    
-    // A negative dot product means facing away from view direction.
-    // Use a small epsilon to avoid popping, since displaced vertices
-    // may still be visible with dot product = 0
-    if (dot(vView, vFaceNormal) < -0.25)
-    {
-        Out.Edges[0] = 0;
-        Out.Edges[1] = 0;
-        Out.Edges[2] = 0;
-        Out.Inside = 0;
-        return Out; // early exit
-    }
-    
-    // Assign tessellation factors – in this case use a global
-    // tessellation factor for all edges and the inside. These are
-    // constant for the whole mesh.
-    
-    float tessfactor = 1.f;
-    
-    Out.Edges[0] = tessfactor;
-    Out.Edges[1] = tessfactor;
-    Out.Edges[2] = tessfactor;
-    Out.Inside = tessfactor;
-    
-    /*float3 p0 = Patch[0].PosW;
-    float3 p1 = Patch[1].PosW;
-    float3 p2 = Patch[2].PosW;
-
-    Out.Edges[0] = TessFromDist(p0, p1);
-    Out.Edges[1] = TessFromDist(p1, p2);
-    Out.Edges[2] = TessFromDist(p2, p0);
-    Out.Inside = (Out.Edges[0] + Out.Edges[1] + Out.Edges[2]) / 3.0f;*/
-    
-    return Out;
-}
-
-struct HS_CONTROL_POINT_OUTPUT
-{
-    float3 vWorldPos : POSITION;
-    float2 vTexCoord : TEXCOORD;
-    float3 vNormal : NORMAL;
-};
-
-[domain("tri")]
-[partitioning("fractional_odd")]
-[outputtopology("triangle_cw")]
-[outputcontrolpoints(3)]
-[patchconstantfunc("ConstantsHS")]
-[maxtessfactor(64.0)]
-HS_CONTROL_POINT_OUTPUT HS(InputPatch<DS_VS_OUTPUT_GS_INPUT, 3> inputPatch, uint uCPID : SV_OutputControlPointID)
-{
-    HS_CONTROL_POINT_OUTPUT Out;
-    Out.vWorldPos = inputPatch[uCPID].PosW.xyz;
-    Out.vTexCoord = inputPatch[uCPID].TexC;
-    Out.vNormal = inputPatch[uCPID].Normal;
-    return Out;
-}
-
-// Called once per tessellated vertex
-[domain("tri")] // indicates that triangle patches were used
-// The original patch is passed in, along with the vertex position in barycentric coordinates, and the patch constant phase hull shader output(tessellation factors)
-DS_VS_OUTPUT_GS_INPUT DS(HS_CONSTANT_DATA_OUTPUT input, float3 BarycentricCoordinates : SV_DomainLocation, const OutputPatch<HS_CONTROL_POINT_OUTPUT, 3> TrianglePatch)
-{
-    DS_VS_OUTPUT_GS_INPUT Out;
-    // Interpolate world space position with barycentric coordinates
-    float3 vWorldPos =
-    BarycentricCoordinates.x * TrianglePatch[0].vWorldPos +
-    BarycentricCoordinates.y * TrianglePatch[1].vWorldPos +
-    BarycentricCoordinates.z * TrianglePatch[2].vWorldPos;
-    Out.PosW = vWorldPos;
-    // Interpolate texture coordinates with barycentric coordinates
-    Out.TexC =
-    BarycentricCoordinates.x * TrianglePatch[0].vTexCoord +
-    BarycentricCoordinates.y * TrianglePatch[1].vTexCoord +
-    BarycentricCoordinates.z * TrianglePatch[2].vTexCoord;
-    // Interpolate normal with barycentric coordinates
-    Out.Normal =
-    BarycentricCoordinates.x * TrianglePatch[0].vNormal +
-    BarycentricCoordinates.y * TrianglePatch[1].vNormal +
-    BarycentricCoordinates.z * TrianglePatch[2].vNormal;
-
-    
-    // sample the displacement map for the magnitude of displacement
-    //float fDisplacement = gHeightMap.SampleLevel(gsamAnisotropicWrap, Out.TexC.xy, 0).r;
-    float fDisplacement = gHeightMap.SampleLevel(gsamAnisotropicClamp, Out.TexC.xy, 0).r;
-    
-    // translate the position
-    vWorldPos += float3(0, 1, 0) * fDisplacement * gHeightMapScale;
-    Out.PosW = vWorldPos;
-    return Out;
 }
 
 struct GS_OUT

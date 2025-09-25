@@ -67,76 +67,11 @@ DS_VS_OUTPUT_GS_INPUT VS(VS_INPUT vin)
 	float4 texC = mul(float4(vin.TexC, 0.0f, 1.0f), gTexTransform);
     vout.TexC = mul(texC, gMatTransform).xy;
 
+    
+    float fDisplacement = gHeightMap.SampleLevel(gsamAnisotropicClamp, vout.TexC, 0).r;
+    vout.PosW += float3(0, 1, 0) * fDisplacement * 3500;
+    
     return vout;
-}
-
-struct HS_CONSTANT_DATA_OUTPUT
-{
-    float Edges[3] : SV_TessFactor;
-    float Inside : SV_InsideTessFactor;
-};
-
-HS_CONSTANT_DATA_OUTPUT ConstantsHS(InputPatch<DS_VS_OUTPUT_GS_INPUT, 3> Patch, uint PatchID : SV_PrimitiveID)
-{
-    HS_CONSTANT_DATA_OUTPUT Out;
-    
-    Out.Edges[0] = 1;
-    Out.Edges[1] = 1;
-    Out.Edges[2] = 1;
-    Out.Inside = 1;
-    
-    return Out;
-}
-
-struct HS_CONTROL_POINT_OUTPUT
-{
-    float3 vWorldPos : POSITION;
-    float2 vTexCoord : TEXCOORD;
-    float3 vNormal : NORMAL;
-};
-
-[domain("tri")]
-[partitioning("fractional_odd")]
-[outputtopology("triangle_cw")]
-[outputcontrolpoints(3)]
-[patchconstantfunc("ConstantsHS")]
-[maxtessfactor(64.0)]
-HS_CONTROL_POINT_OUTPUT HS(InputPatch<DS_VS_OUTPUT_GS_INPUT, 3> inputPatch, uint uCPID : SV_OutputControlPointID)
-{
-    HS_CONTROL_POINT_OUTPUT Out;
-    Out.vWorldPos = inputPatch[uCPID].PosW.xyz;
-    Out.vTexCoord = inputPatch[uCPID].TexC;
-    Out.vNormal = inputPatch[uCPID].Normal;
-    return Out;
-}
-
-// Called once per tessellated vertex
-[domain("tri")] // indicates that triangle patches were used
-// The original patch is passed in, along with the vertex position in barycentric coordinates, and the patch constant phase hull shader output(tessellation factors)
-DS_VS_OUTPUT_GS_INPUT DS(HS_CONSTANT_DATA_OUTPUT input, float3 BarycentricCoordinates : SV_DomainLocation, const OutputPatch<HS_CONTROL_POINT_OUTPUT, 3> TrianglePatch)
-{
-    DS_VS_OUTPUT_GS_INPUT Out;
-    // Interpolate world space position with barycentric coordinates
-    Out.PosW =
-    BarycentricCoordinates.x * TrianglePatch[0].vWorldPos +
-    BarycentricCoordinates.y * TrianglePatch[1].vWorldPos +
-    BarycentricCoordinates.z * TrianglePatch[2].vWorldPos;
-    // Interpolate texture coordinates with barycentric coordinates
-    Out.TexC =
-    BarycentricCoordinates.x * TrianglePatch[0].vTexCoord +
-    BarycentricCoordinates.y * TrianglePatch[1].vTexCoord +
-    BarycentricCoordinates.z * TrianglePatch[2].vTexCoord;
-    // Interpolate normal with barycentric coordinates
-    Out.Normal =
-    BarycentricCoordinates.x * TrianglePatch[0].vNormal +
-    BarycentricCoordinates.y * TrianglePatch[1].vNormal +
-    BarycentricCoordinates.z * TrianglePatch[2].vNormal;
-
-    
-    float fDisplacement = gHeightMap.SampleLevel(gsamAnisotropicClamp, Out.TexC.xy, 0).r;
-    
-    Out.PosW += float3(0, 1, 0) * fDisplacement * 3500;
-    return Out;
 }
 
 struct GS_OUT
