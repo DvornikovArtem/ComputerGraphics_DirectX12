@@ -235,12 +235,10 @@ struct GS_OUT
 bool isBorderEdge(float2 t0, float2 t1)
 {
     const float epsilon = 0.001;
-        // Check left/right borders
     if (abs(t0.x) < epsilon && abs(t1.x) < epsilon)
         return true;
     if (abs(t0.x - 1.0) < epsilon && abs(t1.x - 1.0) < epsilon)
         return true;
-        // Check top/bottom borders
     if (abs(t0.y) < epsilon && abs(t1.y) < epsilon)
         return true;
     if (abs(t0.y - 1.0) < epsilon && abs(t1.y - 1.0) < epsilon)
