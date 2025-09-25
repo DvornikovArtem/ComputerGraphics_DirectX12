@@ -147,7 +147,7 @@ float CalcShadowFactor(float3 WorldPosition, float3 Normal, uint ShadowMapIndex)
         0.125, 0.25, 0.125,
         0.0625, 0.125, 0.0625
     };
-
+    
     [unroll]
     for (int i = 0; i < 9; ++i)
     {
