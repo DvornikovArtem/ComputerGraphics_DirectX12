@@ -620,11 +620,18 @@ void RenderingSystem::BuildParticleSystems(std::unordered_map<std::string, Parti
 		particleSystemDescriptor.emitComputeShader = mShaders[particleSystemDescriptor.emitComputeShaderName];
 		particleSystemDescriptor.simulateComputeShader = mShaders[particleSystemDescriptor.simulateComputeShaderName];
 		particleSystemDescriptor.CBIndex = k;
+		particleSystemDescriptor.InputLayout = mInputLayout;
 
 		ParticleSystem* particleSystem = new ParticleSystem();
+
+		//need to add warning if geometry not found later
+		particleSystem->SetGeometry(mGeometries[particleSystemDescriptor.particleGeometryName]);
+
 		particleSystem->Initialize(particleSystemDescriptor);
 		particleSystem->Build(md3dDevice, mCommandList);
 
+
+		
 		mAllParticleSystems.push_back(particleSystem);
 
 		k++;
@@ -2785,9 +2792,11 @@ void RenderingSystem::BuildBasicGeometry()
 	GeometryGenerator::MeshData cylinder = geoGen.CreateCylinder(0.5f, 0.3f, 3.0f, 20, 20);
 	GeometryGenerator::MeshData cone = geoGen.CreateCone(2.f, 3.f, 20, 20);
 	GeometryGenerator::MeshData sphere_lp = geoGen.CreateSphere(1.f, 10, 10);
+	GeometryGenerator::MeshData TwoDCircle = geoGen.CreateCircle(0.5f, 16);
+	GeometryGenerator::MeshData TwoDQuad = geoGen.CreateQuad(0.f, 0.f, 1.f, 1.f, 0.f);
 
-	std::vector<GeometryGenerator::MeshData*> Objects = { &box, &grid, &sphere, &cylinder, &cone, &sphere_lp };
-	std::vector<std::string> Names = { "Box", "Grid", "Sphere", "Cylinder", "Cone", "Sphere_LowPoly"};
+	std::vector<GeometryGenerator::MeshData*> Objects = { &box, &grid, &sphere, &cylinder, &cone, &sphere_lp, &TwoDCircle, &TwoDQuad };
+	std::vector<std::string> Names = { "Box", "Grid", "Sphere", "Cylinder", "Cone", "Sphere_LowPoly", "2DCircle", "2DQuad"};
 
 	for (int k = 0; k < Objects.size(); k++)
 	{

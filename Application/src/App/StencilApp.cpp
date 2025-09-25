@@ -497,6 +497,7 @@ void StencilApp::MakeParticleSystems()
     fireworkParticleSystemDesc.particleShape = PARTICLE_SHAPE::CIRCLE;
     fireworkParticleSystemDesc.emitComputeShaderName = "EmitCS";
     fireworkParticleSystemDesc.simulateComputeShaderName = "SimulateCS2";
+    fireworkParticleSystemDesc.particleGeometryName = MeshParsingResults["Svidetel"][0].GeometryName;
 
     mParticleSystemDescriptors[fireworkParticleSystemDesc.name] = fireworkParticleSystemDesc;
 
@@ -511,6 +512,7 @@ void StencilApp::MakeParticleSystems()
     smokeParticleSystemDesc.particleShape = PARTICLE_SHAPE::CIRCLE;
     smokeParticleSystemDesc.emitComputeShaderName = "EmitSmokeCS";
     smokeParticleSystemDesc.simulateComputeShaderName = "SimulateSmokeCS";
+    smokeParticleSystemDesc.particleGeometryName = "2DCircle";
 
     //mParticleSystemDescriptors[smokeParticleSystemDesc.name] = smokeParticleSystemDesc;
 
