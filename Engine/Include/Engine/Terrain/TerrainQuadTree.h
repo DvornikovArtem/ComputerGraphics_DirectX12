@@ -25,6 +25,10 @@ struct TerrainNode
     bool IsLeaf() const { return !children[0] && !children[1] && !children[2] && !children[3]; }
 
     RenderItem* terrainTileItem = nullptr;
+
+
+    // Sticky LOD state for hysteresis (0 = unknown/parent, 1 = keep parent, 2 = keep children)
+    mutable uint8_t lodSticky = 0;
 };
 
 

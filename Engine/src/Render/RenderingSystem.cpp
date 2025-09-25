@@ -656,9 +656,10 @@ void RenderingSystem::BuildTerrain()
 	terrainRendererDesc.pathToDiffuseMap = SOLUTION_DIR L"assets/textures/terrain/mountain_8K_png_8bit/mountain_8K_DiffuseMap.png";
 	terrainRendererDesc.pathToHeightMap = SOLUTION_DIR L"assets/textures/terrain/mountain_8K_png_8bit/mountain_8K_HeightMap.png";
 	terrainRendererDesc.pathToNormalMap;
-	terrainRendererDesc.quadTreeLevels = 4;
+	terrainRendererDesc.quadTreeLevels = 6;
 	terrainRendererDesc.heightMapScale = 3500.0f;
 	terrainRendererDesc.enableWireFrame = false;
+	terrainRendererDesc.skipTileReimportIfPresent = true;
 
 	terrainRenderer = new TerrainRenderer();
 	terrainRenderer->Initialize(terrainRendererDesc);
@@ -666,12 +667,12 @@ void RenderingSystem::BuildTerrain()
 
 	// Create geometry for a single quadtree tile as a grid with 6 LODs 
 	const std::vector<std::pair<std::string, UINT>> lodMeshes = {
-		{"LOD0", 256},
-		{"LOD1", 128},
+		{"LOD0", 64},
+		/*{"LOD1", 128},
 		{"LOD2", 64},
 		{"LOD3", 32},
 		{"LOD4", 16},
-		{"LOD5", 8},
+		{"LOD5", 8},*/
 	};
 
 	GeometryGenerator geoGen;
@@ -1131,7 +1132,10 @@ void RenderingSystem::UpdateObjectCBs(const GameTimer& gt)
 
 			XMVECTOR diff = XMVectorSubtract(XMLoadFloat4x4(&e->World).r[3], mCamera.GetPosition());
 
-			objConstants.TesselationFactor = 50 / XMVectorGetX(XMVector3Length(diff));
+			if (e->renderLayer == RenderLayer::Landscape) objConstants.TesselationFactor = 1.0f;
+			else objConstants.TesselationFactor = 50 / XMVectorGetX(XMVector3Length(diff));
+
+			objConstants.HeightMapScale = terrainRenderer->Meta().heightScale;
 
 			currObjectCB->CopyData(e->ObjCBIndex, objConstants);
 
@@ -1193,7 +1197,7 @@ void RenderingSystem::UpdateLightItems(std::vector<LightObject*>& mAllLightObjec
 	{
 		i->VisibleRitems.clear();
 		alreadyCheckedRitemsforLights.clear();
-		std::vector<OctTreeNode*> leaves = mOctTree->GetAllNodesAtLevel(mOctTree->getNumDivisions() - 1);
+		std::vector<OctTreeNode*> leaves = mOctTree->GetAllNodesAtLevel(static_cast<int>(mOctTree->getNumDivisions() - 1));
 
 		if (i->LightType != LightType::Pointlight)
 		{
@@ -2082,7 +2086,6 @@ void RenderingSystem::DrawParticleSystems()
 			CD3DX12_RESOURCE_BARRIER::Transition(particleSystem->GetAliveList(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE)
 		};
 		mCommandList->ResourceBarrier(_countof(toSrv), toSrv);
-
 		particleSystem->Draw(passCBAddress);
 
 		CD3DX12_RESOURCE_BARRIER barriers[2] = {
@@ -2707,7 +2710,7 @@ void RenderingSystem::UpdateRenderItems(std::vector<DrawableObject*>& mAllObject
 
 	mChosenTerrainRitems.clear();
 	mVisibleTerrainRitems.clear();
-	if (terrainRenderer) terrainRenderer->SelectLOD(mCamera, mChosenTerrainRitems, 1000.f);
+	if (terrainRenderer) terrainRenderer->SelectLOD(mCamera, mChosenTerrainRitems, 0.8f);
 
 	// Iterate over all OctTree leaves containing the current terrain tile,
 	// and if at least one leaf is inside the frustum —> render this tile

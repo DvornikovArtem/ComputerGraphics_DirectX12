@@ -28,6 +28,8 @@ struct TerrainRendererDesc
 	uint8_t quadTreeLevels = 4;
 
 	bool enableWireFrame = false;
+
+	bool skipTileReimportIfPresent = true;
 };
 
 
@@ -53,7 +55,7 @@ public:
 		m_quad.ForEachNode([&](const TerrainNode& n) { function(n.tile); });
 	}
 
-	void SelectLOD(const Camera& cam, std::vector<RenderItem*>& outVisible, float lodFactor = 2.5f) const;
+	void SelectLOD(const Camera& cam, std::vector<RenderItem*>& outVisible, float lodFactor = 0.02f) const;
 
 private:
 	TerrainImporter* terrainImporter = nullptr;

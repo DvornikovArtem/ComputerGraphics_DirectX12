@@ -17,6 +17,7 @@ cbuffer cbPerObject : register(b0)
     float4x4 gWorld;
     float4x4 gTexTransform;
     float gTesselationFactor;
+    float gHeightMapScale;
 };
 
 // Constant data that varies per frame
@@ -218,7 +219,7 @@ DS_VS_OUTPUT_GS_INPUT DS(HS_CONSTANT_DATA_OUTPUT input, float3 BarycentricCoordi
     float fDisplacement = gHeightMap.SampleLevel(gsamAnisotropicClamp, Out.TexC.xy, 0).r;
     
     // translate the position
-    vWorldPos += float3(0, 1, 0) * fDisplacement * 3500;
+    vWorldPos += float3(0, 1, 0) * fDisplacement * gHeightMapScale;
     Out.PosW = vWorldPos;
     return Out;
 }

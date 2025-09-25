@@ -85,6 +85,15 @@ public:
         TerrainMeta& outMeta
     );
 
+    bool BuildTilesFromSource(
+        const std::wstring& diffuse,
+        const std::wstring& normal,
+        const std::wstring& height,
+        uint32_t quadLevels,
+        TerrainMeta& outMeta,
+        bool skipIfTilesExist
+    );
+
 private:
     static std::filesystem::path MakeTilesDir(const std::wstring& diffusePath);
 };

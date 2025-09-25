@@ -98,7 +98,7 @@ void ParticleSystem::BuildResources()
     memcpy(mapped, &initArgs, sizeof(initArgs));
     mDrawArgsUpload->Unmap(0, nullptr);
 
-    mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mDrawArgs.Get(), D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT, D3D12_RESOURCE_STATE_COPY_DEST));
+    mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mDrawArgs.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST));
     mCommandList->CopyBufferRegion(mDrawArgs.Get(), 0, mDrawArgsUpload.Get(), 0, sizeof(initArgs));
     mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mDrawArgs.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT));
 
@@ -113,7 +113,7 @@ void ParticleSystem::BuildResources()
     memcpy(mapped, initCounters, sizeof(initCounters));
     mCounterUpload->Unmap(0, nullptr);
 
-    mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mCounters.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_DEST));
+    mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mCounters.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST));
     mCommandList->CopyBufferRegion(mCounters.Get(), 0, mCounterUpload.Get(), 0, sizeof(initCounters));
     mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mCounters.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS));
 
@@ -130,11 +130,13 @@ void ParticleSystem::BuildResources()
     memcpy(mapped, deadIndices.data(), mMaxParticles * sizeof(UINT));
     mDeadListUpload->Unmap(0, nullptr);
 
+    mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mDeadList[0].Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST));
     mCommandList->CopyBufferRegion(mDeadList[0].Get(), 0, mDeadListUpload.Get(), 0, uploadDesc.Width);
+    mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mDeadList[0].Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_COMMON));
 
     CD3DX12_RESOURCE_BARRIER barriers[] = {
-        CD3DX12_RESOURCE_BARRIER::Transition(mDeadList[0].Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
-        CD3DX12_RESOURCE_BARRIER::Transition(mDeadList[1].Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
+        CD3DX12_RESOURCE_BARRIER::Transition(mDeadList[0].Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+        CD3DX12_RESOURCE_BARRIER::Transition(mDeadList[1].Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
     };
     mCommandList->ResourceBarrier(_countof(barriers), barriers);
 
