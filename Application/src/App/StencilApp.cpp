@@ -167,7 +167,7 @@ void StencilApp::OnMouseWheelMove(WPARAM btnState)
 
     float& speed = mCameraMoveSpeed;
     if (wheelDelta > 0)
-        speed = std::min(speed + 4.0f, 200.0f);
+        speed = std::min(speed + 4.0f, 2000.0f);
     else if (wheelDelta < 0)
         speed = (speed - 4.0f) > 1.0f ? (speed - 1.0f) : 1.0f;
 }
