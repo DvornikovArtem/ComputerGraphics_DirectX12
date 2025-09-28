@@ -218,6 +218,12 @@ struct GBufferData
     float4 MaterialFresnelRoughness : SV_TARGET4;
 };
 
+float smoothBand(float x, float edge0, float edge1)
+{
+    float t = saturate((x - edge0) / max(1e-5, (edge1 - edge0)));
+    return t * t * (3.0 - 2.0 * t);
+}
+
 GBufferData PS(GS_OUT pin)
 {
     
@@ -226,11 +232,52 @@ GBufferData PS(GS_OUT pin)
     float2 uv = pin.TexC;
     
     float3 NormalMapSample = gNormalMap.Sample(gsamAnisotropicClamp, uv).rgb;
-    float4 diffuseAlbedo = gDiffuseMap.Sample(gsamAnisotropicClamp, uv);
+    float4 diffuseAlbedo;
+    
+    const float SEA_LEVEL = 900.0;
+    const float GRASS_HEIGHT = 1200.0;
+    const float SNOW_HEIGHT = 1300.0;
+    const float HEIGHT_BLEND_WIDTH = 5.0;
 
-    pout.diffuse = diffuseAlbedo;
-    pout.emissive = float4(0.f, 0.f, 0.f, pin.PosCS.z); //xyz is free for now
-    pout.normal = float4(NormalMapSample, gMetallic); //w is free for now
+    const float ROCK_SLOPE_START = 0.7;
+    const float ROCK_SLOPE_END = 0.3;
+
+    const float SNOW_SLOPE_REDUCTION = 0.6;
+
+    const float3 SEA_COLOR = float3(0.02, 0.12, 0.25); 
+    const float3 LAND_COLOR = float3(0.18, 0.35, 0.12); 
+    const float3 ROCK_COLOR = float3(0.35, 0.33, 0.32); 
+    const float3 SNW_COLOR = float3(0.92, 0.92, 0.97);
+
+    float heightY = pin.PosW.y;
+    float normalY = saturate(NormalMapSample.y);
+    float4 w;
+    
+    float seaW = 1.0 - smoothBand(heightY, SEA_LEVEL, SEA_LEVEL + HEIGHT_BLEND_WIDTH);
+    seaW = saturate(seaW);
+
+    float landUp = smoothBand(heightY, SEA_LEVEL, HEIGHT_BLEND_WIDTH);
+    float landDown = 1.0 - smoothBand(heightY, GRASS_HEIGHT, GRASS_HEIGHT + HEIGHT_BLEND_WIDTH);
+    float landW = saturate(landUp * landDown);
+
+    float snowW = smoothBand(heightY, SNOW_HEIGHT - HEIGHT_BLEND_WIDTH, SNOW_HEIGHT + HEIGHT_BLEND_WIDTH);
+
+    float slopeT = saturate((ROCK_SLOPE_START - normalY) / max(1e-5, (ROCK_SLOPE_START - ROCK_SLOPE_END)));
+    float rockW = smoothstep(0.0, 1.0, slopeT);
+
+    snowW *= lerp(1.0, normalY, saturate(SNOW_SLOPE_REDUCTION));
+
+    seaW *= smoothstep(ROCK_SLOPE_END, ROCK_SLOPE_START, normalY);
+
+    float sum = seaW + landW + rockW + snowW + 1e-6;
+    w = float4(seaW, landW, rockW, snowW) / sum;
+
+    float3 blended = SEA_COLOR * w.x + LAND_COLOR * w.y + ROCK_COLOR * w.z + SNW_COLOR * w.w;
+    
+
+    pout.diffuse = float4(blended, 1.0);
+    pout.emissive = float4(0.f, 0.f, 0.f, pin.PosCS.z); 
+    pout.normal = float4(NormalMapSample, gMetallic);
     pout.materialAlbedo = gDiffuseAlbedo;
     pout.MaterialFresnelRoughness = float4(gFresnelR0, gRoughness);
 
