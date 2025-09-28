@@ -22,6 +22,14 @@ void TerrainRenderer::Initialize(const TerrainRendererDesc& terrainRendererDesc)
     TerrainMeta meta{};
     meta.heightScale = terrainRendererDesc.heightMapScale;
     meta.enableWireFrame = terrainRendererDesc.enableWireFrame;
+    meta.generateHeightWithPerlin = terrainRendererDesc.generateHeightWithPerlin;
+    meta.perlinSeed = terrainRendererDesc.perlinSeed;
+    meta.perlinFrequency = terrainRendererDesc.perlinFrequency;
+    meta.perlinOctaves = terrainRendererDesc.perlinOctaves;
+    meta.perlinPersistence = terrainRendererDesc.perlinPersistence;
+    meta.perlinLacunarity = terrainRendererDesc.perlinLacunarity;
+    meta.perlinOffsetX = terrainRendererDesc.perlinOffsetX;
+    meta.perlinOffsetZ = terrainRendererDesc.perlinOffsetZ;
 
 
     const bool ok = terrainImporter->BuildTilesFromSource(

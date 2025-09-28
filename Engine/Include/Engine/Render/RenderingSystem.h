@@ -139,6 +139,8 @@ public:
     void BuildLightItems(std::unordered_map<std::string, LightObject*>& Objects);
     void BuildParticleSystems(std::unordered_map<std::string, ParticleSystemDescriptor> ParticleSystemDescriptors);
     void BuildTerrain();
+    void BuildSceneGrid();
+    void DrawSceneGrid();
 
     void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems, std::string PSOName);
 

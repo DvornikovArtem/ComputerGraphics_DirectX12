@@ -6,354 +6,355 @@
 
 // From solution
 #include <Engine/Terrain/TerrainImporter.h>
-#include <Engine/RHI/DX12/stb_image.h>
+#include <Engine/IO/TextureImporter.h>
+#include <Engine/Noise/NoiseGenerator.h>
 
 
 using namespace DirectX;
 
 
 
-// Converts all characters of the given string to lowercase
-static std::wstring ToLower(std::wstring s) {
-    std::transform(s.begin(), s.end(), s.begin(), [](wchar_t c) { return std::towlower(c); });
-    return s;
-}
-
-
-// Returns the file extension from the given path and converts it to lowercase
-static std::wstring ExtLower(const std::wstring& path) {
-    return ToLower(std::filesystem::path(path).extension().wstring());
-}
-
-
-// Returns true if the extension of the file we want to parse matches one of the supported extensions
-static bool IsSupportedExt(const std::wstring& ext) {
-    return (ext == L".png" || ext == L".jpg" || ext == L".jpeg" || ext == L".dds");
-}
-
-
-// Extracts the file extension and checks whether it is supported for processing
-static void EnsureSupportedOrThrow(const std::wstring& path, const wchar_t* kind) {
-    auto ext = ExtLower(path);
-    if (!IsSupportedExt(ext)) {
-        std::wstringstream ss;
-        ss << L"Unsupported " << kind << L" file extension '" << ext << L"'. Allowed: .png, .jpg, .jpeg, .dds";
-        ThrowError(L"TerrainImporter::BuildTilesFromSource", ss.str());
-    }
-}
-
-
-
-// Common 8-bit image container
-struct LoadedImage8 {
-
-    // A byte array containing the raw pixel data of the image.
-    // Tightly packed, rowPitch = width * channels
-    // (Pitch = the step in bytes from the beginning of one row to the beginning of the next.
-    // RowPitch = pitch along the vertical axis (for rows).
-    // In LoadedImage8 everything is tightly packed without alignment, so pitch equals simply width * channels)
-    std::vector<uint8_t> pixels;
-
-    // Wodth, height, channels of the image
-    int width = 0, height = 0, channels = 0;
-};
-
-
-
-// Common 16-bit image container
-struct LoadedImage16 {
-    std::vector<uint16_t> pixels; // rowPitch = width * channels * 2
-    int width = 0, height = 0, channels = 0;
-};
-
-
-
-static LoadedImage8 LoadWithStbAs8(const std::wstring& path, int desired_channels);
-static LoadedImage8 LoadDDSAs8(const std::wstring& path, int desired_channels);
-
-
-
-// Entry point for loading an image from disk
-static LoadedImage8 LoadAnyAs8(const std::wstring& path, int desired_channels) {
-    EnsureSupportedOrThrow(path, L"image");
-    if (ExtLower(path) == L".dds") return LoadDDSAs8(path, desired_channels);
-    else return LoadWithStbAs8(path, desired_channels); // .png/.jpg/.jpeg (8 or 16 bpc)
-}
-
-
-
-static LoadedImage16 LoadAnyAs16(const std::wstring& path, int desired_channels) {
-    EnsureSupportedOrThrow(path, L"image");
-    if (ExtLower(path) == L".dds") {
-        // DDS: to R16_UNORM through DirectXTex
-        ScratchImage img;
-        ThrowIfFailed(LoadFromDDSFile(path.c_str(), DDS_FLAGS_NONE, nullptr, img));
-        ScratchImage conv;
-        ThrowIfFailed(Convert(*img.GetImage(0, 0, 0), DXGI_FORMAT_R16_UNORM, TEX_FILTER_DEFAULT, TEX_THRESHOLD_DEFAULT, conv));
-
-        const Image* im = conv.GetImage(0, 0, 0);
-        LoadedImage16 out;
-        out.width = (int)im->width; out.height = (int)im->height; out.channels = 1;
-        out.pixels.resize((size_t)out.width * out.height);
-        // Copy by rows
-        for (int y = 0; y < out.height; ++y) {
-            auto* src = reinterpret_cast<const uint16_t*>(im->pixels + y * im->rowPitch);
-            std::memcpy(out.pixels.data() + (size_t)y * out.width, src, (size_t)out.width * sizeof(uint16_t));
-        }
-        return out;
-    }
-    else {
-        FILE* f = nullptr;
-        if (_wfopen_s(&f, path.c_str(), L"rb") != 0 || !f) {
-            std::wstringstream ss;
-            ss << L"Can't open file: " << MakeNoWrap(path);
-            ThrowError(L"Load Image (stb)", ss.str());
-        }
-        if (!f) { std::wstringstream ss; ss << L"Can't open file: " << MakeNoWrap(path); ThrowError(L"Load Image (stb16)", ss.str()); }
-        int w = 0, h = 0, c = 0;
-        stbi_us* data16 = stbi_load_from_file_16(f, &w, &h, &c, desired_channels);
-        fclose(f);
-        if (!data16) { const char* why = stbi_failure_reason(); std::wstringstream ss; ss << L"stb_image failed: " << (why ? std::wstring(why, why + strlen(why)) : L"(unknown)"); ThrowError(L"Load Image (stb16)", ss.str()); }
-        int ch = desired_channels ? desired_channels : c;
-        LoadedImage16 out; out.width = w; out.height = h; out.channels = ch;
-        out.pixels.resize((size_t)w * (size_t)h * (size_t)ch);
-        std::memcpy(out.pixels.data(), data16, out.pixels.size() * sizeof(uint16_t));
-        stbi_image_free(data16);
-        return out;
-    }
-}
-
-
-
-// Load png, jpg, jpeg
-static LoadedImage8 LoadWithStbAs8(const std::wstring& path, int desired_channels) {
-
-    // Open the file in binary read mode using _wfopen to avoid Unicode path issues on Windows
-    FILE* f = nullptr;
-    if (_wfopen_s(&f, path.c_str(), L"rb") != 0 || !f) {
-        std::wstringstream ss;
-        ss << L"Can't open file: " << MakeNoWrap(path);
-        ThrowError(L"Load Image (stb)", ss.str());
-    }
-
-    if (!f) {
-        std::wstringstream ss; ss << L"Can't open file: " << MakeNoWrap(path);
-        ThrowError(L"Load Image (stb)", ss.str());
-    }
-
-
-    // Output variables for stb: width, height, and the actual number of channels in the source file
-    int width = 0, height = 0, component = 0;
-
-    // Load as 16-bit always (stb will upconvert 8 -> 16 if needed), then downcast to 8-bit
-    stbi_us* data16 = stbi_load_from_file_16(f, &width, &height, &component, desired_channels);
-
-    // Close file right after loading
-    fclose(f);
-
-    if (!data16) {
-        const char* why = stbi_failure_reason();
-        std::wstringstream ss;
-        ss << L"stb_image failed: " << (why ? std::wstring(why, why + strlen(why)) : L"(unknown)");
-        ThrowError(L"Load Image (stb)", ss.str());
-    }
-
-
-    // Determine the final number of channels: if the user requested a specific one (desired_channels != 0), use it.
-    // Otherwise, use the value returned by stb in component
-    int ch = desired_channels ? desired_channels : component;
-
-    // Prepare the output structure of our 8-bit per channel format and allocate a buffer for tightly packed pixels (row without padding): rowPitch = width * channels
-    LoadedImage8 out;
-    out.width = width; out.height = height; out.channels = ch;
-    out.pixels.resize(size_t(width) * size_t(height) * size_t(ch));
-
-
-    // Perform per-element downscaling: from each 16-bit value we take the high byte (shift >> 8).
-    // Why this is correct: for original 8-bit images stb increases the bit depth by multiplying by 257 (x16 = x8 * 257),
-    // and (x8 * 257) >> 8 == x8. For true 16-bit images this is equivalent to simple quantization to 8-bit
-    const size_t n = size_t(width) * size_t(height) * size_t(ch);
-    for (size_t i = 0; i < n; ++i) out.pixels[i] = uint8_t(data16[i] >> 8);
-
-
-    // Free the buffer returned by stb and return our 8-bit container
-    stbi_image_free(data16);
-    return out;
-}
-
-
-
-// Load DDS via DirectXTex
-static LoadedImage8 LoadDDSAs8(const std::wstring& path, int desired_channels) {
-    TexMetadata meta{};
-    ScratchImage src;
-    HRESULT hr = LoadFromDDSFile(path.c_str(), DDS_FLAGS_NONE, &meta, src);
-    if (FAILED(hr)) {
-        std::wstringstream ss; ss << L"LoadFromDDSFile failed: " << std::hex << hr;
-        ThrowError(L"Load DDS", ss.str());
-    }
-
-    const Image* base = src.GetImage(0, 0, 0);
-    const bool wantRGBA = (desired_channels == 4);
-    DXGI_FORMAT target = wantRGBA ? DXGI_FORMAT_R8G8B8A8_UNORM : DXGI_FORMAT_R8_UNORM;
-
-    ScratchImage stage;
-    const Image* img = base;
-    TexMetadata curMeta = src.GetMetadata();
-
-    // 1) Decompress if needed
-    if (IsCompressed(curMeta.format)) {
-        ScratchImage decomp;
-        hr = Decompress(src.GetImages(), src.GetImageCount(), curMeta, DXGI_FORMAT_UNKNOWN, decomp);
-        if (FAILED(hr)) ThrowError(L"Load DDS", L"Decompress failed.");
-        img = decomp.GetImage(0, 0, 0);
-        curMeta = decomp.GetMetadata();
-        stage = std::move(decomp);
-    }
-
-    // 2) Convert to R8G8B8A8_UNORM or R8_UNORM
-    if (img->format != target) {
-        ScratchImage conv;
-        bool stageEmpty = (stage.GetImageCount() == 0);
-        hr = Convert(stageEmpty ? src.GetImages() : stage.GetImages(),
-            stageEmpty ? src.GetImageCount() : stage.GetImageCount(),
-            curMeta, target, TEX_FILTER_DEFAULT, 0.0f, conv);
-        if (FAILED(hr)) ThrowError(L"Load DDS", L"Convert failed.");
-        img = conv.GetImage(0, 0, 0);
-        curMeta = conv.GetMetadata();
-        stage = std::move(conv);
-    }
-
-    LoadedImage8 out;
-    out.width = int(img->width);
-    out.height = int(img->height);
-    out.channels = desired_channels;
-
-    out.pixels.resize(size_t(out.width) * size_t(out.height) * size_t(out.channels));
-    for (int y = 0; y < out.height; ++y) {
-        const uint8_t* srcRow = img->pixels + size_t(y) * img->rowPitch;
-        uint8_t* dstRow = out.pixels.data() + size_t(y) * size_t(out.width) * size_t(out.channels);
-        memcpy(dstRow, srcRow, size_t(out.width) * size_t(out.channels));
-    }
-    return out;
-}
-
-
-
-// Rounding down x to the nearest multiple of m
-static int AlignDown(int x, int m) { return (x / m) * m; }
-
-
-
-// Crops the source image src to the size newW x newH, copying only the top-left portion
-static LoadedImage8 CropTo8(const LoadedImage8& src, int newW, int newH) {
-
-    // "Copy of the input image
-    LoadedImage8 out = src;
-
-    // Update the dimensions - width and height are now cropped
-    out.width = newW; out.height = newH;
-
-    // Allocate a new pixel buffer for the new dimensions (cropped rectangle) and initialize it with zeros (black color)
-    out.pixels.assign(size_t(newW) * size_t(newH) * size_t(src.channels), 0);
-
-
-    // Copy the top part of the source image row by row
-    for (int y = 0; y < newH; ++y) {
-
-        // s — the beginning of row y in the old image (src.width * channels bytes per row)
-        const uint8_t* s = src.pixels.data() + size_t(y) * size_t(src.width) * size_t(src.channels);
-
-        // d — the beginning of row y in the new image
-        uint8_t* d = out.pixels.data() + size_t(y) * size_t(newW) * size_t(src.channels);
-
-        // memcpy copies only the first newW * channels bytes (the new width)
-        memcpy(d, s, size_t(newW) * size_t(src.channels));
-    }
-
-    return out;
-}
-
-
-
-// Crops the source 16-bit height image to newW x newH, copying only the top-left portion.
-// If newW/newH exceed src size, the extra area is zero-filled.
-static LoadedImage16 CropTo16(const LoadedImage16& src, int newW, int newH)
-{
-    LoadedImage16 out;
-
-    if (src.width == 0 || src.height == 0 || newW <= 0 || newH <= 0)
-        return out;
-
-    out.width = static_cast<uint32_t>(newW);
-    out.height = static_cast<uint32_t>(newH);
-
-    // Allocate and zero-fill (black/zero height)
-    out.pixels.assign(static_cast<size_t>(newW) * static_cast<size_t>(newH), uint16_t(0));
-
-    // Copy dimensions (don’t read outside src)
-    const int copyW = std::min<int>(newW, static_cast<int>(src.width));
-    const int copyH = std::min<int>(newH, static_cast<int>(src.height));
-
-    // Row-by-row copy from top-left
-    for (int y = 0; y < copyH; ++y)
-    {
-        const uint16_t* s = src.pixels.data()
-            + static_cast<size_t>(y) * static_cast<size_t>(src.width);
-        uint16_t* d = out.pixels.data()
-            + static_cast<size_t>(y) * static_cast<size_t>(newW);
-
-        std::memcpy(d, s, static_cast<size_t>(copyW) * sizeof(uint16_t));
-    }
-
-    return out;
-}
-
-
-
-static void CopyFirstRow(Image& img, const uint8_t* srcRowBytes, int channels)
-{
-    const size_t rowBytes = size_t(img.width) * size_t(channels);
-    uint8_t* dst = img.pixels;
-    memcpy(dst, srcRowBytes, rowBytes);
-}
-
-static void ExtractLastRow(const Image& img, std::vector<uint8_t>& outRow, int channels)
-{
-    const size_t rowBytes = size_t(img.width) * size_t(channels);
-    outRow.resize(rowBytes);
-    const uint8_t* src = img.pixels + size_t(img.height - 1) * img.rowPitch;
-    memcpy(outRow.data(), src, rowBytes);
-}
-
-static void CopyFirstColumn(Image& img, const uint8_t* srcColBytes, int channels)
-{
-    for (uint32_t y = 0; y < img.height; ++y)
-    {
-        uint8_t* dstPix = img.pixels + size_t(y) * img.rowPitch;
-        const uint8_t* srcPix = srcColBytes + size_t(y) * size_t(channels);
-        memcpy(dstPix, srcPix, size_t(channels));
-    }
-}
-
-static void ExtractLastColumn(const Image& img, std::vector<uint8_t>& outCol, int channels)
-{
-    outCol.resize(size_t(img.height) * size_t(channels));
-    for (uint32_t y = 0; y < img.height; ++y)
-    {
-        const uint8_t* srcPix = img.pixels + size_t(y) * img.rowPitch + size_t(img.width - 1) * size_t(channels);
-        uint8_t* dstPix = outCol.data() + size_t(y) * size_t(channels);
-        memcpy(dstPix, srcPix, size_t(channels));
-    }
-}
+//// Converts all characters of the given string to lowercase
+//static std::wstring ToLower(std::wstring s) {
+//    std::transform(s.begin(), s.end(), s.begin(), [](wchar_t c) { return std::towlower(c); });
+//    return s;
+//}
+//
+//
+//// Returns the file extension from the given path and converts it to lowercase
+//static std::wstring ExtLower(const std::wstring& path) {
+//    return ToLower(std::filesystem::path(path).extension().wstring());
+//}
+//
+//
+//// Returns true if the extension of the file we want to parse matches one of the supported extensions
+//static bool IsSupportedExt(const std::wstring& ext) {
+//    return (ext == L".png" || ext == L".jpg" || ext == L".jpeg" || ext == L".dds");
+//}
+//
+//
+//// Extracts the file extension and checks whether it is supported for processing
+//static void EnsureSupportedOrThrow(const std::wstring& path, const wchar_t* kind) {
+//    auto ext = ExtLower(path);
+//    if (!IsSupportedExt(ext)) {
+//        std::wstringstream ss;
+//        ss << L"Unsupported " << kind << L" file extension '" << ext << L"'. Allowed: .png, .jpg, .jpeg, .dds";
+//        ThrowError(L"TerrainImporter::BuildTilesFromSource", ss.str());
+//    }
+//}
+//
+//
+//
+//// Common 8-bit image container
+//struct LoadedImage8 {
+//
+//    // A byte array containing the raw pixel data of the image.
+//    // Tightly packed, rowPitch = width * channels
+//    // (Pitch = the step in bytes from the beginning of one row to the beginning of the next.
+//    // RowPitch = pitch along the vertical axis (for rows).
+//    // In LoadedImage8 everything is tightly packed without alignment, so pitch equals simply width * channels)
+//    std::vector<uint8_t> pixels;
+//
+//    // Wodth, height, channels of the image
+//    int width = 0, height = 0, channels = 0;
+//};
+//
+//
+//
+//// Common 16-bit image container
+//struct LoadedImage16 {
+//    std::vector<uint16_t> pixels; // rowPitch = width * channels * 2
+//    int width = 0, height = 0, channels = 0;
+//};
+//
+//
+//
+//static LoadedImage8 LoadWithStbAs8(const std::wstring& path, int desired_channels);
+//static LoadedImage8 LoadDDSAs8(const std::wstring& path, int desired_channels);
+//
+//
+//
+//// Entry point for loading an image from disk
+//static LoadedImage8 LoadAnyAs8(const std::wstring& path, int desired_channels) {
+//    EnsureSupportedOrThrow(path, L"image");
+//    if (ExtLower(path) == L".dds") return LoadDDSAs8(path, desired_channels);
+//    else return LoadWithStbAs8(path, desired_channels); // .png/.jpg/.jpeg (8 or 16 bpc)
+//}
+//
+//
+//
+//static LoadedImage16 LoadAnyAs16(const std::wstring& path, int desired_channels) {
+//    EnsureSupportedOrThrow(path, L"image");
+//    if (ExtLower(path) == L".dds") {
+//        // DDS: to R16_UNORM through DirectXTex
+//        ScratchImage img;
+//        ThrowIfFailed(LoadFromDDSFile(path.c_str(), DDS_FLAGS_NONE, nullptr, img));
+//        ScratchImage conv;
+//        ThrowIfFailed(Convert(*img.GetImage(0, 0, 0), DXGI_FORMAT_R16_UNORM, TEX_FILTER_DEFAULT, TEX_THRESHOLD_DEFAULT, conv));
+//
+//        const Image* im = conv.GetImage(0, 0, 0);
+//        LoadedImage16 out;
+//        out.width = (int)im->width; out.height = (int)im->height; out.channels = 1;
+//        out.pixels.resize((size_t)out.width * out.height);
+//        // Copy by rows
+//        for (int y = 0; y < out.height; ++y) {
+//            auto* src = reinterpret_cast<const uint16_t*>(im->pixels + y * im->rowPitch);
+//            std::memcpy(out.pixels.data() + (size_t)y * out.width, src, (size_t)out.width * sizeof(uint16_t));
+//        }
+//        return out;
+//    }
+//    else {
+//        FILE* f = nullptr;
+//        if (_wfopen_s(&f, path.c_str(), L"rb") != 0 || !f) {
+//            std::wstringstream ss;
+//            ss << L"Can't open file: " << MakeNoWrap(path);
+//            ThrowError(L"Load Image (stb)", ss.str());
+//        }
+//        if (!f) { std::wstringstream ss; ss << L"Can't open file: " << MakeNoWrap(path); ThrowError(L"Load Image (stb16)", ss.str()); }
+//        int w = 0, h = 0, c = 0;
+//        stbi_us* data16 = stbi_load_from_file_16(f, &w, &h, &c, desired_channels);
+//        fclose(f);
+//        if (!data16) { const char* why = stbi_failure_reason(); std::wstringstream ss; ss << L"stb_image failed: " << (why ? std::wstring(why, why + strlen(why)) : L"(unknown)"); ThrowError(L"Load Image (stb16)", ss.str()); }
+//        int ch = desired_channels ? desired_channels : c;
+//        LoadedImage16 out; out.width = w; out.height = h; out.channels = ch;
+//        out.pixels.resize((size_t)w * (size_t)h * (size_t)ch);
+//        std::memcpy(out.pixels.data(), data16, out.pixels.size() * sizeof(uint16_t));
+//        stbi_image_free(data16);
+//        return out;
+//    }
+//}
+//
+//
+//
+//// Load png, jpg, jpeg
+//static LoadedImage8 LoadWithStbAs8(const std::wstring& path, int desired_channels) {
+//
+//    // Open the file in binary read mode using _wfopen to avoid Unicode path issues on Windows
+//    FILE* f = nullptr;
+//    if (_wfopen_s(&f, path.c_str(), L"rb") != 0 || !f) {
+//        std::wstringstream ss;
+//        ss << L"Can't open file: " << MakeNoWrap(path);
+//        ThrowError(L"Load Image (stb)", ss.str());
+//    }
+//
+//    if (!f) {
+//        std::wstringstream ss; ss << L"Can't open file: " << MakeNoWrap(path);
+//        ThrowError(L"Load Image (stb)", ss.str());
+//    }
+//
+//
+//    // Output variables for stb: width, height, and the actual number of channels in the source file
+//    int width = 0, height = 0, component = 0;
+//
+//    // Load as 16-bit always (stb will upconvert 8 -> 16 if needed), then downcast to 8-bit
+//    stbi_us* data16 = stbi_load_from_file_16(f, &width, &height, &component, desired_channels);
+//
+//    // Close file right after loading
+//    fclose(f);
+//
+//    if (!data16) {
+//        const char* why = stbi_failure_reason();
+//        std::wstringstream ss;
+//        ss << L"stb_image failed: " << (why ? std::wstring(why, why + strlen(why)) : L"(unknown)");
+//        ThrowError(L"Load Image (stb)", ss.str());
+//    }
+//
+//
+//    // Determine the final number of channels: if the user requested a specific one (desired_channels != 0), use it.
+//    // Otherwise, use the value returned by stb in component
+//    int ch = desired_channels ? desired_channels : component;
+//
+//    // Prepare the output structure of our 8-bit per channel format and allocate a buffer for tightly packed pixels (row without padding): rowPitch = width * channels
+//    LoadedImage8 out;
+//    out.width = width; out.height = height; out.channels = ch;
+//    out.pixels.resize(size_t(width) * size_t(height) * size_t(ch));
+//
+//
+//    // Perform per-element downscaling: from each 16-bit value we take the high byte (shift >> 8).
+//    // Why this is correct: for original 8-bit images stb increases the bit depth by multiplying by 257 (x16 = x8 * 257),
+//    // and (x8 * 257) >> 8 == x8. For true 16-bit images this is equivalent to simple quantization to 8-bit
+//    const size_t n = size_t(width) * size_t(height) * size_t(ch);
+//    for (size_t i = 0; i < n; ++i) out.pixels[i] = uint8_t(data16[i] >> 8);
+//
+//
+//    // Free the buffer returned by stb and return our 8-bit container
+//    stbi_image_free(data16);
+//    return out;
+//}
+//
+//
+//
+//// Load DDS via DirectXTex
+//static LoadedImage8 LoadDDSAs8(const std::wstring& path, int desired_channels) {
+//    TexMetadata meta{};
+//    ScratchImage src;
+//    HRESULT hr = LoadFromDDSFile(path.c_str(), DDS_FLAGS_NONE, &meta, src);
+//    if (FAILED(hr)) {
+//        std::wstringstream ss; ss << L"LoadFromDDSFile failed: " << std::hex << hr;
+//        ThrowError(L"Load DDS", ss.str());
+//    }
+//
+//    const Image* base = src.GetImage(0, 0, 0);
+//    const bool wantRGBA = (desired_channels == 4);
+//    DXGI_FORMAT target = wantRGBA ? DXGI_FORMAT_R8G8B8A8_UNORM : DXGI_FORMAT_R8_UNORM;
+//
+//    ScratchImage stage;
+//    const Image* img = base;
+//    TexMetadata curMeta = src.GetMetadata();
+//
+//    // 1) Decompress if needed
+//    if (IsCompressed(curMeta.format)) {
+//        ScratchImage decomp;
+//        hr = Decompress(src.GetImages(), src.GetImageCount(), curMeta, DXGI_FORMAT_UNKNOWN, decomp);
+//        if (FAILED(hr)) ThrowError(L"Load DDS", L"Decompress failed.");
+//        img = decomp.GetImage(0, 0, 0);
+//        curMeta = decomp.GetMetadata();
+//        stage = std::move(decomp);
+//    }
+//
+//    // 2) Convert to R8G8B8A8_UNORM or R8_UNORM
+//    if (img->format != target) {
+//        ScratchImage conv;
+//        bool stageEmpty = (stage.GetImageCount() == 0);
+//        hr = Convert(stageEmpty ? src.GetImages() : stage.GetImages(),
+//            stageEmpty ? src.GetImageCount() : stage.GetImageCount(),
+//            curMeta, target, TEX_FILTER_DEFAULT, 0.0f, conv);
+//        if (FAILED(hr)) ThrowError(L"Load DDS", L"Convert failed.");
+//        img = conv.GetImage(0, 0, 0);
+//        curMeta = conv.GetMetadata();
+//        stage = std::move(conv);
+//    }
+//
+//    LoadedImage8 out;
+//    out.width = int(img->width);
+//    out.height = int(img->height);
+//    out.channels = desired_channels;
+//
+//    out.pixels.resize(size_t(out.width) * size_t(out.height) * size_t(out.channels));
+//    for (int y = 0; y < out.height; ++y) {
+//        const uint8_t* srcRow = img->pixels + size_t(y) * img->rowPitch;
+//        uint8_t* dstRow = out.pixels.data() + size_t(y) * size_t(out.width) * size_t(out.channels);
+//        memcpy(dstRow, srcRow, size_t(out.width) * size_t(out.channels));
+//    }
+//    return out;
+//}
+//
+//
+//
+//// Rounding down x to the nearest multiple of m
+//static int AlignDown(int x, int m) { return (x / m) * m; }
+//
+//
+//
+//// Crops the source image src to the size newW x newH, copying only the top-left portion
+//static LoadedImage8 CropTo8(const LoadedImage8& src, int newW, int newH) {
+//
+//    // "Copy of the input image
+//    LoadedImage8 out = src;
+//
+//    // Update the dimensions - width and height are now cropped
+//    out.width = newW; out.height = newH;
+//
+//    // Allocate a new pixel buffer for the new dimensions (cropped rectangle) and initialize it with zeros (black color)
+//    out.pixels.assign(size_t(newW) * size_t(newH) * size_t(src.channels), 0);
+//
+//
+//    // Copy the top part of the source image row by row
+//    for (int y = 0; y < newH; ++y) {
+//
+//        // s — the beginning of row y in the old image (src.width * channels bytes per row)
+//        const uint8_t* s = src.pixels.data() + size_t(y) * size_t(src.width) * size_t(src.channels);
+//
+//        // d — the beginning of row y in the new image
+//        uint8_t* d = out.pixels.data() + size_t(y) * size_t(newW) * size_t(src.channels);
+//
+//        // memcpy copies only the first newW * channels bytes (the new width)
+//        memcpy(d, s, size_t(newW) * size_t(src.channels));
+//    }
+//
+//    return out;
+//}
+//
+//
+//
+//// Crops the source 16-bit height image to newW x newH, copying only the top-left portion.
+//// If newW/newH exceed src size, the extra area is zero-filled.
+//static LoadedImage16 CropTo16(const LoadedImage16& src, int newW, int newH)
+//{
+//    LoadedImage16 out;
+//
+//    if (src.width == 0 || src.height == 0 || newW <= 0 || newH <= 0)
+//        return out;
+//
+//    out.width = static_cast<uint32_t>(newW);
+//    out.height = static_cast<uint32_t>(newH);
+//
+//    // Allocate and zero-fill (black/zero height)
+//    out.pixels.assign(static_cast<size_t>(newW) * static_cast<size_t>(newH), uint16_t(0));
+//
+//    // Copy dimensions (don’t read outside src)
+//    const int copyW = std::min<int>(newW, static_cast<int>(src.width));
+//    const int copyH = std::min<int>(newH, static_cast<int>(src.height));
+//
+//    // Row-by-row copy from top-left
+//    for (int y = 0; y < copyH; ++y)
+//    {
+//        const uint16_t* s = src.pixels.data()
+//            + static_cast<size_t>(y) * static_cast<size_t>(src.width);
+//        uint16_t* d = out.pixels.data()
+//            + static_cast<size_t>(y) * static_cast<size_t>(newW);
+//
+//        std::memcpy(d, s, static_cast<size_t>(copyW) * sizeof(uint16_t));
+//    }
+//
+//    return out;
+//}
+//
+//
+//
+//static void CopyFirstRow(Image& img, const uint8_t* srcRowBytes, int channels)
+//{
+//    const size_t rowBytes = size_t(img.width) * size_t(channels);
+//    uint8_t* dst = img.pixels;
+//    memcpy(dst, srcRowBytes, rowBytes);
+//}
+//
+//static void ExtractLastRow(const Image& img, std::vector<uint8_t>& outRow, int channels)
+//{
+//    const size_t rowBytes = size_t(img.width) * size_t(channels);
+//    outRow.resize(rowBytes);
+//    const uint8_t* src = img.pixels + size_t(img.height - 1) * img.rowPitch;
+//    memcpy(outRow.data(), src, rowBytes);
+//}
+//
+//static void CopyFirstColumn(Image& img, const uint8_t* srcColBytes, int channels)
+//{
+//    for (uint32_t y = 0; y < img.height; ++y)
+//    {
+//        uint8_t* dstPix = img.pixels + size_t(y) * img.rowPitch;
+//        const uint8_t* srcPix = srcColBytes + size_t(y) * size_t(channels);
+//        memcpy(dstPix, srcPix, size_t(channels));
+//    }
+//}
+//
+//static void ExtractLastColumn(const Image& img, std::vector<uint8_t>& outCol, int channels)
+//{
+//    outCol.resize(size_t(img.height) * size_t(channels));
+//    for (uint32_t y = 0; y < img.height; ++y)
+//    {
+//        const uint8_t* srcPix = img.pixels + size_t(y) * img.rowPitch + size_t(img.width - 1) * size_t(channels);
+//        uint8_t* dstPix = outCol.data() + size_t(y) * size_t(channels);
+//        memcpy(dstPix, srcPix, size_t(channels));
+//    }
+//}
 
 
 
 // Generation of an RGBA8 normal map from an R8 height map.
 // Normal = normalize(-dh / dx * heightScale, 1, -dh / dy * heightScale)
-static LoadedImage8 GenerateNormalsFromHeight(const LoadedImage16& imgH, float heightScale)
+static IO::Image8 GenerateNormalsFromHeight(const IO::Image16& imgH, float heightScale)
 {
-    LoadedImage8 out;
+    IO::Image8 out;
     out.width = imgH.width;
     out.height = imgH.height;
     out.channels = 4;
@@ -411,16 +412,99 @@ bool TerrainImporter::BuildTilesFromSource(
 )
 {
     // Load all three images (accept .png/.jpg/.jpeg/.dds; 8-bit or 16-bit for png/jpg)
-    auto imgD = LoadAnyAs8(diffuse, 4); // RGBA8
+    auto imgD = IO::LoadAnyAs8(diffuse, 4); // RGBA8
     //auto imgH = LoadAnyAs8(height, 1);  // R8
-    auto imgH = LoadAnyAs16(height, 1);  // R16
+    //auto imgH = LoadAnyAs16(height, 1);  // R16
 
-    LoadedImage8 imgN;
+    IO::Image16 imgH;
+
+    if (outMeta.generateHeightWithPerlin)
+    {
+        //imgH.width = imgD.width;
+        //imgH.height = imgD.height;
+        //imgH.channels = 1;
+        //imgH.pixels.resize(static_cast<size_t>(imgH.width) * imgH.height);
+
+        //struct Perlin {
+        //    std::vector<int> p;
+        //    explicit Perlin(uint32_t seed) {
+        //        p.resize(512);
+        //        std::vector<int> base(256);
+        //        std::iota(base.begin(), base.end(), 0);
+        //        std::mt19937 rng(seed);
+        //        std::shuffle(base.begin(), base.end(), rng);
+        //        for (int i = 0; i < 512; ++i) p[i] = base[i & 255];
+        //    }
+        //    static float fade(float t) { return t * t * t * (t * (t * 6 - 15) + 10); }
+        //    static float lerp(float t, float a, float b) { return a + t * (b - a); }
+        //    static float grad(int h, float x, float y) {
+        //        int g = h & 3;
+        //        float u = g < 2 ? x : y, v = g < 2 ? y : x;
+        //        return ((g & 1) ? -u : u) + ((g & 2) ? -2.0f * v : 2.0f * v) * 0.5f;
+        //    }
+        //    float noise(float x, float y) const {
+        //        int X = (int)floorf(x) & 255;
+        //        int Y = (int)floorf(y) & 255;
+        //        x -= floorf(x); y -= floorf(y);
+        //        float u = fade(x), v = fade(y);
+        //        int aa = p[p[X] + Y];
+        //        int ab = p[p[X] + Y + 1];
+        //        int ba = p[p[X + 1] + Y];
+        //        int bb = p[p[X + 1] + Y + 1];
+        //        float x1 = lerp(u, grad(aa, x, y), grad(ba, x - 1, y));
+        //        float x2 = lerp(u, grad(ab, x, y - 1), grad(bb, x - 1, y - 1));
+        //        return lerp(v, x1, x2); // ~[-1,1]
+        //    }
+        //} perlin(outMeta.perlinSeed);
+
+        //auto fbm = [&](float fx, float fz)->float {
+        //    float amp = 1.0f, freq = outMeta.perlinFrequency;
+        //    float sum = 0.f, norm = 0.f;
+        //    for (int o = 0; o < outMeta.perlinOctaves; ++o) {
+        //        sum += amp * perlin.noise(fx * freq + outMeta.perlinOffsetX,
+        //            fz * freq + outMeta.perlinOffsetZ);
+        //        norm += amp;
+        //        amp *= outMeta.perlinPersistence;
+        //        freq *= outMeta.perlinLacunarity;
+        //    }
+        //    return (sum / (norm > 0 ? norm : 1.f));
+        //    };
+
+        //for (int y = 0; y < imgH.height; ++y) {
+        //    for (int x = 0; x < imgH.width; ++x) {
+        //        float n = fbm((float)x, (float)y);
+        //        float h01 = 0.5f * n + 0.5f;
+        //        uint16_t hv = (uint16_t)std::round(h01 * 65535.0f);
+        //        imgH.pixels[(size_t)y * imgH.width + (size_t)x] = hv;
+        //    }
+        //}
+        Noise::PerlinParams pp;
+        pp.seed = outMeta.perlinSeed;
+        pp.frequency = outMeta.perlinFrequency;
+        pp.octaves = outMeta.perlinOctaves;
+        pp.persistence = outMeta.perlinPersistence;
+        pp.lacunarity = outMeta.perlinLacunarity;
+        pp.offsetX = outMeta.perlinOffsetX;
+        pp.offsetZ = outMeta.perlinOffsetZ;
+
+        const int W = imgD.width;
+        const int H = imgD.height;
+        auto data = Noise::GeneratePerlinHeightMapR16(W, H, pp);
+
+        imgH.width = W; imgH.height = H; imgH.channels = 1;
+        imgH.pixels = std::move(data);
+    }
+    else
+    {
+        imgH = IO::LoadAnyAs16(height, 1);
+    }
+
+    IO::Image8 imgN;
     const bool hasNormal = !normal.empty();
 
     if (hasNormal)
     {
-        imgN = LoadAnyAs8(normal, 4);  // RGBA8
+        imgN = IO::LoadAnyAs8(normal, 4);  // RGBA8
 
         // Check that all three textures have the same dimensions
         if (imgD.width != imgN.width || imgD.height != imgN.height || imgD.width != imgH.width || imgD.height != imgH.height)
@@ -446,17 +530,17 @@ bool TerrainImporter::BuildTilesFromSource(
 
 
     // Round the diffuse map width/height down to the nearest multiple of requiredMultiple
-    int newW = AlignDown(imgD.width, requiredMultiple);
-    int newH = AlignDown(imgD.height, requiredMultiple);
+    int newW = IO::AlignDown(imgD.width, requiredMultiple);
+    int newH = IO::AlignDown(imgD.height, requiredMultiple);
 
     // Synchronize the new target resolution across all three maps: take the minimum of their rounded values so that all three become equal and divisible
-    newW = (std::min)(newW, AlignDown(imgH.width, requiredMultiple));
-    newH = (std::min)(newH, AlignDown(imgH.height, requiredMultiple));
+    newW = (std::min)(newW, IO::AlignDown(imgH.width, requiredMultiple));
+    newH = (std::min)(newH, IO::AlignDown(imgH.height, requiredMultiple));
 
     if (hasNormal)
     {
-        newW = (std::min)(newW, AlignDown(imgN.width, requiredMultiple));
-        newH = (std::min)(newH, AlignDown(imgN.height, requiredMultiple));
+        newW = (std::min)(newW, IO::AlignDown(imgN.width, requiredMultiple));
+        newH = (std::min)(newH, IO::AlignDown(imgN.height, requiredMultiple));
     }
 
     if (newW <= 0 || newH <= 0) ThrowError(L"TerrainImporter::BuildTilesFromSource", L"Source images are too small for requested tiles/LODs.");
@@ -464,11 +548,11 @@ bool TerrainImporter::BuildTilesFromSource(
 
     // If the size had to be reduced, carefully crop all three images to (newW, newH) (copy the top-left rectangle row by row).
     // This ensures both divisibility and identical dimensions
-    if (newW != imgD.width || newH != imgD.height) imgD = CropTo8(imgD, newW, newH);
-    if (newW != imgH.width || newH != imgH.height) imgH = CropTo16(imgH, newW, newH);
+    if (newW != imgD.width || newH != imgD.height) imgD = IO::CropTo8(imgD, newW, newH);
+    if (newW != imgH.width || newH != imgH.height) imgH = IO::CropTo16(imgH, newW, newH);
     if (hasNormal)
     {
-        if (newW != imgN.width || newH != imgN.height) imgN = CropTo8(imgN, newW, newH);
+        if (newW != imgN.width || newH != imgN.height) imgN = IO::CropTo8(imgN, newW, newH);
     }
     else
     {
@@ -581,16 +665,16 @@ bool TerrainImporter::BuildTilesFromSource(
                     const int chD = 4, chN = 4, chH = 1;
 
                     if (tx > 0) {
-                        if (!prevRightColD.empty()) CopyFirstColumn(*mutD, prevRightColD.data(), chD);
+                        if (!prevRightColD.empty()) IO::CopyFirstColumn(*mutD, prevRightColD.data(), chD);
                     }
 
                     if (ty > 0) {
-                        if (!prevBottomRowD[tx].empty()) CopyFirstRow(*mutD, prevBottomRowD[tx].data(), chD);
+                        if (!prevBottomRowD[tx].empty()) IO::CopyFirstRow(*mutD, prevBottomRowD[tx].data(), chD);
                     }
 
-                    ExtractLastColumn(*mutD, prevRightColD, chD);
+                    IO::ExtractLastColumn(*mutD, prevRightColD, chD);
 
-                    ExtractLastRow(*mutD, prevBottomRowD[tx], chD);
+                    IO::ExtractLastRow(*mutD, prevBottomRowD[tx], chD);
                 }
 
                 // Generate mip-maps
@@ -629,16 +713,16 @@ bool TerrainImporter::BuildTilesFromSource(
                     const int chD = 4, chN = 4, chH = 1;
 
                     if (tx > 0) {
-                        if (!prevRightColN.empty()) CopyFirstColumn(*mutN, prevRightColN.data(), chN);
+                        if (!prevRightColN.empty()) IO::CopyFirstColumn(*mutN, prevRightColN.data(), chN);
                     }
 
                     if (ty > 0) {
-                        if (!prevBottomRowN[tx].empty()) CopyFirstRow(*mutN, prevBottomRowN[tx].data(), chN);
+                        if (!prevBottomRowN[tx].empty()) IO::CopyFirstRow(*mutN, prevBottomRowN[tx].data(), chN);
                     }
 
-                    ExtractLastColumn(*mutN, prevRightColN, chN);
+                    IO::ExtractLastColumn(*mutN, prevRightColN, chN);
 
-                    ExtractLastRow(*mutN, prevBottomRowN[tx], chN);
+                    IO::ExtractLastRow(*mutN, prevBottomRowN[tx], chN);
                 }
 
                 ScratchImage mipN;
@@ -703,16 +787,16 @@ bool TerrainImporter::BuildTilesFromSource(
                     const int chD = 4, chN = 4, chH = 1;
 
                     if (tx > 0) {
-                        if (!prevRightColH.empty()) CopyFirstColumn(*mutH, prevRightColH.data(), chH);
+                        if (!prevRightColH.empty()) IO::CopyFirstColumn(*mutH, prevRightColH.data(), chH);
                     }
 
                     if (ty > 0) {
-                        if (!prevBottomRowH[tx].empty()) CopyFirstRow(*mutH, prevBottomRowH[tx].data(), chH);
+                        if (!prevBottomRowH[tx].empty()) IO::CopyFirstRow(*mutH, prevBottomRowH[tx].data(), chH);
                     }
 
-                    ExtractLastColumn(*mutH, prevRightColH, chH);
+                    IO::ExtractLastColumn(*mutH, prevRightColH, chH);
 
-                    ExtractLastRow(*mutH, prevBottomRowH[tx], chH);
+                    IO::ExtractLastRow(*mutH, prevBottomRowH[tx], chH);
                 }
 
                 ScratchImage mipH;
@@ -971,6 +1055,5 @@ bool TerrainImporter::BuildTilesFromSource(
         }
     }
 
-    OutputDebugStringW(L"\n\nWell, well, well\n\n");
     return BuildTilesFromSource(diffuse, normal, height, quadLevels, outMeta);
 }
