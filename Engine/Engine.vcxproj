@@ -116,9 +116,11 @@
     <ClInclude Include="Include\Engine\Core\GameTimer.h" />
     <ClInclude Include="Include\Engine\Core\OctTree.h" />
     <ClInclude Include="Include\Engine\Debug\DebugRenderSysImpl.h" />
+    <ClInclude Include="Include\Engine\IO\TextureImporter.h" />
     <ClInclude Include="Include\Engine\Math\GeometryGenerator.h" />
     <ClInclude Include="Include\Engine\Math\MathHelper.h" />
     <ClInclude Include="Include\Engine\Math\SimpleMath.h" />
+    <ClInclude Include="Include\Engine\Noise\NoiseGenerator.h" />
     <ClInclude Include="Include\Engine\Render\Descriptors.h" />
     <ClInclude Include="Include\Engine\Render\FX\ParticleSystem.h" />
     <ClInclude Include="Include\Engine\Render\Gbuffer.h" />
@@ -162,9 +164,11 @@
     <ClCompile Include="src\Core\d3dUtil.cpp" />
     <ClCompile Include="src\Core\GameTimer.cpp" />
     <ClCompile Include="src\Debug\DebugRenderSysImpl.cpp" />
+    <ClCompile Include="src\IO\TextureImporter.cpp" />
     <ClCompile Include="src\Math\GeometryGenerator.cpp" />
     <ClCompile Include="src\Math\MathHelper.cpp" />
     <ClCompile Include="src\Math\SimpleMath.cpp" />
+    <ClCompile Include="src\Noise\NoiseGenerator.cpp" />
     <ClCompile Include="src\Render\FX\ParticleSystem.cpp" />
     <ClCompile Include="src\Render\Gbuffer.cpp" />
     <ClCompile Include="src\Render\RenderingSystem.cpp" />

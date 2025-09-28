@@ -68,6 +68,15 @@ struct TerrainMeta {
 
     // Render the terrain as a wireframe
     bool enableWireFrame = false;
+
+    bool generateHeightWithPerlin = false;
+    uint32_t perlinSeed = 1337;
+    float    perlinFrequency = 0.002f;
+    int      perlinOctaves = 5;
+    float    perlinPersistence = 0.5f;
+    float    perlinLacunarity = 2.0f;
+    float    perlinOffsetX = 0.f;
+    float    perlinOffsetZ = 0.f;
 };
 
 

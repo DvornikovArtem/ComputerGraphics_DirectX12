@@ -6,6 +6,7 @@
 #include <comdef.h>
 #include <filesystem>
 #include <iostream>
+#include <sstream>
 
 /**
  * @brief Exception class for Direct3D/WinAPI failures.
@@ -115,7 +116,7 @@ public:
         details_(details)
     {
         std::wstringstream ss;
-        ss << "\n" << fileName_ << L"(" << lineNumber_ << L") " << L"warning: ";
+        ss << L"\n" << fileName_ << L"(" << lineNumber_ << L") " << L"warning: ";
 
 
         if (!details_.empty()) ss << details_;

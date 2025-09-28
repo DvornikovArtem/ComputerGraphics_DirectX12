@@ -107,6 +107,7 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 	BuildRootSignatures();
 	BuildInputLayout();
 	BuildBasicGeometry();
+	BuildSceneGrid();
 	BuildTerrain();
 
 	// Execute the initialization commands.
@@ -325,6 +326,8 @@ void RenderingSystem::Render()
 	DrawParticleSystems();
 
 
+	//DrawSceneGrid();
+
 	//
 	// Post-Processing
 	//
@@ -476,7 +479,7 @@ void RenderingSystem::BuildRenderItems(std::unordered_map<std::string, DrawableO
 
 	}
 
-	terrainRenderer->Quad().ForEachNode([&](TerrainNode& n)
+	if (terrainRenderer) terrainRenderer->Quad().ForEachNode([&](TerrainNode& n)
 		{
 			const TerrainTile& t = n.tile;
 
@@ -544,7 +547,7 @@ void RenderingSystem::BuildRenderItems(std::unordered_map<std::string, DrawableO
 	//generate OctTree
 	OctTreeDesc octTreeDesc;
 	octTreeDesc.ritems = &mAllRitems;
-	octTreeDesc.titemLOD0 = terrainRenderer->Quad().Find(0, 0, 0)->terrainTileItem;
+	octTreeDesc.titemLOD0 = terrainRenderer ? terrainRenderer->Quad().Find(0, 0, 0)->terrainTileItem : nullptr;
 	octTreeDesc.litems = &mAllLights;
 	octTreeDesc.numDivisions = 4;
 	octTreeDesc.autoFitBox = true;
@@ -659,7 +662,15 @@ void RenderingSystem::BuildTerrain()
 	terrainRendererDesc.quadTreeLevels = 6;
 	terrainRendererDesc.heightMapScale = 3500.0f;
 	terrainRendererDesc.enableWireFrame = false;
-	terrainRendererDesc.skipTileReimportIfPresent = true;
+	terrainRendererDesc.skipTileReimportIfPresent = false;
+	terrainRendererDesc.generateHeightWithPerlin = true;
+	terrainRendererDesc.perlinSeed = 42;
+	terrainRendererDesc.perlinFrequency = 0.00015f;
+	terrainRendererDesc.perlinOctaves = 6;
+	terrainRendererDesc.perlinPersistence = 0.5f;
+	terrainRendererDesc.perlinLacunarity = 2.0f;
+	terrainRendererDesc.perlinOffsetX = 0.f;
+	terrainRendererDesc.perlinOffsetZ = 0.f;
 
 	terrainRenderer = new TerrainRenderer();
 	terrainRenderer->Initialize(terrainRendererDesc);
@@ -667,7 +678,7 @@ void RenderingSystem::BuildTerrain()
 
 	// Create geometry for a single quadtree tile as a grid with 6 LODs 
 	const std::vector<std::pair<std::string, UINT>> lodMeshes = {
-		{"LOD0", 64},
+		{"LOD0", 32},
 		/*{"LOD1", 128},
 		{"LOD2", 64},
 		{"LOD3", 32},
@@ -700,9 +711,11 @@ void RenderingSystem::BuildTerrain()
 		{
 			Vertex v;
 			v.Pos = mv.Position;
-			v.Normal = XMFLOAT3(0, 1, 0);
+			//v.Normal = XMFLOAT3(0, 1, 0);
+			v.Normal = mv.Normal;
 			v.TexC = mv.TexC;
-			v.Tangent = XMFLOAT3(1, 0, 0);
+			//v.Tangent = XMFLOAT3(1, 0, 0);
+			v.Tangent = mv.TangentU;
 			vertices.push_back(v);
 		}
 
@@ -746,7 +759,7 @@ void RenderingSystem::BuildTerrain()
 
 
 
-	terrainRenderer->ForEachTile([&](const TerrainTile& t)
+	if (terrainRenderer) terrainRenderer->ForEachTile([&](const TerrainTile& t)
 		{	
 			MPRTerrainTextures.push_back(TextureDesc("tile_diffuse_level" + std::to_string(t.lod) + "_" + std::to_string(t.ix) + "_" + std::to_string(t.iy), t.textures.diffusePath, TextureDesc::Texture2D, true));
 			MPRTerrainTextures.push_back(TextureDesc("tile_normal_level" + std::to_string(t.lod) + "_" + std::to_string(t.ix) + "_" + std::to_string(t.iy), t.textures.normalPath, TextureDesc::Texture2D, false));
@@ -777,6 +790,77 @@ void RenderingSystem::BuildTerrain()
 
 
 	//terrainRenderer->BuildGeometry();
+}
+
+void RenderingSystem::BuildSceneGrid()
+{
+	mShaders["SceneGridVS"] = d3dUtil::CompileShader(
+		SHADERS_ENGINE_DIR L"\\SceneGrid.hlsl", nullptr, "SceneGridVS", "vs_5_1");
+	mShaders["SceneGridPS"] = d3dUtil::CompileShader(
+		SHADERS_ENGINE_DIR L"\\SceneGrid.hlsl", nullptr, "SceneGridPS", "ps_5_1");
+
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+	psoDesc.InputLayout = { nullptr, 0 };
+	psoDesc.pRootSignature = RootSignatures["PostProcessing"].Get();
+
+	psoDesc.VS = {
+		reinterpret_cast<BYTE*>(mShaders["SceneGridVS"]->GetBufferPointer()),
+		mShaders["SceneGridVS"]->GetBufferSize()
+	};
+	psoDesc.PS = {
+		reinterpret_cast<BYTE*>(mShaders["SceneGridPS"]->GetBufferPointer()),
+		mShaders["SceneGridPS"]->GetBufferSize()
+	};
+
+	psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+	psoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+
+	psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+	psoDesc.BlendState.RenderTarget[0].BlendEnable = TRUE;
+	psoDesc.BlendState.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
+	psoDesc.BlendState.RenderTarget[0].DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
+	psoDesc.BlendState.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
+	psoDesc.BlendState.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ONE;
+	psoDesc.BlendState.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ZERO;
+	psoDesc.BlendState.RenderTarget[0].BlendOpAlpha = D3D12_BLEND_OP_ADD;
+	psoDesc.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+
+	psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+	psoDesc.DepthStencilState.DepthEnable = TRUE;
+	psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
+	psoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
+
+	psoDesc.SampleMask = UINT_MAX;
+	psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+
+	psoDesc.NumRenderTargets = 1;
+	psoDesc.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	psoDesc.DSVFormat = mDepthStencilFormat;
+	psoDesc.SampleDesc.Count = 1;
+	psoDesc.SampleDesc.Quality = 0;
+
+	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(
+		&psoDesc, IID_PPV_ARGS(&GlobalPSOs["SceneGrid"])));
+}
+
+void RenderingSystem::DrawSceneGrid()
+{
+	mCommandList->OMSetRenderTargets(1, &mGbuffer->AccumulationRTV, false, &DepthStencilView());
+
+	mCommandList->SetGraphicsRootSignature(RootSignatures["PostProcessing"].Get());
+
+	ID3D12DescriptorHeap* heaps[] = { mSrvDescriptorHeap.Get() };
+	mCommandList->SetDescriptorHeaps(_countof(heaps), heaps);
+
+	mCommandList->SetPipelineState(GlobalPSOs["SceneGrid"].Get());
+	mCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+
+	auto passCB = mCurrFrameResource->PassCB->Resource()->GetGPUVirtualAddress();
+	mCommandList->SetGraphicsRootConstantBufferView(0, passCB);
+
+	//mCommandList->DrawInstanced(6, 1, 0, 0);
+	mCommandList->DrawInstanced(3, 1, 0, 0);
 }
 
 
@@ -1132,7 +1216,7 @@ void RenderingSystem::UpdateObjectCBs(const GameTimer& gt)
 
 			objConstants.TesselationFactor = 50 / XMVectorGetX(XMVector3Length(diff));
 
-			objConstants.HeightMapScale = terrainRenderer->Meta().heightScale;
+			if (terrainRenderer) objConstants.HeightMapScale = terrainRenderer->Meta().heightScale;
 
 			currObjectCB->CopyData(e->ObjCBIndex, objConstants);
 
@@ -1730,7 +1814,8 @@ void RenderingSystem::BuildGlobalPSOs()
 	deferredPsoDesc.SampleMask = UINT_MAX;
 	deferredPsoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 	deferredPsoDesc.NumRenderTargets = 1;
-	deferredPsoDesc.RTVFormats[0] = mBackBufferFormat;
+	//deferredPsoDesc.RTVFormats[0] = mBackBufferFormat;
+	deferredPsoDesc.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
 	deferredPsoDesc.SampleDesc.Count = 1;
 	deferredPsoDesc.DSVFormat = mDepthStencilFormat;
 
@@ -1776,7 +1861,8 @@ void RenderingSystem::BuildGlobalPSOs()
 	skyPsoDesc.SampleMask = UINT_MAX;
 	skyPsoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 	skyPsoDesc.NumRenderTargets = 1;
-	skyPsoDesc.RTVFormats[0] = mBackBufferFormat;
+	//skyPsoDesc.RTVFormats[0] = mBackBufferFormat;
+	skyPsoDesc.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
 	skyPsoDesc.SampleDesc.Count = m4xMsaaState ? 4 : 1;
 	skyPsoDesc.SampleDesc.Quality = m4xMsaaState ? (m4xMsaaQuality - 1) : 0;
 	skyPsoDesc.DSVFormat = mDepthStencilFormat;
@@ -1956,7 +2042,8 @@ void RenderingSystem::GBufferGeometryPass()
 void RenderingSystem::GBufferLightPass()
 {
 	mCommandList->SetGraphicsRootSignature(RootSignatures["DeferredLightPass"].Get());
-	mCommandList->OMSetRenderTargets(1, &mGbuffer->BloomRTV, false, &DepthStencilView());
+	//mCommandList->OMSetRenderTargets(1, &mGbuffer->BloomRTV, false, &DepthStencilView());
+	mCommandList->OMSetRenderTargets(1, &mGbuffer->AccumulationRTV, false, &DepthStencilView());
 
 	UINT lightCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(Light));
 	UINT passCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(PassConstants));
@@ -2155,26 +2242,29 @@ void RenderingSystem::DrawShadowMaps()
 		}
 
 		//checking intesction with biggest tile of terrain, draw it into shadow map if true
-		auto& Terrain = terrainRenderer->Quad().Find(0, 0, 0)->terrainTileItem;
-		if (i->LightFrustum.Intersects(Terrain->bounds))
+		if (terrainRenderer)
 		{
-			mCommandList->SetPipelineState(Terrain->Mat->PSOs["ShadowOpaque_terrain"].Get());
-			mCommandList->IASetVertexBuffers(0, 1, &Terrain->Geo->VertexBufferView());
-			mCommandList->IASetIndexBuffer(&Terrain->Geo->IndexBufferView());
-			mCommandList->SetGraphicsRootDescriptorTable(2, GetGpuSrv(Terrain->Mat->HeightSrvHeapIndex));
+			auto& Terrain = terrainRenderer->Quad().Find(0, 0, 0)->terrainTileItem;
+			if (i->LightFrustum.Intersects(Terrain->bounds))
+			{
+				mCommandList->SetPipelineState(Terrain->Mat->PSOs["ShadowOpaque_terrain"].Get());
+				mCommandList->IASetVertexBuffers(0, 1, &Terrain->Geo->VertexBufferView());
+				mCommandList->IASetIndexBuffer(&Terrain->Geo->IndexBufferView());
+				mCommandList->SetGraphicsRootDescriptorTable(2, GetGpuSrv(Terrain->Mat->HeightSrvHeapIndex));
 
-			D3D12_GPU_VIRTUAL_ADDRESS objCBAddress = objectCB->GetGPUVirtualAddress() + Terrain->ObjCBIndex * objCBByteSize;
-			D3D12_GPU_VIRTUAL_ADDRESS matCBAddress = matCB->GetGPUVirtualAddress() + Terrain->Mat->MatCBIndex * matCBByteSize;
+				D3D12_GPU_VIRTUAL_ADDRESS objCBAddress = objectCB->GetGPUVirtualAddress() + Terrain->ObjCBIndex * objCBByteSize;
+				D3D12_GPU_VIRTUAL_ADDRESS matCBAddress = matCB->GetGPUVirtualAddress() + Terrain->Mat->MatCBIndex * matCBByteSize;
 
-			mCommandList->SetGraphicsRootConstantBufferView(3, objCBAddress);
-			mCommandList->SetGraphicsRootConstantBufferView(5, matCBAddress);
+				mCommandList->SetGraphicsRootConstantBufferView(3, objCBAddress);
+				mCommandList->SetGraphicsRootConstantBufferView(5, matCBAddress);
 
-			std::string subMeshName = "LOD" + std::to_string(Terrain->currentLOD);
-			UINT IndexCount = Terrain->Geo->DrawArgs[subMeshName].IndexCount;
-			UINT StartIndexLocation = Terrain->Geo->DrawArgs[subMeshName].StartIndexLocation;
-			UINT BaseVertexLocation = Terrain->Geo->DrawArgs[subMeshName].BaseVertexLocation;
+				std::string subMeshName = "LOD" + std::to_string(Terrain->currentLOD);
+				UINT IndexCount = Terrain->Geo->DrawArgs[subMeshName].IndexCount;
+				UINT StartIndexLocation = Terrain->Geo->DrawArgs[subMeshName].StartIndexLocation;
+				UINT BaseVertexLocation = Terrain->Geo->DrawArgs[subMeshName].BaseVertexLocation;
 
-			mCommandList->DrawIndexedInstanced(IndexCount, 1, StartIndexLocation, BaseVertexLocation, 0);
+				mCommandList->DrawIndexedInstanced(IndexCount, 1, StartIndexLocation, BaseVertexLocation, 0);
+			}
 		}
 
 		// Change back to GENERIC_READ so we can read the texture in a shader.
@@ -2198,7 +2288,8 @@ void RenderingSystem::PostProcessingPass()
 
 	mCommandList->SetGraphicsRootConstantBufferView(0, passCB->GetGPUVirtualAddress());
 
-	mCommandList->SetGraphicsRootDescriptorTable(1, GetGpuSrv(mGbuffer->Channel0SRVHeapIndex + 6));
+	//mCommandList->SetGraphicsRootDescriptorTable(1, GetGpuSrv(mGbuffer->Channel0SRVHeapIndex + 6));
+	mCommandList->SetGraphicsRootDescriptorTable(1, GetGpuSrv(mGbuffer->Channel0SRVHeapIndex + 5));
 	mCommandList->SetGraphicsRootDescriptorTable(2, GetGpuSrv(mGbuffer->Channel0SRVHeapIndex + 1));
 	mCommandList->SetGraphicsRootDescriptorTable(3, GetGpuSrv(mGbuffer->Channel0SRVHeapIndex + 2));
 
@@ -2627,16 +2718,6 @@ void RenderingSystem::CollectVisibleRenderItems()
 				ri->IsInViewFrustum = ViewFrustum.Intersects(ri->bounds);
 				if (ri->IsInViewFrustum) mAllVisibleRitems.push_back(ri);
 			}
-
-			// Might be useful in the future
-			/*for (TerrainTileItem* ti : leaf->OverlappedTitems) {
-				if (!ti->isRendered) continue;
-				if (alreadyCheckedRitems.find(ti) != alreadyCheckedRitems.end()) continue;
-				alreadyCheckedRitems.insert(ti);
-
-				ti->IsInViewFrustum = ViewFrustum.Intersects(ti->bounds);
-				if (ti->IsInViewFrustum) mVisibleTerrainRitems.push_back(ti);
-			}*/
 		}
 	}
 }
@@ -2695,7 +2776,7 @@ void RenderingSystem::UpdateRenderItems(std::vector<DrawableObject*>& mAllObject
 
 	mChosenTerrainRitems.clear();
 	mVisibleTerrainRitems.clear();
-	if (terrainRenderer) terrainRenderer->SelectLOD(mCamera, mChosenTerrainRitems, 0.8f);
+	if (terrainRenderer) terrainRenderer->SelectLOD(mCamera, mChosenTerrainRitems, 3.0f);
 
 	// Iterate over all OctTree leaves containing the current terrain tile,
 	// and if at least one leaf is inside the frustum —> render this tile
@@ -2781,8 +2862,11 @@ void RenderingSystem::BuildBasicGeometry()
 	GeometryGenerator::MeshData TwoDCircle = geoGen.CreateCircle(0.5f, 16);
 	GeometryGenerator::MeshData TwoDQuad = geoGen.CreateQuad(0.f, 0.f, 1.f, 1.f, 0.f);
 
-	std::vector<GeometryGenerator::MeshData*> Objects = { &box, &grid, &sphere, &cylinder, &cone, &sphere_lp, &TwoDCircle, &TwoDQuad };
-	std::vector<std::string> Names = { "Box", "Grid", "Sphere", "Cylinder", "Cone", "Sphere_LowPoly", "2DCircle", "2DQuad"};
+	//std::vector<GeometryGenerator::MeshData*> Objects = { &box, &grid, &sphere, &cylinder, &cone, &sphere_lp, &TwoDCircle, &TwoDQuad };
+	//std::vector<std::string> Names = { "Box", "Grid", "Sphere", "Cylinder", "Cone", "Sphere_LowPoly", "2DCircle", "2DQuad"};
+
+	std::vector<GeometryGenerator::MeshData*> Objects = { &box, &grid, &cylinder, &cone, &sphere_lp, &TwoDCircle, &TwoDQuad };
+	std::vector<std::string> Names = { "Box", "Grid", "Cylinder", "Cone", "Sphere_LowPoly", "2DCircle", "2DQuad"};
 
 	for (int k = 0; k < Objects.size(); k++)
 	{
@@ -2838,6 +2922,85 @@ void RenderingSystem::BuildBasicGeometry()
 
 		mGeometries[geo->Name] = geo;
 	}
+
+
+
+	const std::vector<std::pair<std::string, UINT>> lodMeshes = {
+		{"LOD0", 40},
+		{"LOD1", 32},
+		{"LOD2", 24},
+		{"LOD3", 16},
+		{"LOD4", 12},
+		{"LOD5", 8},
+	};
+
+	auto geo = new MeshGeometry;
+	geo->Name = "Sphere";
+
+	std::vector<Vertex> vertices;
+	std::vector<std::int32_t> indices;
+
+
+	for (const auto& pair : lodMeshes)
+	{
+		const std::string& lodName = pair.first;
+		const UINT vertsPerSide = pair.second;
+
+		auto mesh = geoGen.CreateSphere(1.f, vertsPerSide, vertsPerSide);
+
+		UINT baseVertexLocation = (UINT)vertices.size();
+		UINT startIndexLocation = (UINT)indices.size();
+
+
+		vertices.reserve(vertices.size() + mesh.Vertices.size());
+		for (const auto& mv : mesh.Vertices)
+		{
+			Vertex v;
+			v.Pos = mv.Position;
+			v.Normal = mv.Normal;
+			v.TexC = mv.TexC;
+			v.Tangent = mv.TangentU;
+			vertices.push_back(v);
+		}
+
+
+		indices.reserve(indices.size() + mesh.Indices32.size());
+		for (uint32_t idx : mesh.Indices32) indices.push_back(idx + baseVertexLocation);
+
+
+		SubmeshGeometry sub;
+		sub.IndexCount = (UINT)mesh.Indices32.size();
+		sub.StartIndexLocation = startIndexLocation;
+		sub.BaseVertexLocation = 0;
+
+		std::vector<XMFLOAT3> positions; positions.reserve(vertices.size());
+		for (auto& v : mesh.Vertices) positions.push_back(v.Position);
+		BoundingBox::CreateFromPoints(sub.Bounds, (UINT)positions.size(), positions.data(), sizeof(XMFLOAT3));
+
+		geo->DrawArgs[lodName] = sub;
+	}
+
+	const UINT vbByteSize = (UINT)vertices.size() * sizeof(Vertex);
+	const UINT ibByteSize = (UINT)indices.size() * sizeof(std::uint32_t);
+
+	ThrowIfFailed(D3DCreateBlob(vbByteSize, &geo->VertexBufferCPU));
+	CopyMemory(geo->VertexBufferCPU->GetBufferPointer(), vertices.data(), vbByteSize);
+
+	ThrowIfFailed(D3DCreateBlob(ibByteSize, &geo->IndexBufferCPU));
+	CopyMemory(geo->IndexBufferCPU->GetBufferPointer(), indices.data(), ibByteSize);
+
+	geo->VertexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(),
+		mCommandList.Get(), vertices.data(), vbByteSize, geo->VertexBufferUploader);
+
+	geo->IndexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(),
+		mCommandList.Get(), indices.data(), ibByteSize, geo->IndexBufferUploader);
+
+	geo->VertexByteStride = sizeof(Vertex);
+	geo->VertexBufferByteSize = vbByteSize;
+	geo->IndexFormat = DXGI_FORMAT_R32_UINT;
+	geo->IndexBufferByteSize = ibByteSize;
+
+	mGeometries[geo->Name] = geo;
 }
 
 void RenderingSystem::UpdateMainPassCB(const GameTimer& gt)

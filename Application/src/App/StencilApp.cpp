@@ -393,6 +393,7 @@ void StencilApp::MakeDrawableObjects()
     Floor->MaterialName = "woodCrate";
     Floor->renderLayer = RenderLayer::Opaque;
     Floor->Scale = XMFLOAT3(5.0f, 1.0f, 5.0f);
+    Floor->WorldLocation = XMFLOAT3(0.f, 0.1f, 0.f);
     Floor->TexTransform = XMMatrixScaling(50.0f, 50.0f, 1.0f);
 
     mAllDrawableObjects[Floor->Name] = Floor;
@@ -424,7 +425,7 @@ void StencilApp::MakeDrawableObjects()
 
     mAllDrawableObjects[Patrick2->Name] = Patrick2;
 
-    const float spacing = 2.0f;
+    /*const float spacing = 2.0f;
     for (int row = 0; row < 11; ++row) {
         for (int col = 0; col < 11; ++col) {
             auto sphere = new DrawableObject();
@@ -441,7 +442,7 @@ void StencilApp::MakeDrawableObjects()
 
             mAllDrawableObjects[sphere->Name] = sphere;
         }
-    }
+    }*/
 
     mRenderingSystem->BuildRenderItems(mAllDrawableObjects);
 }
