@@ -425,7 +425,7 @@ void StencilApp::MakeDrawableObjects()
 
     mAllDrawableObjects[Patrick2->Name] = Patrick2;
 
-    /*const float spacing = 2.0f;
+    const float spacing = 2.0f;
     for (int row = 0; row < 11; ++row) {
         for (int col = 0; col < 11; ++col) {
             auto sphere = new DrawableObject();
@@ -442,7 +442,7 @@ void StencilApp::MakeDrawableObjects()
 
             mAllDrawableObjects[sphere->Name] = sphere;
         }
-    }*/
+    }
 
     mRenderingSystem->BuildRenderItems(mAllDrawableObjects);
 }
@@ -496,6 +496,7 @@ void StencilApp::MakeParticleSystems()
     fireworkParticleSystemDesc.emitComputeShaderName = "EmitCS";
     fireworkParticleSystemDesc.simulateComputeShaderName = "SimulateCS2";
     fireworkParticleSystemDesc.particleGeometryName = MeshParsingResults["Svidetel"][0].GeometryName;
+    fireworkParticleSystemDesc.IsBillboard = false;
 
     mParticleSystemDescriptors[fireworkParticleSystemDesc.name] = fireworkParticleSystemDesc;
 
@@ -510,8 +511,9 @@ void StencilApp::MakeParticleSystems()
     smokeParticleSystemDesc.emitComputeShaderName = "EmitSmokeCS";
     smokeParticleSystemDesc.simulateComputeShaderName = "SimulateSmokeCS";
     smokeParticleSystemDesc.particleGeometryName = "2DCircle";
+    smokeParticleSystemDesc.IsBillboard = true;
 
-    //mParticleSystemDescriptors[smokeParticleSystemDesc.name] = smokeParticleSystemDesc;
+    mParticleSystemDescriptors[smokeParticleSystemDesc.name] = smokeParticleSystemDesc;
 
     mRenderingSystem->BuildParticleSystems(mParticleSystemDescriptors);
 }

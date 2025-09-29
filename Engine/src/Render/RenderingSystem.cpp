@@ -108,7 +108,7 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 	BuildInputLayout();
 	BuildBasicGeometry();
 	BuildSceneGrid();
-	BuildTerrain();
+	//BuildTerrain();
 
 	// Execute the initialization commands.
 	ThrowIfFailed(mCommandList->Close());

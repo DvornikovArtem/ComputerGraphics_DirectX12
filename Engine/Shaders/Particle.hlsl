@@ -61,14 +61,16 @@ VSOutput VS(VSInput input, uint instanceID : SV_InstanceID)
     float3 particlePosW = p.Pos;
     float2 quadPosL = input.PosL.xy;
     
+#ifdef BILLBOARDGEOMETRY
     float3 camRightW = InvView[0].xyz;
     float3 camUpW = InvView[1].xyz;
+    particlePosW += camRightW * quadPosL.x * p.Size;
+    particlePosW += camUpW * quadPosL.y * p.Size;
+#else
+    particlePosW += input.PosL * p.Size;
+#endif
     
-    float3 worldPos = particlePosW;
-    worldPos += camRightW * quadPosL.x * p.Size;
-    worldPos += camUpW * quadPosL.y * p.Size;
-    
-    output.PosH = mul(float4(worldPos, 1.0f), ViewProj);
+    output.PosH = mul(float4(particlePosW, 1.0f), ViewProj);
     
     output.Color = p.Color;
     output.Color.a *= saturate(p.LifeTime / 2.0f);
