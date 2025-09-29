@@ -211,8 +211,6 @@ void StencilApp::LoadShaders()
     {
         //has prebuilt shaders "standardVS(PS/HS/DS)", "SkyBoxVS(PS)"
         ShaderDesc("RotatingTilesPS", SHADERS_ENGINE_DIR L"\\DeferredGeometryPass.hlsl", "PS", defines, "ps_5_1"),
-        ShaderDesc("HSForDecals", SHADERS_ENGINE_DIR L"\\DeferredGeometryPass.hlsl", "HSForDecals", nullptr, "hs_5_1"),
-        ShaderDesc("DSForDecals", SHADERS_ENGINE_DIR L"\\DeferredGeometryPass.hlsl", "DSForDecals", nullptr, "ds_5_1"),
         ShaderDesc("EmitCS", SHADERS_ENGINE_DIR L"\\ParticleCS.hlsl", "EmitCS", nullptr, "cs_5_1"),
         ShaderDesc("SimulateCS", SHADERS_ENGINE_DIR L"\\ParticleCS.hlsl", "SimulateCS", nullptr, "cs_5_1"),
         ShaderDesc("SimulateCS2", SHADERS_ENGINE_DIR L"\\ParticleCS.hlsl", "SimulateCS2", nullptr, "cs_5_1"),
@@ -295,7 +293,7 @@ void StencilApp::MakeMaterials()
     std::vector<MaterialDesc> MaterialDescs =
     {
         MaterialDesc("bricks", "standardVS", "standardPS",  "", "", "bricksTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.25f, 0.f, false),
-        MaterialDesc("Bricks_DecalTesting", "standardVS", "standardPS", "HSForDecals", "DSForDecals", "bricksTex", "ShinyStones_NormalMap", "ShinyStones_HeightMap", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, 0.f, true),
+        MaterialDesc("Bricks_DecalTesting", "standardVS", "standardPS", "", "", "bricksTex", "ShinyStones_NormalMap", "ShinyStones_HeightMap", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, 0.f, false),
         MaterialDesc("AH", "standardVS", "standardPS", "", "", "AH_Diffuse", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.99f, 0.f, false),
         MaterialDesc("woodCrate", "standardVS", "RotatingTilesPS", "", "", "woodCrateTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.2f, 0.05f, false),
         MaterialDesc("PatrickMat", "standardVS", "standardPS", "", "", "PatrickTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, 0.f, false),

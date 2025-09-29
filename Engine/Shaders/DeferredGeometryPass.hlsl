@@ -1,66 +1,21 @@
+#include "CBufferStructures.hlsl"
 
-#include "Stuff.hlsl"
+Texture2D DiffuseMap : register(t0);
+Texture2D NormalMap  : register(t1);
+Texture2D HeightMap  : register(t2);
 
-#define PASS_CB_REGISTER b1
+SamplerState samPointWrap        : register(s0);
+SamplerState samPointClamp       : register(s1);
+SamplerState samLinearWrap       : register(s2);
+SamplerState samLinearClamp      : register(s3);
+SamplerState samAnisotropicWrap  : register(s4);
+SamplerState samAnisotropicClamp : register(s5);
 
-Texture2D gDiffuseMap : register(t0);
-Texture2D gNormalMap  : register(t1);
-Texture2D gHeightMap  : register(t2);
+ConstantBuffer<ObjectCB> cbObject : register(b0);
 
-SamplerState gsamPointWrap        : register(s0);
-SamplerState gsamPointClamp       : register(s1);
-SamplerState gsamLinearWrap       : register(s2);
-SamplerState gsamLinearClamp      : register(s3);
-SamplerState gsamAnisotropicWrap  : register(s4);
-SamplerState gsamAnisotropicClamp : register(s5);
+ConstantBuffer<MainPassCB> cbMainPass : register(b1);
 
-// Constant data that varies per object
-cbuffer cbPerObject : register(b0)
-{
-    float4x4 gWorld;
-	float4x4 gTexTransform;
-    float gTesselationFactor;
-};
-
-// Constant data that varies per frame
-/*cbuffer cbPass : register(b1)
-{
-    float4x4 gView;
-    float4x4 gInvView;
-    float4x4 gProj;
-    float4x4 gInvProj;
-    float4x4 gViewProj;
-    float4x4 gInvViewProj;
-    float3 gEyePosW;
-    float cbPerObjectPad1;
-    float2 gRenderTargetSize;
-    float2 gInvRenderTargetSize;
-    float gNearZ;
-    float gFarZ;
-    float gTotalTime;
-    float gDeltaTime;
-    float4 gAmbientLight;
-
-	float4 gFogColor;
-	float gFogStart;
-	float gFogRange;
-	float2 cbPerObjectPad2;
-    
-    float4 Decals[3];
-};*/
-
-// Constant data that varies per material
-cbuffer cbMaterial : register(b2)
-{
-	float4   gDiffuseAlbedo;
-    float3   gFresnelR0;
-    float    gRoughness;
-    float    gMetallic;
-    float    Pad1;
-    float    Pad2;
-    float    Pad3;
-	float4x4 gMatTransform;
-};
+ConstantBuffer<MaterialCB> cbMaterial : register(b2);
 
 struct VS_INPUT
 {
@@ -83,21 +38,18 @@ DS_VS_OUTPUT_PS_INPUT VS(VS_INPUT vin)
 {
     DS_VS_OUTPUT_PS_INPUT vout = (DS_VS_OUTPUT_PS_INPUT) 0.0f;
 	
-    // Transform to world space.
-    float4 posW = mul(float4(vin.Pos, 1.0f), gWorld);
+    float4 posW = mul(float4(vin.Pos, 1.0f), cbObject.World);
     vout.PosW = posW.xyz;
 
     // Assumes nonuniform scaling; otherwise, need to use inverse-transpose of world matrix.
-    vout.Normal = normalize(mul(vin.Normal, (float3x3) gWorld));
+    vout.Normal = normalize(mul(vin.Normal, (float3x3) cbObject.World));
     
-    vout.Tangent = normalize(mul(vin.Tangent, (float3x3) gWorld));
+    vout.Tangent = normalize(mul(vin.Tangent, (float3x3) cbObject.World));
 
-    // Transform to homogeneous clip space.
-    vout.PosCS = mul(posW, cbPass.gViewProj);
+    vout.PosCS = mul(posW, cbMainPass.ViewProj);
 	
-	// Output vertex attributes for interpolation across triangle.
-    float4 texC = mul(float4(vin.TexC, 0.0f, 1.0f), gTexTransform);
-    vout.TexC = mul(texC, gMatTransform).xy;
+    float4 texC = mul(float4(vin.TexC, 0.0f, 1.0f), cbObject.TexTransform);
+    vout.TexC = mul(texC, cbMaterial.MatTransform).xy;
 
     return vout;
 }
@@ -107,7 +59,8 @@ struct HS_CONSTANT_DATA_OUTPUT
     float Edges[3] : SV_TessFactor;
     float Inside : SV_InsideTessFactor;
 };
-//Called once per patch. The patch and an index to the patch (patch ID) are passed in
+
+
 HS_CONSTANT_DATA_OUTPUT ConstantsHS(InputPatch<DS_VS_OUTPUT_PS_INPUT, 3> Patch, uint PatchID : SV_PrimitiveID)
 {
     HS_CONSTANT_DATA_OUTPUT Out;
@@ -116,7 +69,7 @@ HS_CONSTANT_DATA_OUTPUT ConstantsHS(InputPatch<DS_VS_OUTPUT_PS_INPUT, 3> Patch, 
     float3 vEdge0 = Patch[1].PosW - Patch[0].PosW;
     float3 vEdge2 = Patch[2].PosW - Patch[0].PosW;
     float3 vFaceNormal = normalize(cross(vEdge2, vEdge0));
-    float3 vView = normalize(Patch[0].PosW - cbPass.gEyePosW);
+    float3 vView = normalize(Patch[0].PosW - cbMainPass.EyePosW);
     
     // A negative dot product means facing away from view direction.
     // Use a small epsilon to avoid popping, since displaced vertices
@@ -133,10 +86,10 @@ HS_CONSTANT_DATA_OUTPUT ConstantsHS(InputPatch<DS_VS_OUTPUT_PS_INPUT, 3> Patch, 
 // Assign tessellation factors – in this case use a global
 // tessellation factor for all edges and the inside. These are
 // constant for the whole mesh.
-    Out.Edges[0] = gTesselationFactor;
-    Out.Edges[1] = gTesselationFactor;
-    Out.Edges[2] = gTesselationFactor;
-    Out.Inside = gTesselationFactor;
+    Out.Edges[0] = cbObject.TesselationFactor;
+    Out.Edges[1] = cbObject.TesselationFactor;
+    Out.Edges[2] = cbObject.TesselationFactor;
+    Out.Inside = cbObject.TesselationFactor;
     return Out;
 }
 
@@ -195,10 +148,10 @@ DS_VS_OUTPUT_PS_INPUT DSMain(HS_CONSTANT_DATA_OUTPUT input, float3 BarycentricCo
     BarycentricCoordinates.z * TrianglePatch[2].vTangent;
 
     // sample the displacement map for the magnitude of displacement
-    float fDisplacement = gHeightMap.SampleLevel(gsamAnisotropicWrap, Out.TexC.xy, 0).r;
+    float fDisplacement = HeightMap.SampleLevel(samAnisotropicWrap, Out.TexC.xy, 0).r;
 
-    float scale_x = length(float3(gTexTransform[0][0], gTexTransform[1][0], gTexTransform[2][0])); // TexScaleX
-    float scale_y = length(float3(gTexTransform[0][1], gTexTransform[1][1], gTexTransform[2][1])); // TexScaleY
+    float scale_x = length(float3(cbObject.TexTransform[0][0], cbObject.TexTransform[1][0], cbObject.TexTransform[2][0])); // TexScaleX
+    float scale_y = length(float3(cbObject.TexTransform[0][1], cbObject.TexTransform[1][1], cbObject.TexTransform[2][1])); // TexScaleY
  
     fDisplacement *= (2.5f / (scale_x + scale_y));
     
@@ -206,197 +159,9 @@ DS_VS_OUTPUT_PS_INPUT DSMain(HS_CONSTANT_DATA_OUTPUT input, float3 BarycentricCo
     // translate the position
     vWorldPos += vDirection * fDisplacement;
     // transform to clip space
-    Out.PosCS = mul(float4(vWorldPos.xyz, 1), cbPass.gViewProj);
+    Out.PosCS = mul(float4(vWorldPos.xyz, 1), cbMainPass.ViewProj);
     return Out;
 }
-
-//For Decal objects
-
-HS_CONSTANT_DATA_OUTPUT ConstantsHSForDecals(InputPatch<DS_VS_OUTPUT_PS_INPUT, 3> Patch, uint PatchID : SV_PrimitiveID)
-{
-    HS_CONSTANT_DATA_OUTPUT Out;
-
-    // Backface Culling
-    float3 vEdge0 = Patch[1].PosW - Patch[0].PosW;
-    float3 vEdge2 = Patch[2].PosW - Patch[0].PosW;
-    float3 vFaceNormal = normalize(cross(vEdge2, vEdge0));
-    float3 vView = normalize(Patch[0].PosW - cbPass.gEyePosW);
-    // A negative dot product means facing away from view direction.
-    // Use a small epsilon to avoid popping, since displaced vertices
-    // may still be visible with dot product = 0
-    if (dot(vView, vFaceNormal) < -0.25)
-    {
-        Out.Edges[0] = 0;
-        Out.Edges[1] = 0;
-        Out.Edges[2] = 0;
-        Out.Inside = 0;
-        return Out; // early exit
-    }
-    
-    
-    Out.Edges[0] = Out.Edges[1] = Out.Edges[2] = Out.Inside = 1;
-    
-    float DecalRadius = 1.0;
-    float DecalRadiusSquared = DecalRadius * DecalRadius;
-    
-    // For each Decal
-    for (int i = 0; i < 3; i++)
-    {
-        float3 decalPos = cbPass.Decals[i].xyz;
-        bool shouldTessellate = false;
-        
-        // Vertices Check
-        for (int j = 0; j < 3; j++)
-        {
-            float3 distVec = Patch[j].PosW - decalPos;
-            float distSq = dot(distVec, distVec);
-            
-            if (distSq <= DecalRadiusSquared)
-            {
-                shouldTessellate = true;
-                break;
-            }
-        }
-        
-        // Edges check
-        if (!shouldTessellate)
-        {
-            for (int edge = 0; edge < 3; edge++)
-            {
-                int v0 = edge;
-                int v1 = (uint)(edge + 1) % 3;
-                
-                float3 edgeVec = Patch[v1].PosW - Patch[v0].PosW;
-                float3 toDecal = decalPos - Patch[v0].PosW;
-                
-                float edgeLengthSq = dot(edgeVec, edgeVec);
-                float t = dot(toDecal, edgeVec) / edgeLengthSq;
-                t = saturate(t);
-                
-                float3 closestPoint = Patch[v0].PosW + t * edgeVec;
-                float3 distVec = closestPoint - decalPos;
-                float distSq = dot(distVec, distVec);
-                
-                if (distSq <= DecalRadiusSquared)
-                {
-                    shouldTessellate = true;
-                    break;
-                }
-            }
-        }
-        
-        if (shouldTessellate)
-        {
-            Out.Edges[0] = Out.Edges[1] = Out.Edges[2] = Out.Inside = gTesselationFactor;
-            break;
-        }
-    }
-    return Out;
-}
-
-[domain("tri")] // indicates a triangle patch (3 verts)
-[partitioning("fractional_odd")] // available options: fractional_even, fractional_odd, integer, pow2
-[outputtopology("triangle_cw")] // vertex ordering for the output triangles
-[outputcontrolpoints(3)]
-[patchconstantfunc("ConstantsHSForDecals")] // name of the patch constant hull shader
-[maxtessfactor(64.0)] //hint to the driver – the lower the better
-// Pass in the input patch and an index for the control point
-HS_CONTROL_POINT_OUTPUT HSForDecals(InputPatch<DS_VS_OUTPUT_PS_INPUT, 3> inputPatch, uint uCPID : SV_OutputControlPointID)
-{
-    HS_CONTROL_POINT_OUTPUT Out;
-// Copy inputs to outputs – “pass through” shaders are optimal
-    Out.vWorldPos = inputPatch[uCPID].PosW.xyz;
-    Out.vTexCoord = inputPatch[uCPID].TexC;
-    Out.vNormal = inputPatch[uCPID].Normal;
-    Out.vTangent = inputPatch[uCPID].Tangent;
-    return Out;
-}
-
-// Called once per tessellated vertex
-[domain("tri")] // indicates that triangle patches were used
-// The original patch is passed in, along with the vertex position in barycentric coordinates, and the patch constant phase hull shader output(tessellation factors)
-DS_VS_OUTPUT_PS_INPUT DSForDecals(HS_CONSTANT_DATA_OUTPUT input, float3 BarycentricCoordinates : SV_DomainLocation, const OutputPatch<HS_CONTROL_POINT_OUTPUT, 3> TrianglePatch)
-{
-    DS_VS_OUTPUT_PS_INPUT Out;
-    // Interpolate world space position with barycentric coordinates
-    float3 vWorldPos =
-    BarycentricCoordinates.x * TrianglePatch[0].vWorldPos +
-    BarycentricCoordinates.y * TrianglePatch[1].vWorldPos +
-    BarycentricCoordinates.z * TrianglePatch[2].vWorldPos;
-    Out.PosW = vWorldPos;
-    // Interpolate texture coordinates with barycentric coordinates
-    Out.TexC =
-    BarycentricCoordinates.x * TrianglePatch[0].vTexCoord +
-    BarycentricCoordinates.y * TrianglePatch[1].vTexCoord +
-    BarycentricCoordinates.z * TrianglePatch[2].vTexCoord;
-    // Interpolate normal with barycentric coordinates
-    Out.Normal =
-    BarycentricCoordinates.x * TrianglePatch[0].vNormal +
-    BarycentricCoordinates.y * TrianglePatch[1].vNormal +
-    BarycentricCoordinates.z * TrianglePatch[2].vNormal;
-    
-    Out.Tangent =
-    BarycentricCoordinates.x * TrianglePatch[0].vTangent +
-    BarycentricCoordinates.y * TrianglePatch[1].vTangent +
-    BarycentricCoordinates.z * TrianglePatch[2].vTangent;
-    
-    float DecalRadius = 1.f;
-    
-    for (int i = 0; i < 3; i++)
-    {
-        // get the hit location
-        float3 vHitLocation = cbPass.Decals[i].xyz;
-        // find the distance from the current vertex to the hit location
-        float distanceToHit = distance(vWorldPos, vHitLocation.xyz);
-        // check if the vertex is within the decal radius
-        if (distanceToHit <= DecalRadius) // decal radius
-        {
-            // translate the position to a coordinate space
-            // with the hit location as the origin
-            float3 vWorldPosTrans = vWorldPos - vHitLocation.xyz;
-            // create the decal tangent space matrix
-            float3 N = normalize(Out.Normal);
-            float3 T = normalize(Out.Tangent);
-            T = normalize(T - dot(T, N) * N);
-            float3 B = cross(N, T);
-            float3x3 mWorldToTangent = float3x3(T, B, N);
-            
-            float3 vDMTexCoord = mul(mWorldToTangent, vWorldPosTrans);
-            // normalize coordinate to values between 0 and 1
-            vDMTexCoord /= DecalRadius * 2;
-            vDMTexCoord += 0.5;
-            // project displacement map coordinate onto the x,y plane
-            vDMTexCoord.z = 1; // z = 0 tells pixel shader this is invalid
-            // sample the displacement map
-            float fDisplacement = gHeightMap.SampleLevel(gsamAnisotropicWrap, vDMTexCoord.xy, 0).r;
-            
-            float scale_x = length(float3(gTexTransform[0][0], gTexTransform[1][0], gTexTransform[2][0])); // TexScaleX
-            float scale_y = length(float3(gTexTransform[0][1], gTexTransform[1][1], gTexTransform[2][1])); // TexScaleY
- 
-            fDisplacement *= 0.1f;
-            
-            // hit direction is opposite of tangent space normal
-            float3 vDirection = normalize(Out.Normal);
-            // Displace the vertex
-            vWorldPos += vDirection * fDisplacement;
-
-            // Use the displacement map coord for the normal map coord
-            Out.TexC = vDMTexCoord.xy;
-            break;
-        }
-    }
-    Out.PosCS = mul(float4(vWorldPos.xyz, 1), cbPass.gViewProj);
-    return Out;
-}
-
-struct GBufferData
-{
-    float4 diffuse  : SV_TARGET0;
-    float4 emissive : SV_TARGET1;
-    float4 normal   : SV_TARGET2;
-    float4 materialAlbedo : SV_TARGET3;
-    float4 MaterialFresnelRoughness : SV_TARGET4;
-};
 
 GBufferData PS(DS_VS_OUTPUT_PS_INPUT pin)
 {
@@ -409,7 +174,7 @@ GBufferData PS(DS_VS_OUTPUT_PS_INPUT pin)
     float2 tileid = floor(pin.TexC);
     float2 localuv = frac(pin.TexC) - 0.5;
     float parity = fmod(tileid.x + tileid.y, 2.0);
-    float angle = (parity == 0) ? -cbPass.gTotalTime : cbPass.gTotalTime;
+    float angle = (parity == 0) ? -cbMainPass.TotalTime : cbMainPass.TotalTime;
     float2 rotateduv;
     rotateduv.x = localuv.x * cos(angle) - localuv.y * sin(angle);
     rotateduv.y = localuv.x * sin(angle) + localuv.y * cos(angle);
@@ -417,7 +182,7 @@ GBufferData PS(DS_VS_OUTPUT_PS_INPUT pin)
     uv = rotateduv;
 #endif
     
-    float3 NormalMapSample = gNormalMap.Sample(gsamAnisotropicWrap, uv).rgb;
+    float3 NormalMapSample = NormalMap.Sample(samAnisotropicWrap, uv).rgb;
     float3 WorldNormal;
     if (!length(NormalMapSample) == 0.f)
     {
@@ -435,13 +200,13 @@ GBufferData PS(DS_VS_OUTPUT_PS_INPUT pin)
     else
         WorldNormal = normalize(pin.Normal);
     
-    float4 diffuseAlbedo = gDiffuseMap.Sample(gsamAnisotropicWrap, uv);
+    float4 diffuseAlbedo = DiffuseMap.Sample(samAnisotropicWrap, uv);
 
     pout.diffuse = diffuseAlbedo;
     pout.emissive = float4(0.f, 0.f, 0.f, pin.PosCS.z); //xyz is free for now
-    pout.normal = float4(WorldNormal, gMetallic); //w is free for now
-    pout.materialAlbedo = gDiffuseAlbedo;
-    pout.MaterialFresnelRoughness = float4(gFresnelR0, gRoughness);
+    pout.normal = float4(WorldNormal, cbMaterial.Metallic); //w is free for now
+    pout.materialAlbedo = cbMaterial.DiffuseAlbedo;
+    pout.MaterialFresnelRoughness = float4(cbMaterial.FresnelR0, cbMaterial.Roughness);
 
     return pout;
 }

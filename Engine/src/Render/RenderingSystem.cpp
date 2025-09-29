@@ -662,7 +662,7 @@ void RenderingSystem::BuildTerrain()
 	terrainRendererDesc.quadTreeLevels = 6;
 	terrainRendererDesc.heightMapScale = 3500.0f;
 	terrainRendererDesc.enableWireFrame = false;
-	terrainRendererDesc.skipTileReimportIfPresent = false;
+	terrainRendererDesc.skipTileReimportIfPresent = true;
 	terrainRendererDesc.generateHeightWithPerlin = true;
 	terrainRendererDesc.perlinSeed = 42;
 	terrainRendererDesc.perlinFrequency = 0.00015f;
