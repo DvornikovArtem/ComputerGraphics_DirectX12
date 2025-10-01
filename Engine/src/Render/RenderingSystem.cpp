@@ -108,7 +108,24 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 	BuildInputLayout();
 	BuildBasicGeometry();
 	BuildSceneGrid();
-	BuildTerrain();
+	//BuildTerrain();
+
+
+
+
+	ffxContext* context{};
+
+	ffxCreateContextDescHeader* desc{};
+
+	ffxAllocationCallbacks* callbacks{};
+
+
+	ffxCreateContext(context, desc, callbacks);
+
+
+
+
+
 
 	// Execute the initialization commands.
 	ThrowIfFailed(mCommandList->Close());
@@ -672,8 +689,8 @@ void RenderingSystem::BuildTerrain()
 	terrainRendererDesc.perlinOffsetX = 0.f;
 	terrainRendererDesc.perlinOffsetZ = 0.f;
 
-	terrainRenderer = new TerrainRenderer();
-	terrainRenderer->Initialize(terrainRendererDesc);
+	//terrainRenderer = new TerrainRenderer();
+	//terrainRenderer->Initialize(terrainRendererDesc);
 
 
 	// Create geometry for a single quadtree tile as a grid with 6 LODs 
