@@ -254,21 +254,6 @@ void RenderingSystem::OnResize() {
 
 	mCamera.SetLens(0.25f * MathHelper::Pi, AspectRatio(), 1.0f, 100000.0f);
 	
-
-	mGbuffer->Resize(mClientWidth, mClientHeight, md3dDevice.Get());
-
-	if (mSrvDescriptorHeap)
-	{
-		md3dDevice->CopyDescriptorsSimple(mGbuffer->NumBuffers, GetCpuSrv(mGbuffer->Channel0SRVHeapIndex),
-			mGbuffer->m_SRVDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
-			D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-	}
-
-	for (ParticleSystem* particleSystem : mAllParticleSystems)
-	{
-		particleSystem->setEmissiveTex(mGbuffer->getEmissiveTex(), mGbuffer->getNormalTex());
-	}
-
 	//ASKING FFX_API FOR RENDER RESOLUTION
 	ffxQueryDescUpscaleGetRenderResolutionFromQualityMode queryDesc = {};
 	queryDesc.header.type = FFX_API_QUERY_DESC_TYPE_UPSCALE_GETRENDERRESOLUTIONFROMQUALITYMODE;
@@ -279,6 +264,46 @@ void RenderingSystem::OnResize() {
 	queryDesc.pOutRenderWidth = &mRecommendedRenderResolutionX;
 
 	ffxQuery(&mFFXContext, &queryDesc.header);
+
+	//Resize FSROutput texture
+	D3D12_CLEAR_VALUE clearValue = {};
+	clearValue.Format = mBackBufferFormat;
+	clearValue.DepthStencil.Depth = 1.0f;
+	clearValue.DepthStencil.Stencil = 0;
+
+	md3dDevice->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Tex2D(mBackBufferFormat, mClientWidth, mClientHeight, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET),
+		D3D12_RESOURCE_STATE_COMMON,
+		&clearValue,
+		IID_PPV_ARGS(&mFSROutput));
+
+	//mGbuffer->Resize(mRecommendedRenderResolutionX, mRecommendedRenderResolutionY, md3dDevice.Get());
+	mGbuffer->Resize(mClientWidth, mClientHeight, md3dDevice.Get());
+
+	if (mSrvDescriptorHeap)
+	{
+		md3dDevice->CopyDescriptorsSimple(mGbuffer->NumBuffers, GetCpuSrv(mGbuffer->Channel0SRVHeapIndex),
+			mGbuffer->m_SRVDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
+			D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
+		CD3DX12_CPU_DESCRIPTOR_HANDLE hDescriptor(mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
+		hDescriptor.Offset(1, mGbuffer->Channel0SRVHeapIndex + mGbuffer->NumBuffers + 1);
+
+		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+		srvDesc.Format = mBackBufferFormat;
+		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+		srvDesc.Texture2D.MostDetailedMip = 0;
+		srvDesc.Texture2D.MipLevels = 1;
+		md3dDevice->CreateShaderResourceView(mFSROutput.Get(), &srvDesc, hDescriptor);
+	}
+
+	for (ParticleSystem* particleSystem : mAllParticleSystems)
+	{
+		particleSystem->setEmissiveTex(mGbuffer->getEmissiveTex(), mGbuffer->getNormalTex());
+	}
 }
 
 void RenderingSystem::Render()
@@ -913,9 +938,7 @@ void RenderingSystem::FSRUpscale()
 	dispatchDesc.depth = ffxApiGetResourceDX12(mDepthStencilBuffer.Get());
 	//dispatchDesc.motionVectors = ffxApiGetResourceDX12(mMotionVectorBuffer.Get()); // ADD MOTION VECTOR CALCULATION
 
-	dispatchDesc.renderSize = { (UINT)mClientWidth, (UINT)mClientHeight };    // Resolution before upscaling
-	//dispatchDesc.displaySize = { mDisplayWidth, mDisplayHeight }; // Resolution after upscaling
-
+	dispatchDesc.renderSize = { mRecommendedRenderResolutionX, mRecommendedRenderResolutionY };    // Resolution before upscaling
 	dispatchDesc.cameraNear = mCamera.GetNearZ();
 	dispatchDesc.cameraFar = mCamera.GetFarZ();
 	dispatchDesc.cameraFovAngleVertical = mCamera.GetFovY();
@@ -927,7 +950,8 @@ void RenderingSystem::FSRUpscale()
 	dispatchDesc.frameTimeDelta = gt->DeltaTime() * 1000.f; //expects milliseconds
 	dispatchDesc.reset = false; // set to true if camera teleports or moves not smoothly
 
-	//dispatchDesc.output = ffxApiGetResourceDX12(); // Output Result Buffer into this resource
+	dispatchDesc.output = ffxApiGetResourceDX12(mFSROutput.Get()); // Output Result Buffer into this resource
+	//not sure if RTV is even needed here
 
 
 	ffxReturnCode_t dispatchError = ffxDispatch(&mFFXContext, &dispatchDesc.header);
@@ -2471,7 +2495,7 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 	// Create the SRV heap.
 	//
 	D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
-	srvHeapDesc.NumDescriptors = static_cast<UINT>(TexDescs.size() + MPRTextures.size() + MPRTerrainTextures.size() + 1 + mAllLights.size() + mGbuffer->NumBuffers);
+	srvHeapDesc.NumDescriptors = static_cast<UINT>(TexDescs.size() + MPRTextures.size() + MPRTerrainTextures.size() + 1 + mAllLights.size() + mGbuffer->NumBuffers + 1);
 	srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 	srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	ThrowIfFailed(md3dDevice->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&mSrvDescriptorHeap)));

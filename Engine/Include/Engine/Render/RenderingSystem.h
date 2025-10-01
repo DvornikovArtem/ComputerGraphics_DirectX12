@@ -309,6 +309,7 @@ protected:
     UINT mRecommendedRenderResolutionX = 0;
     UINT mRecommendedRenderResolutionY = 0;
     FfxApiUpscaleQualityMode mFSRQualityMode = FFX_UPSCALE_QUALITY_MODE_QUALITY;
+    Microsoft::WRL::ComPtr<ID3D12Resource> mFSROutput;
 };
 
 
