@@ -1,59 +1,23 @@
-// Include structures and functions for lighting.
-#include "LightingUtil.hlsl"
+#include "CBufferStructures.hlsl"
 
-Texture2D   gDiffuseMap     : register(t0);
-Texture2D   gEmissiveMap    : register(t1);
-Texture2D   gNormalMap      : register(t2);
-Texture2D   gMaterialAlbedoMap : register(t3);
-Texture2D   gMaterialFresnelRoughnessMap : register(t4);
+Texture2D   DiffuseMap     : register(t0);
+Texture2D   EmissiveMap    : register(t1);
+Texture2D   NormalMap      : register(t2);
+Texture2D   MaterialAlbedoMap : register(t3);
+Texture2D   MaterialFresnelRoughnessMap : register(t4);
 
-Texture2DArray gShadowMaps : register(t5);
+Texture2DArray ShadowMaps : register(t5);
 
 TextureCube IrradianceMap   : register(t6);
 TextureCube PrefilterEnvMap : register(t7);
 Texture2D BRDF_LUT          : register(t8);
 
-SamplerComparisonState gShadowSampler : register(s0);
-SamplerState gsamLinearClamp          : register(s1);
+SamplerComparisonState ShadowSampler : register(s0);
+SamplerState samLinearClamp          : register(s1);
 
-// Constant data that varies per frame.
-cbuffer cbPass : register(b0)
-{
-    float4x4 gView;
-    float4x4 gInvView;
-    float4x4 gProj;
-    float4x4 gInvProj;
-    float4x4 gViewProj;
-    float4x4 gInvViewProj;
-    float3 gEyePosW;
-    float cbPerObjectPad1;
-    float2 gRenderTargetSize;
-    float2 gInvRenderTargetSize;
-    float gNearZ;
-    float gFarZ;
-    float gTotalTime;
-    float gDeltaTime;
-    float4 gAmbientLight;
+ConstantBuffer<MainPassCB> cbMainPass : register(b0);
 
-	float4 gFogColor;
-	float gFogStart;
-	float gFogRange;
-	float2 cbPerObjectPad2;
-    
-    float4 Decals[3];
-};
-
-// Constant data that varies per light.
-cbuffer cbPerLight : register(b1)
-{
-    Light CurrentLight;
-    float4x4 gWorld;
-    float4x4 View[6];
-    float4x4 Proj[6];
-    float4x4 ShadowTransform[6];
-    float4 CascadeDistances;
-}
-
+ConstantBuffer<LightCB> cbLight : register(b1);
 
 struct VertexIn
 {
@@ -87,7 +51,7 @@ VertexOut VS_Bounded(VertexIn vin)
 {
     VertexOut vout;
     
-    vout.PosH = mul(float4(vin.PosL, 1.0f), mul(gWorld, gViewProj));
+    vout.PosH = mul(float4(vin.PosL, 1.0f), mul(cbLight.World, cbMainPass.ViewProj));
     
     return vout;
 }
@@ -103,7 +67,7 @@ float3 ReconstructWorldPosition(float2 UV, float depth)
     clipPos.w = 1.0f;
 
     //transform into world space
-    float4 viewPos = mul(clipPos, gInvViewProj);
+    float4 viewPos = mul(clipPos, cbMainPass.InvViewProj);
     viewPos.xyz /= viewPos.w;
 
     return viewPos.xyz;
@@ -111,7 +75,7 @@ float3 ReconstructWorldPosition(float2 UV, float depth)
 
 float CalcShadowFactor(float3 WorldPosition, float3 Normal, uint ShadowMapIndex)
 {
-    float4 shadowPosH = mul(float4(WorldPosition, 1.f), ShadowTransform[ShadowMapIndex]);
+    float4 shadowPosH = mul(float4(WorldPosition, 1.f), cbLight.ShadowTransform[ShadowMapIndex]);
     
     // Complete projection by doing division by w.
     shadowPosH.xyz /= shadowPosH.w;
@@ -120,10 +84,10 @@ float CalcShadowFactor(float3 WorldPosition, float3 Normal, uint ShadowMapIndex)
     float depth = shadowPosH.z;
 
     uint width, height, numLayers, numMips;
-    gShadowMaps.GetDimensions(0, width, height, numLayers, numMips);
+    ShadowMaps.GetDimensions(0, width, height, numLayers, numMips);
 
     // Slope-Scaled Depth Bias
-    float3 lightDir = normalize(-CurrentLight.Direction);
+    float3 lightDir = normalize(-cbLight.lightData.Direction);
     float slopeBias = 0.005 * tan(acos(saturate(dot(Normal, lightDir))));
     slopeBias = clamp(slopeBias, 0.001, 0.05);
     float biasedDepth = depth - (0.001 + slopeBias);
@@ -157,7 +121,7 @@ float CalcShadowFactor(float3 WorldPosition, float3 Normal, uint ShadowMapIndex)
         if (sampleCoord.x >= 0.f && sampleCoord.x <= 1.f &&
             sampleCoord.y >= 0.f && sampleCoord.y <= 1.f)
         {
-            percentLit += gShadowMaps.SampleCmpLevelZero(gShadowSampler,
+            percentLit += ShadowMaps.SampleCmpLevelZero(ShadowSampler,
                 float3(sampleCoord, ShadowMapIndex), biasedDepth).r * weights[i];
             totalWeight += weights[i];
         }
@@ -211,14 +175,14 @@ float3 FresnelSchlick(float cosTheta, float3 F0)
 
 float4 PS(VertexOut pin) : SV_Target
 {
-    float2 UV = pin.PosH.xy / gRenderTargetSize;
+    float2 UV = pin.PosH.xy / cbMainPass.RenderTargetSize;
     uint2 TexelCoord = pin.PosH.xy;
     //loading GBuffer channels
-    float4 MatAlbedo = gMaterialAlbedoMap.Load(int3(TexelCoord, 0));
-    float4 MatParams = gMaterialFresnelRoughnessMap.Load(int3(TexelCoord, 0));
-    float4 Emissive = gEmissiveMap.Load(int3(TexelCoord, 0));
-    float4 NormalChannel = gNormalMap.Load(int3(TexelCoord, 0));
-    float4 Diffuse = gDiffuseMap.Load(int3(TexelCoord, 0)) * MatAlbedo;
+    float4 MatAlbedo = MaterialAlbedoMap.Load(int3(TexelCoord, 0));
+    float4 MatParams = MaterialFresnelRoughnessMap.Load(int3(TexelCoord, 0));
+    float4 Emissive = EmissiveMap.Load(int3(TexelCoord, 0));
+    float4 NormalChannel = NormalMap.Load(int3(TexelCoord, 0));
+    float4 Diffuse = DiffuseMap.Load(int3(TexelCoord, 0)) * MatAlbedo;
     float Metallic = NormalChannel.w;
 
     float3 WorldPosition = ReconstructWorldPosition(UV, Emissive.w);
@@ -227,7 +191,7 @@ float4 PS(VertexOut pin) : SV_Target
     float3 Normal = NormalChannel.rgb;
     
     // Vector from point being lit to eye.
-    float3 toEyeW = gEyePosW - WorldPosition;
+    float3 toEyeW = cbMainPass.EyePosW - WorldPosition;
     float distToEye = length(toEyeW);
     toEyeW /= distToEye; // normalize
     float NdotV = max(dot(Normal, toEyeW), 0.0);
@@ -242,10 +206,10 @@ float4 PS(VertexOut pin) : SV_Target
     float3 Lighting;
     
     //calculate light based on its type
-    if (CurrentLight.LightType == 0)
+    if (cbLight.lightData.LightType == 0)
     {
         float shadowFactor = 1.f;
-        float distanceFromEye = length(WorldPosition - gEyePosW);
+        float distanceFromEye = length(WorldPosition - cbMainPass.EyePosW);
         
         for (uint cascade = 0; cascade < 5; cascade++)
         {
@@ -257,20 +221,7 @@ float4 PS(VertexOut pin) : SV_Target
             }
         }
         
-        //uint cascadeIndex = 0;
-        
-        //if (distanceFromEye < CascadeDistances.x)
-        //    cascadeIndex = 0;
-        //else if (distanceFromEye < CascadeDistances.y)
-        //    cascadeIndex = 1;
-        //else if (distanceFromEye < CascadeDistances.z)
-        //    cascadeIndex = 2;
-        //else
-        //    cascadeIndex = 3;
-        //
-        //shadowFactor = CalcShadowFactor(WorldPosition, Normal, cascadeIndex);
-        
-        float3 lightDir = normalize(-CurrentLight.Direction);
+        float3 lightDir = normalize(-cbLight.lightData.Direction);
         float3 halfVec = normalize(toEyeW + lightDir);
         float NdotL = max(dot(Normal, lightDir), 0.0);
         
@@ -282,16 +233,12 @@ float4 PS(VertexOut pin) : SV_Target
                 // Lambert
                 float3 diffuse = Diffuse.rgb * NdotL;
 
-                // Blinn-Phong (????-????????? ?? roughness)
-                // ???????? ?????????? ??????? ???, ????? roughness=0 => ?????? ????
                 float specPower = lerp(4.0, 128.0, 1.0 - MatRoughness);
                 float NdotH = max(dot(Normal, halfVec), 0.0);
                 float specTerm = pow(NdotH, specPower);
-
-                // ???? ?????: ??????? MatFresnelR0 ??? «specular color»
                 float3 specular = MatFresnelR0 * specTerm;
 
-                float3 radiance = CurrentLight.Strength * CurrentLight.Color;
+            float3 radiance = cbLight.lightData.Strength * cbLight.lightData.Color;
 
                 float3 Lo = (diffuse + specular) * radiance;
 
@@ -299,7 +246,6 @@ float4 PS(VertexOut pin) : SV_Target
             }
         else
             {
-                // PBR ??? ????
                 float3 F = FresnelSchlick(max(dot(halfVec, toEyeW), 0.0), F0);
                 float NDF = DistributionGGX(Normal, halfVec, MatRoughness);
                 float G = GeometrySmith(Normal, toEyeW, lightDir, MatRoughness);
@@ -308,38 +254,18 @@ float4 PS(VertexOut pin) : SV_Target
                 float3 kS = F;
                 float3 kD = (1.0 - kS) * (1.0 - Metallic);
 
-                float3 radiance = CurrentLight.Strength * CurrentLight.Color;
+            float3 radiance = cbLight.lightData.Strength * cbLight.lightData.Color;
                 float3 Lo = (kD * Diffuse.rgb / PI + specular) * radiance * NdotL;
 
                 Lighting = shadowFactor * Lo;
             }
-        //float3 F = FresnelSchlick(max(dot(halfVec, toEyeW), 0.0), F0);
-        
-        //float NDF = DistributionGGX(Normal, halfVec, MatRoughness);
-        
-        //float G = GeometrySmith(Normal, toEyeW, lightDir, MatRoughness);
-        
-        // Cook-Torrance BRDF
-        //float3 numerator = NDF * G * F;
-        //float denominator = 4.0 * NdotV * NdotL + 0.001;
-        //float3 specular = numerator / denominator;
-        
-        //float3 kS = F;
-        //float3 kD = 1.0 - kS;
-        //kD *= (1.0 - Metallic);
-        
-        //float3 radiance = CurrentLight.Strength * CurrentLight.Color;
-        
-        //float3 Lo = (kD * Diffuse.rgb / PI + specular) * radiance * NdotL;
-        
-        //Lighting = shadowFactor * Lo;
     }
-    else if (CurrentLight.LightType == 1)
+    else if (cbLight.lightData.LightType == 1)
     {
-        if (length(CurrentLight.Position - WorldPosition) > (CurrentLight.Strength.x * 10))
+        if (length(cbLight.lightData.Position - WorldPosition) > (cbLight.lightData.Strength.x * 10))
             discard;
         
-        float3 lightToPixel = WorldPosition - CurrentLight.Position;
+        float3 lightToPixel = WorldPosition - cbLight.lightData.Position;
         float distToLight = length(lightToPixel);
         lightToPixel /= distToLight;
     
@@ -353,14 +279,14 @@ float4 PS(VertexOut pin) : SV_Target
         else
             faceIndex = (lightToPixel.z > 0) ? 4 : 5;
         
-        float3 L = normalize(CurrentLight.Position - WorldPosition);
+        float3 L = normalize(cbLight.lightData.Position - WorldPosition);
         float NdotL = max(dot(Normal, L), 0.0);
         float3 H = normalize(L + toEyeW);
         
         bool gUsePBR = true;
         if (gUsePBR == 0)
         {
-            float3 radiance = CurrentLight.Strength * CurrentLight.Color;
+            float3 radiance = cbLight.lightData.Strength * cbLight.lightData.Color;
             float specPower = lerp(4.0, 128.0, 1.0 - MatRoughness);
             float specTerm = pow(max(dot(Normal, H), 0.0), specPower);
 
@@ -372,13 +298,13 @@ float4 PS(VertexOut pin) : SV_Target
         else
         {
             Lighting = CalcShadowFactor(WorldPosition, Normal, faceIndex)
-                 * ComputePointLight(CurrentLight, mat, WorldPosition, Normal, toEyeW) * CurrentLight.Color;
+                 * ComputePointLight(cbLight.lightData, mat, WorldPosition, Normal, toEyeW) * cbLight.lightData.Color;
         }
     }
-    else if(CurrentLight.LightType == 2)
+    else if (cbLight.lightData.LightType == 2)
     {
         // no cascades or complex maps here. using shadow map 0
-        Lighting = CalcShadowFactor(WorldPosition, Normal, 0) * ComputeSpotLight(CurrentLight, mat, WorldPosition, Normal, toEyeW) * CurrentLight.Color;
+        Lighting = CalcShadowFactor(WorldPosition, Normal, 0) * ComputeSpotLight(cbLight.lightData, mat, WorldPosition, Normal, toEyeW) * cbLight.lightData.Color;
     }
 
     float4 litColor = float4(Lighting, 0.f);
@@ -399,11 +325,11 @@ float4 PS_AddAmbient(VertexOut pin) : SV_Target
 {
     uint2 TexelCoord = pin.PosH.xy;
     
-    float4 MatAlbedo = gMaterialAlbedoMap.Load(int3(TexelCoord, 0));
-    float4 MatParams = gMaterialFresnelRoughnessMap.Load(int3(TexelCoord, 0));
-    float4 Emissive = gEmissiveMap.Load(int3(TexelCoord, 0));
-    float4 NormalChannel = gNormalMap.Load(int3(TexelCoord, 0));
-    float4 Diffuse = gDiffuseMap.Load(int3(TexelCoord, 0)) * MatAlbedo;
+    float4 MatAlbedo = MaterialAlbedoMap.Load(int3(TexelCoord, 0));
+    float4 MatParams = MaterialFresnelRoughnessMap.Load(int3(TexelCoord, 0));
+    float4 Emissive = EmissiveMap.Load(int3(TexelCoord, 0));
+    float4 NormalChannel = NormalMap.Load(int3(TexelCoord, 0));
+    float4 Diffuse = DiffuseMap.Load(int3(TexelCoord, 0)) * MatAlbedo;
     
     float3 albedo = Diffuse.rgb;
     float roughness = MatParams.w;
@@ -416,13 +342,13 @@ float4 PS_AddAmbient(VertexOut pin) : SV_Target
     bool gUsePBR = true;
     if (gUsePBR == 0)
     {
-        float3 ambient = gAmbientLight.rgb * Diffuse.rgb; // ????? ???????? ?? 0.1f, ???? ????? ??????
+        float3 ambient = cbMainPass.AmbientLight.rgb * Diffuse.rgb;
         return float4(ambient, Diffuse.a);
     }
     
-    float2 UV = pin.PosH.xy / gRenderTargetSize;
+    float2 UV = pin.PosH.xy / cbMainPass.RenderTargetSize;
     float3 worldPos = ReconstructWorldPosition(UV, Emissive.w);
-    float3 viewDir = normalize(gEyePosW - worldPos);
+    float3 viewDir = normalize(cbMainPass.EyePosW - worldPos);
     float NdotV = max(dot(normal, viewDir), 0.0);
     
     // --- PBR IBL ---
@@ -433,15 +359,15 @@ float4 PS_AddAmbient(VertexOut pin) : SV_Target
     float3 kD = 1.0 - kS;
     kD *= (1.0 - metallic);
     
-    float3 irradiance = IrradianceMap.Sample(gsamLinearClamp, normal).rgb;
+    float3 irradiance = IrradianceMap.Sample(samLinearClamp, normal).rgb;
     float3 diffuse = irradiance * albedo;
     
     uint width, height, NumMips;
     PrefilterEnvMap.GetDimensions(0, width, height, NumMips);
     
     float3 R = reflect(-viewDir, normal);
-    float3 prefilteredColor = PrefilterEnvMap.SampleLevel(gsamLinearClamp, R, roughness * NumMips).rgb;
-    float2 brdf = BRDF_LUT.Sample(gsamLinearClamp, float2(NdotV, roughness)).rg;
+    float3 prefilteredColor = PrefilterEnvMap.SampleLevel(samLinearClamp, R, roughness * NumMips).rgb;
+    float2 brdf = BRDF_LUT.Sample(samLinearClamp, float2(NdotV, roughness)).rg;
     float3 specular = prefilteredColor * (F * brdf.x + brdf.y);
     
     float ao = 1.0f;

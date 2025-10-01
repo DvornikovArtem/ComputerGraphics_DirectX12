@@ -41,6 +41,7 @@ struct ParticleSystemDescriptor
     UINT CBIndex;
     std::string particleGeometryName;
     std::vector<D3D12_INPUT_ELEMENT_DESC> InputLayout;
+    bool IsBillboard = false;
 };
 
 
@@ -116,6 +117,8 @@ private:
 
     ComPtr<ID3D12Resource> mEmissiveTex = nullptr;
     ComPtr<ID3D12Resource> mNormalTex = nullptr;
+
+    bool IsBillboard = false;
 
 public:
     XMFLOAT3 CameraPos;

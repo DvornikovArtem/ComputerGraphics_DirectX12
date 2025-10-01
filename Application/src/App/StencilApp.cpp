@@ -211,8 +211,6 @@ void StencilApp::LoadShaders()
     {
         //has prebuilt shaders "standardVS(PS/HS/DS)", "SkyBoxVS(PS)"
         ShaderDesc("RotatingTilesPS", SHADERS_ENGINE_DIR L"\\DeferredGeometryPass.hlsl", "PS", defines, "ps_5_1"),
-        ShaderDesc("HSForDecals", SHADERS_ENGINE_DIR L"\\DeferredGeometryPass.hlsl", "HSForDecals", nullptr, "hs_5_1"),
-        ShaderDesc("DSForDecals", SHADERS_ENGINE_DIR L"\\DeferredGeometryPass.hlsl", "DSForDecals", nullptr, "ds_5_1"),
         ShaderDesc("EmitCS", SHADERS_ENGINE_DIR L"\\ParticleCS.hlsl", "EmitCS", nullptr, "cs_5_1"),
         ShaderDesc("SimulateCS", SHADERS_ENGINE_DIR L"\\ParticleCS.hlsl", "SimulateCS", nullptr, "cs_5_1"),
         ShaderDesc("SimulateCS2", SHADERS_ENGINE_DIR L"\\ParticleCS.hlsl", "SimulateCS2", nullptr, "cs_5_1"),
@@ -295,7 +293,7 @@ void StencilApp::MakeMaterials()
     std::vector<MaterialDesc> MaterialDescs =
     {
         MaterialDesc("bricks", "standardVS", "standardPS",  "", "", "bricksTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.25f, 0.f, false),
-        MaterialDesc("Bricks_DecalTesting", "standardVS", "standardPS", "HSForDecals", "DSForDecals", "bricksTex", "ShinyStones_NormalMap", "ShinyStones_HeightMap", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, 0.f, true),
+        MaterialDesc("Bricks_DecalTesting", "standardVS", "standardPS", "", "", "bricksTex", "ShinyStones_NormalMap", "ShinyStones_HeightMap", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, 0.f, false),
         MaterialDesc("AH", "standardVS", "standardPS", "", "", "AH_Diffuse", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.99f, 0.f, false),
         MaterialDesc("woodCrate", "standardVS", "RotatingTilesPS", "", "", "woodCrateTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.2f, 0.05f, false),
         MaterialDesc("PatrickMat", "standardVS", "standardPS", "", "", "PatrickTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, 0.f, false),
@@ -425,7 +423,7 @@ void StencilApp::MakeDrawableObjects()
 
     mAllDrawableObjects[Patrick2->Name] = Patrick2;
 
-    /*const float spacing = 2.0f;
+    const float spacing = 2.0f;
     for (int row = 0; row < 11; ++row) {
         for (int col = 0; col < 11; ++col) {
             auto sphere = new DrawableObject();
@@ -442,7 +440,7 @@ void StencilApp::MakeDrawableObjects()
 
             mAllDrawableObjects[sphere->Name] = sphere;
         }
-    }*/
+    }
 
     mRenderingSystem->BuildRenderItems(mAllDrawableObjects);
 }
@@ -489,13 +487,14 @@ void StencilApp::MakeParticleSystems()
     ParticleSystemDescriptor fireworkParticleSystemDesc;
     
     fireworkParticleSystemDesc.name = "fireworkParticleSystem";
-    fireworkParticleSystemDesc.emitterPosition = { -6.0f, 2.0f, -6.0f }; // -10.0f, 0.0f, -10.0f
+    fireworkParticleSystemDesc.emitterPosition = { -6.0f, 2.0f, -6.0f };
     fireworkParticleSystemDesc.numParticlesToEmit = 10;
     fireworkParticleSystemDesc.maxParticles = 256;
-    fireworkParticleSystemDesc.particleSize = 0.07f;
+    fireworkParticleSystemDesc.particleSize = 0.1f;
     fireworkParticleSystemDesc.emitComputeShaderName = "EmitCS";
     fireworkParticleSystemDesc.simulateComputeShaderName = "SimulateCS2";
     fireworkParticleSystemDesc.particleGeometryName = MeshParsingResults["Svidetel"][0].GeometryName;
+    fireworkParticleSystemDesc.IsBillboard = false;
 
     mParticleSystemDescriptors[fireworkParticleSystemDesc.name] = fireworkParticleSystemDesc;
 
@@ -503,15 +502,16 @@ void StencilApp::MakeParticleSystems()
     ParticleSystemDescriptor smokeParticleSystemDesc;
 
     smokeParticleSystemDesc.name = "smokeParticleSystem";
-    smokeParticleSystemDesc.emitterPosition = XMFLOAT3(-10.0f, 2.0f, -10.0f); // -10.0f, 0.0f, -10.0f
+    smokeParticleSystemDesc.emitterPosition = { -10.0f, 2.0f, -10.0f };
     smokeParticleSystemDesc.numParticlesToEmit = 1000;
-    smokeParticleSystemDesc.maxParticles = 300000;
-    smokeParticleSystemDesc.particleSize = 0.02f; // 0.03f
+    smokeParticleSystemDesc.maxParticles = 3000;
+    smokeParticleSystemDesc.particleSize = 0.02f;
     smokeParticleSystemDesc.emitComputeShaderName = "EmitSmokeCS";
     smokeParticleSystemDesc.simulateComputeShaderName = "SimulateSmokeCS";
     smokeParticleSystemDesc.particleGeometryName = "2DCircle";
+    smokeParticleSystemDesc.IsBillboard = true;
 
-    //mParticleSystemDescriptors[smokeParticleSystemDesc.name] = smokeParticleSystemDesc;
+    mParticleSystemDescriptors[smokeParticleSystemDesc.name] = smokeParticleSystemDesc;
 
     mRenderingSystem->BuildParticleSystems(mParticleSystemDescriptors);
 }

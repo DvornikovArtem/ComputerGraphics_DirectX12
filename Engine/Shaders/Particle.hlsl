@@ -1,74 +1,44 @@
-struct Particle
-{
-    float3 Pos;
-    float LifeTime;
-    float3 Vel;
-    float Size;
-    float4 Color;
-};
+#include "CBufferStructures.hlsl"
 
+ConstantBuffer<MainPassCB> cbMainPass : register(b0);
 
-struct VSInput
+StructuredBuffer<Particle> ParticlePool : register(t0);
+StructuredBuffer<uint> AliveList : register(t1);
+
+struct VS_INPUT
 {
     float3 PosL : POSITION;
     float3 NormalL : NORMAL;
     float2 TexC : TEXCOORD;
 };
 
-struct VSOutput
+struct VS_OUTPUT_PS_INPUT
 {
     float4 PosH : SV_POSITION;
     float4 Color : COLOR;
     float2 TexCoord : TEXCOORD;
 };
 
-
-cbuffer PassConstants : register(b0)
+VS_OUTPUT_PS_INPUT VS(VS_INPUT input, uint instanceID : SV_InstanceID)
 {
-    matrix View;
-    matrix InvView;
-    matrix Proj;
-    matrix InvProj;
-    matrix ViewProj;
-    matrix InvViewProj;
-    float3 EyePosW;
-    float cbPerObjectPad1;
-    float2 RenderTargetSize;
-    float2 InvRenderTargetSize;
-    float NearZ;
-    float FarZ;
-    float TotalTime;
-    float DeltaTime;
-    float4 AmbientLight;
-    float4 FogColor;
-    float gFogStart;
-    float gFogRange;
-    float2 cbPerObjectPad2;
-};
+    VS_OUTPUT_PS_INPUT output;
 
-
-StructuredBuffer<Particle> gParticlePool : register(t0);
-StructuredBuffer<uint> gAliveList : register(t1);
-
-
-VSOutput VS(VSInput input, uint instanceID : SV_InstanceID)
-{
-    VSOutput output;
-
-    uint particleIndex = gAliveList[instanceID];
-    Particle p = gParticlePool[particleIndex];
+    uint particleIndex = AliveList[instanceID];
+    Particle p = ParticlePool[particleIndex];
 
     float3 particlePosW = p.Pos;
     float2 quadPosL = input.PosL.xy;
     
-    float3 camRightW = InvView[0].xyz;
-    float3 camUpW = InvView[1].xyz;
+#ifdef BILLBOARDGEOMETRY
+    float3 camRightW = cbMainPass.InvView[0].xyz;
+    float3 camUpW = cbMainPass.InvView[1].xyz;
+    particlePosW += camRightW * quadPosL.x * p.Size;
+    particlePosW += camUpW * quadPosL.y * p.Size;
+#else
+    particlePosW += input.PosL * p.Size;
+#endif
     
-    float3 worldPos = particlePosW;
-    worldPos += camRightW * quadPosL.x * p.Size;
-    worldPos += camUpW * quadPosL.y * p.Size;
-    
-    output.PosH = mul(float4(worldPos, 1.0f), ViewProj);
+    output.PosH = mul(float4(particlePosW, 1.0f), cbMainPass.ViewProj);
     
     output.Color = p.Color;
     output.Color.a *= saturate(p.LifeTime / 2.0f);
@@ -78,7 +48,7 @@ VSOutput VS(VSInput input, uint instanceID : SV_InstanceID)
 }
 
 
-float4 PS(VSOutput input) : SV_TARGET
+float4 PS(VS_OUTPUT_PS_INPUT input) : SV_TARGET
 {
     return input.Color;
 }

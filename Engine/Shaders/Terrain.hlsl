@@ -1,64 +1,21 @@
-// Terrain.hlsl
+#include "CBufferStructures.hlsl"
 
-Texture2D gDiffuseMap : register(t0);
-Texture2D gNormalMap : register(t1);
-Texture2D gHeightMap : register(t2);
+Texture2D DiffuseMap : register(t0);
+Texture2D NormalMap : register(t1);
+Texture2D HeightMap : register(t2);
 
-SamplerState gsamPointWrap : register(s0);
-SamplerState gsamPointClamp : register(s1);
-SamplerState gsamLinearWrap : register(s2);
-SamplerState gsamLinearClamp : register(s3);
-SamplerState gsamAnisotropicWrap : register(s4);
-SamplerState gsamAnisotropicClamp : register(s5);
+SamplerState samPointWrap : register(s0);
+SamplerState samPointClamp : register(s1);
+SamplerState samLinearWrap : register(s2);
+SamplerState samLinearClamp : register(s3);
+SamplerState samAnisotropicWrap : register(s4);
+SamplerState samAnisotropicClamp : register(s5);
 
-// Constant data that varies per object
-cbuffer cbPerObject : register(b0)
-{
-    float4x4 gWorld;
-    float4x4 gTexTransform;
-    float gTesselationFactor;
-    float gHeightMapScale;
-};
+ConstantBuffer<ObjectCB> cbObject : register(b0);
 
-// Constant data that varies per frame
-cbuffer cbPass : register(b1)
-{
-    float4x4 gView;
-    float4x4 gInvView;
-    float4x4 gProj;
-    float4x4 gInvProj;
-    float4x4 gViewProj;
-    float4x4 gInvViewProj;
-    float3 gEyePosW;
-    float cbPerObjectPad1;
-    float2 gRenderTargetSize;
-    float2 gInvRenderTargetSize;
-    float gNearZ;
-    float gFarZ;
-    float gTotalTime;
-    float gDeltaTime;
-    float4 gAmbientLight;
+ConstantBuffer<MainPassCB> cbMainPass : register(b1);
 
-    float4 gFogColor;
-    float gFogStart;
-    float gFogRange;
-    float2 cbPerObjectPad2;
-    
-    float4 Decals[3];
-};
-
-// Constant data that varies per material
-cbuffer cbMaterial : register(b2)
-{
-    float4 gDiffuseAlbedo;
-    float3 gFresnelR0;
-    float gRoughness;
-    float gMetallic;
-    float Pad1;
-    float Pad2;
-    float Pad3;
-    float4x4 gMatTransform;
-};
+ConstantBuffer<MaterialCB> cbMaterial : register(b2);
 
 struct VS_INPUT
 {
@@ -75,27 +32,20 @@ struct DS_VS_OUTPUT_GS_INPUT
 };
 
 
-inline float2 ApplyTexTransform(float2 uv)
-{
-    float3 t = mul(float4(uv, 1.0f, 1.0f), gTexTransform).xyz;
-    return t.xy;
-}
-
-
 DS_VS_OUTPUT_GS_INPUT VS(VS_INPUT vin)
 {
     DS_VS_OUTPUT_GS_INPUT vout = (DS_VS_OUTPUT_GS_INPUT) 0.0f;
 	
-    float4 posW = mul(float4(vin.Pos, 1.0f), gWorld);
+    float4 posW = mul(float4(vin.Pos, 1.0f), cbObject.World);
     vout.PosW = posW.xyz;
 
-    vout.Normal = normalize(mul(vin.Normal, (float3x3) gWorld));
+    vout.Normal = normalize(mul(vin.Normal, (float3x3) cbObject.World));
 	
-    float4 texC = mul(float4(vin.TexC, 0.0f, 1.0f), gTexTransform);
-    vout.TexC = mul(texC, gMatTransform).xy;
+    float4 texC = mul(float4(vin.TexC, 0.0f, 1.0f), cbObject.TexTransform);
+    vout.TexC = mul(texC, cbMaterial.MatTransform).xy;
     
-    float fDisplacement = gHeightMap.SampleLevel(gsamAnisotropicClamp, vout.TexC, 0).r;
-    vout.PosW += float3(0, 1, 0) * fDisplacement * gHeightMapScale;
+    float fDisplacement = HeightMap.SampleLevel(samAnisotropicClamp, vout.TexC, 0).r;
+    vout.PosW += float3(0, 1, 0) * fDisplacement * cbObject.HeightMapScale;
 
     return vout;
 }
@@ -132,7 +82,7 @@ void GS(triangle DS_VS_OUTPUT_GS_INPUT input[3], inout TriangleStream<GS_OUT> st
     float4 origPosCS[3];
     for (int i = 0; i < 3; i++)
     {
-        origPosCS[i] = mul(float4(input[i].PosW, 1.0), gViewProj);
+        origPosCS[i] = mul(float4(input[i].PosW, 1.0), cbMainPass.ViewProj);
     }
     
     // Output original triangle
@@ -159,12 +109,12 @@ void GS(triangle DS_VS_OUTPUT_GS_INPUT input[3], inout TriangleStream<GS_OUT> st
             GS_OUT i_down, j_down;
             
             i_down.PosW = input[i].PosW - float3(0, curtainHeight, 0);
-            i_down.PosCS = mul(float4(i_down.PosW, 1.0), gViewProj);
+            i_down.PosCS = mul(float4(i_down.PosW, 1.0), cbMainPass.ViewProj);
             i_down.Normal = input[i].Normal;
             i_down.TexC = input[i].TexC;
             
             j_down.PosW = input[j].PosW - float3(0, curtainHeight, 0);
-            j_down.PosCS = mul(float4(j_down.PosW, 1.0), gViewProj);
+            j_down.PosCS = mul(float4(j_down.PosW, 1.0), cbMainPass.ViewProj);
             j_down.Normal = input[j].Normal;
             j_down.TexC = input[j].TexC;
             
@@ -209,15 +159,6 @@ void GS(triangle DS_VS_OUTPUT_GS_INPUT input[3], inout TriangleStream<GS_OUT> st
     }
 }
 
-struct GBufferData
-{
-    float4 diffuse : SV_TARGET0;
-    float4 emissive : SV_TARGET1;
-    float4 normal : SV_TARGET2;
-    float4 materialAlbedo : SV_TARGET3;
-    float4 MaterialFresnelRoughness : SV_TARGET4;
-};
-
 float smoothBand(float x, float edge0, float edge1)
 {
     float t = saturate((x - edge0) / max(1e-5, (edge1 - edge0)));
@@ -231,7 +172,7 @@ GBufferData PS(GS_OUT pin)
     
     float2 uv = pin.TexC;
     
-    float3 NormalMapSample = gNormalMap.Sample(gsamAnisotropicClamp, uv).rgb;
+    float3 NormalMapSample = NormalMap.Sample(samAnisotropicClamp, uv).rgb;
     float4 diffuseAlbedo;
     
     const float SEA_LEVEL = 900.0;
@@ -244,9 +185,9 @@ GBufferData PS(GS_OUT pin)
 
     const float SNOW_SLOPE_REDUCTION = 0.6;
 
-    const float3 SEA_COLOR = float3(0.02, 0.12, 0.25); 
-    const float3 LAND_COLOR = float3(0.18, 0.35, 0.12); 
-    const float3 ROCK_COLOR = float3(0.35, 0.33, 0.32); 
+    const float3 SEA_COLOR = float3(0.02, 0.12, 0.25);
+    const float3 LAND_COLOR = float3(0.18, 0.35, 0.12);
+    const float3 ROCK_COLOR = float3(0.35, 0.33, 0.32);
     const float3 SNW_COLOR = float3(0.92, 0.92, 0.97);
 
     float heightY = pin.PosW.y;
@@ -276,10 +217,10 @@ GBufferData PS(GS_OUT pin)
     
 
     pout.diffuse = float4(blended, 1.0);
-    pout.emissive = float4(0.f, 0.f, 0.f, pin.PosCS.z); 
-    pout.normal = float4(NormalMapSample, gMetallic);
-    pout.materialAlbedo = gDiffuseAlbedo;
-    pout.MaterialFresnelRoughness = float4(gFresnelR0, gRoughness);
+    pout.emissive = float4(0.f, 0.f, 0.f, pin.PosCS.z);
+    pout.normal = float4(NormalMapSample, cbMaterial.Metallic);
+    pout.materialAlbedo = cbMaterial.DiffuseAlbedo;
+    pout.MaterialFresnelRoughness = float4(cbMaterial.FresnelR0, cbMaterial.Roughness);
 
     return pout;
 }
