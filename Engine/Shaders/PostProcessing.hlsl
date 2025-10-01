@@ -1,40 +1,17 @@
-Texture2D   gDiffuseMap     : register(t0);
-Texture2D   gEmissiveMap    : register(t1);
-Texture2D   gNormalMap      : register(t2);
+#include "CBufferStructures.hlsl"
 
-SamplerState gsamPointWrap : register(s0);
-SamplerState gsamPointClamp : register(s1);
-SamplerState gsamLinearWrap : register(s2);
-SamplerState gsamLinearClamp : register(s3);
-SamplerState gsamAnisotropicWrap : register(s4);
-SamplerState gsamAnisotropicClamp : register(s5);
+Texture2D   DiffuseMap     : register(t0);
+Texture2D   EmissiveMap    : register(t1);
+Texture2D   NormalMap      : register(t2);
 
-// Constant data that varies per frame.
-cbuffer cbPass : register(b0)
-{
-    float4x4 gView;
-    float4x4 gInvView;
-    float4x4 gProj;
-    float4x4 gInvProj;
-    float4x4 gViewProj;
-    float4x4 gInvViewProj;
-    float3 gEyePosW;
-    float cbPerObjectPad1;
-    float2 gRenderTargetSize;
-    float2 gInvRenderTargetSize;
-    float gNearZ;
-    float gFarZ;
-    float gTotalTime;
-    float gDeltaTime;
-    float4 gAmbientLight;
+SamplerState samPointWrap : register(s0);
+SamplerState samPointClamp : register(s1);
+SamplerState samLinearWrap : register(s2);
+SamplerState samLinearClamp : register(s3);
+SamplerState samAnisotropicWrap : register(s4);
+SamplerState samAnisotropicClamp : register(s5);
 
-	float4 gFogColor;
-	float gFogStart;
-	float gFogRange;
-	float2 cbPerObjectPad2;
-    
-    float4 Decals[3];
-};
+ConstantBuffer<MainPassCB> cbMainPass : register(b0);
 
 struct VertexIn
 {
@@ -74,7 +51,7 @@ float3 ReconstructWorldPosition(float2 UV, float depth)
     clipPos.w = 1.0f;
 
     //transform into world space
-    float4 viewPos = mul(clipPos, gInvViewProj);
+    float4 viewPos = mul(clipPos, cbMainPass.InvViewProj);
     viewPos.xyz /= viewPos.w;
 
     return viewPos.xyz;
@@ -99,17 +76,17 @@ float4 ChromaticAbberation(float2 UV)
     float2 uvGreen = clamp(UV - dir * distortion * 0.5, 0.0, 1.0);
     float2 uvBlue = clamp(UV + dir * distortion * 1.0, 0.0, 1.0);
     
-    uint2 texCoordRed = uint2(uvRed * gRenderTargetSize);
-    uint2 texCoordGreen = uint2(uvGreen * gRenderTargetSize);
-    uint2 texCoordBlue = uint2(uvBlue * gRenderTargetSize);
+    uint2 texCoordRed = uint2(uvRed * cbMainPass.RenderTargetSize);
+    uint2 texCoordGreen = uint2(uvGreen * cbMainPass.RenderTargetSize);
+    uint2 texCoordBlue = uint2(uvBlue * cbMainPass.RenderTargetSize);
     
-    int3 coordRed = int3(clamp(texCoordRed, 0, gRenderTargetSize - 1), 0);
-    int3 coordGreen = int3(clamp(texCoordGreen, 0, gRenderTargetSize - 1), 0);
-    int3 coordBlue = int3(clamp(texCoordBlue, 0, gRenderTargetSize - 1), 0);
+    int3 coordRed = int3(clamp(texCoordRed, 0, cbMainPass.RenderTargetSize - 1), 0);
+    int3 coordGreen = int3(clamp(texCoordGreen, 0, cbMainPass.RenderTargetSize - 1), 0);
+    int3 coordBlue = int3(clamp(texCoordBlue, 0, cbMainPass.RenderTargetSize - 1), 0);
     
-    float red = gDiffuseMap.Load(coordRed).r;
-    float green = gDiffuseMap.Load(coordGreen).g;
-    float blue = gDiffuseMap.Load(coordBlue).b;
+    float red = DiffuseMap.Load(coordRed).r;
+    float green = DiffuseMap.Load(coordGreen).g;
+    float blue = DiffuseMap.Load(coordBlue).b;
    
     
     return float4(red, green, blue, 1.0);
@@ -137,7 +114,7 @@ float4 DepthOfField(float depth, float2 TexelCoord, float4 Color)
 
     if (blurAmount > 0.001f)
     {
-        float2 texelSize = 1.0 / gRenderTargetSize;
+        float2 texelSize = 1.0 / cbMainPass.RenderTargetSize;
         float radius = blurAmount * gBlurRadius;
     
         float4 blurredColor = float4(0, 0, 0, 0);
@@ -154,8 +131,8 @@ float4 DepthOfField(float depth, float2 TexelCoord, float4 Color)
                 float weight = exp(-distanceSq / (2.0 * radius * radius));
             
                 // Sample with offset
-                int3 sampleCoord = int3(clamp(TexelCoord + int2(x, y), int2(0, 0), int2(gRenderTargetSize) - int2(1, 1)), 0);
-                blurredColor += gDiffuseMap.Load(sampleCoord) * weight;
+                int3 sampleCoord = int3(clamp(TexelCoord + int2(x, y), int2(0, 0), int2(cbMainPass.RenderTargetSize) - int2(1, 1)), 0);
+                blurredColor += DiffuseMap.Load(sampleCoord) * weight;
                 weightSum += weight;
             }
         }
@@ -178,7 +155,7 @@ float4 GodRays(float2 UV, float3 worldPos, float depth)
     float gGodRaysDecay = 0.95f;
     int gGodRaysSamples = 25;
     
-    float4 clipPos = mul(float4(gSunPosW, 1.0), gViewProj);
+    float4 clipPos = mul(float4(gSunPosW, 1.0), cbMainPass.ViewProj);
     clipPos.xyz /= clipPos.w * (clipPos.w > 0 ? -1 : 1);
     float2 sunUV = 0.5 * clipPos.xy + float2(0.5, 0.5);
     sunUV.y = 1.0 - sunUV.y;
@@ -195,13 +172,13 @@ float4 GodRays(float2 UV, float3 worldPos, float depth)
         float2 sampleUV = clamp(UV, 0.0, 1.0);
         
         
-        float4 emissive = gEmissiveMap.SampleLevel(gsamLinearClamp, sampleUV, 0);
+        float4 emissive = EmissiveMap.SampleLevel(samLinearClamp, sampleUV, 0);
         float sampleDepth = emissive.w;
        
         if (sampleDepth < depth)
             break;
         
-        float4 sampleColor = gDiffuseMap.SampleLevel(gsamLinearClamp, sampleUV, 0);
+        float4 sampleColor = DiffuseMap.SampleLevel(samLinearClamp, sampleUV, 0);
         color += sampleColor * illuminationDecay * gGodRaysWeight;
         illuminationDecay *= gGodRaysDecay;
     }
@@ -213,11 +190,11 @@ float4 GodRays(float2 UV, float3 worldPos, float depth)
 float4 PS(VertexOut pin) : SV_Target
 {
     uint2 TexelCoord = pin.PosH.xy;
-    float2 UV = TexelCoord / gRenderTargetSize;
+    float2 UV = TexelCoord / cbMainPass.RenderTargetSize;
     //loading GBuffer channels
-    float4 Emissive = gEmissiveMap.Load(int3(TexelCoord, 0));
-    float4 NormalChannel = gNormalMap.Load(int3(TexelCoord, 0));
-    float4 Color = gDiffuseMap.Load(int3(TexelCoord, 0));
+    float4 Emissive = EmissiveMap.Load(int3(TexelCoord, 0));
+    float4 NormalChannel = NormalMap.Load(int3(TexelCoord, 0));
+    float4 Color = DiffuseMap.Load(int3(TexelCoord, 0));
     
     
     float3 WorldPosition = ReconstructWorldPosition(UV, Emissive.w);

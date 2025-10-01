@@ -110,9 +110,6 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 	BuildSceneGrid();
 	//BuildTerrain();
 
-
-
-
 	ffxContext* context{};
 
 	ffxCreateContextDescHeader* desc{};
@@ -121,8 +118,6 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 
 
 	ffxCreateContext(context, desc, callbacks);
-
-
 
 
 
@@ -679,7 +674,7 @@ void RenderingSystem::BuildTerrain()
 	terrainRendererDesc.quadTreeLevels = 6;
 	terrainRendererDesc.heightMapScale = 3500.0f;
 	terrainRendererDesc.enableWireFrame = false;
-	terrainRendererDesc.skipTileReimportIfPresent = false;
+	terrainRendererDesc.skipTileReimportIfPresent = true;
 	terrainRendererDesc.generateHeightWithPerlin = true;
 	terrainRendererDesc.perlinSeed = 42;
 	terrainRendererDesc.perlinFrequency = 0.00015f;
@@ -2796,7 +2791,7 @@ void RenderingSystem::UpdateRenderItems(std::vector<DrawableObject*>& mAllObject
 	if (terrainRenderer) terrainRenderer->SelectLOD(mCamera, mChosenTerrainRitems, 3.0f);
 
 	// Iterate over all OctTree leaves containing the current terrain tile,
-	// and if at least one leaf is inside the frustum —> render this tile
+	// and if at least one leaf is inside the frustum Â—> render this tile
 	for (auto* terrainTile : mChosenTerrainRitems)
 	{
 		for (auto leaf : terrainTile->occupiedLeaves)

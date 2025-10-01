@@ -1,60 +1,19 @@
-struct Particle
-{
-    float3 Pos;
-    float LifeTime;
-    float3 Vel;
-    float Size;
-    float4 Color;
-};
+#include "CBufferStructures.hlsl"
 
-cbuffer ParticleConstants : register(b0)
-{
-    float3 gEmitterPos;
-    float gDeltaTime;
-    uint gNumEmit;
-    uint gCurrentDeadList;
-    uint gMaxParticles;
-    float particleSize;
-    float gTime;
-    uint gFrameIndex;
-    float3 CameraPos;
-    float3 CameraDir;
-    float4 _pad;
-};
+ConstantBuffer<ParticleCB> cbParticle : register(b0);
 
-cbuffer PassConstants : register(b1)
-{
-    matrix View;
-    matrix InvView;
-    matrix Proj;
-    matrix InvProj;
-    matrix ViewProj;
-    matrix InvViewProj;
-    float3 EyePosW;
-    float cbPerObjectPad1;
-    float2 RenderTargetSize;
-    float2 InvRenderTargetSize;
-    float NearZ;
-    float FarZ;
-    float TotalTime;
-    float DeltaTime;
-    float4 AmbientLight;
-    float4 FogColor;
-    float gFogStart;
-    float gFogRange;
-    float2 cbPerObjectPad2;
-};
+ConstantBuffer<MainPassCB> cbMainPass : register(b1);
 
-RWStructuredBuffer<Particle> gParticlePool : register(u0);
+RWStructuredBuffer<Particle> ParticlePool : register(u0);
 
-ConsumeStructuredBuffer<uint> gDeadListsConsume[2] : register(u1); // u1, u2
-AppendStructuredBuffer<uint> gDeadListsAppend[2] : register(u1); // u1, u2
+ConsumeStructuredBuffer<uint> DeadListsConsume[2] : register(u1); // u1, u2
+AppendStructuredBuffer<uint> DeadListsAppend[2] : register(u1); // u1, u2
 
-AppendStructuredBuffer<uint> gAliveListAppend : register(u3);
-RWByteAddressBuffer gDrawArgs : register(u4);
+AppendStructuredBuffer<uint> AliveListAppend : register(u3);
+RWByteAddressBuffer DrawArgs : register(u4);
 
-Texture2D gEmissiveMap : register(t0);
-Texture2D gNormalTex : register(t1);
+Texture2D EmissiveMap : register(t0);
+Texture2D NormalTex : register(t1);
 
 float rand_float(uint seed)
 {
@@ -70,39 +29,39 @@ float rand_float(uint seed)
 [numthreads(256, 1, 1)]
 void EmitCS(uint3 dispatchThreadID : SV_DispatchThreadID)
 {
-    if (dispatchThreadID.x >= gNumEmit)
+    if (dispatchThreadID.x >= cbParticle.NumEmit)
         return;
     
-    uint deadIndex = gDeadListsConsume[gCurrentDeadList].Consume();
+    uint deadIndex = DeadListsConsume[cbParticle.CurrentDeadList].Consume();
     
-    uint seed = deadIndex + (uint) (gDeltaTime * 1000.0f);
+    uint seed = deadIndex + (uint) (cbMainPass.DeltaTime * 1000.0f);
 
-    gParticlePool[deadIndex].Pos = gEmitterPos;
-    gParticlePool[deadIndex].LifeTime = 2.0f + rand_float(seed++) * 2.0f;
-    gParticlePool[deadIndex].Vel = float3(
+    ParticlePool[deadIndex].Pos = cbParticle.EmitterPos;
+    ParticlePool[deadIndex].LifeTime = 2.0f + rand_float(seed++) * 2.0f;
+    ParticlePool[deadIndex].Velocity = float3(
         rand_float(seed++) * 2.0f - 1.0f, // x [-1, 1]
         1.0f + rand_float(seed++) * 3.0f, // y [2, 5]
         rand_float(seed++) * 2.0f - 1.0f // z [-1, 1]
     ) * 2.0f;
-    gParticlePool[deadIndex].Size = particleSize;
-    gParticlePool[deadIndex].Color = float4(rand_float(seed*2), rand_float(seed), rand_float(seed), 1.0f);
+    ParticlePool[deadIndex].Size = cbParticle.ParticleSize;
+    ParticlePool[deadIndex].Color = float4(rand_float(seed*2), rand_float(seed), rand_float(seed), 1.0f);
     
     
     {
         uint index = dispatchThreadID.x;
-        Particle p = gParticlePool[index];
-        float3 nextPos = p.Pos + p.Vel * gDeltaTime;
+        Particle p = ParticlePool[index];
+        float3 nextPos = p.Pos + p.Velocity * cbMainPass.DeltaTime;
             
-        float4 posH = mul(float4(nextPos, 1.0f), ViewProj);
+        float4 posH = mul(float4(nextPos, 1.0f), cbMainPass.ViewProj);
         posH.xyz /= posH.w;
             
         float2 texCoord = 0.5f * posH.xy + 0.5f;
         texCoord.y = 1.0f - texCoord.y;
 
-        uint2 screenPos = texCoord * RenderTargetSize;
+        uint2 screenPos = texCoord * cbMainPass.RenderTargetSize;
         
-        if (gEmissiveMap.Load(int3(screenPos, 0)).w == 0)
-            gParticlePool[deadIndex].Color = float4(0.0f, 0.0f, 0.0f, 1.0f);
+        if (EmissiveMap.Load(int3(screenPos, 0)).w == 0)
+            ParticlePool[deadIndex].Color = float4(0.0f, 0.0f, 0.0f, 1.0f);
     }
 }
 
@@ -111,41 +70,41 @@ void EmitCS(uint3 dispatchThreadID : SV_DispatchThreadID)
 void SimulateCS2(uint3 dispatchThreadID : SV_DispatchThreadID)
 {
     uint index = dispatchThreadID.x;
-    if (index >= gMaxParticles)
+    if (index >= cbParticle.MaxParticles)
         return;
 
-    Particle p = gParticlePool[index];
+    Particle p = ParticlePool[index];
 
     if (p.LifeTime > 0.0f)
     {
-        p.LifeTime -= gDeltaTime;
+        p.LifeTime -= cbMainPass.DeltaTime;
 
         if (p.LifeTime > 0.0f)
         {
-            p.Vel.y -= 3.8f * gDeltaTime;
-            p.Pos += p.Vel * gDeltaTime;
-            gAliveListAppend.Append(index);
+            p.Velocity.y -= 3.8f * cbMainPass.DeltaTime;
+            p.Pos += p.Velocity * cbMainPass.DeltaTime;
+            AliveListAppend.Append(index);
         }
         else
         {
-            gDeadListsAppend[1 - gCurrentDeadList].Append(index);
+            DeadListsAppend[1 - cbParticle.CurrentDeadList].Append(index);
         }
         
-        gParticlePool[index] = p;
+        ParticlePool[index] = p;
     }
     else
     {
-        gDeadListsAppend[1 - gCurrentDeadList].Append(index);
+        DeadListsAppend[1 - cbParticle.CurrentDeadList].Append(index);
     }
 }
 
 
 float3 Unproject(float3 screenPos)
 {
-    float2 ndc = (screenPos.xy * InvRenderTargetSize) * 2.0f - 1.0f;
+    float2 ndc = (screenPos.xy * cbMainPass.InvRenderTargetSize) * 2.0f - 1.0f;
     ndc.y = -ndc.y;
     
-    float4 p = mul(float4(ndc, screenPos.z, 1.0f), InvViewProj);
+    float4 p = mul(float4(ndc, screenPos.z, 1.0f), cbMainPass.InvViewProj);
     return p.xyz / p.w;
 }
 
@@ -153,18 +112,18 @@ float3 Unproject(float3 screenPos)
 // -- Depth helpers --------------------------------------------------
 float LinearizeDepth(float ndcDepth)
 {
-    return NearZ * FarZ / (FarZ - ndcDepth * (FarZ - NearZ));
+    return cbMainPass.NearZ * cbMainPass.FarZ / (cbMainPass.FarZ - ndcDepth * (cbMainPass.FarZ - cbMainPass.NearZ));
 }
 
 float GetSceneViewDepth(int2 pix)
 {
-    float ndc = gEmissiveMap.Load(int3(pix, 0)).w;
+    float ndc = EmissiveMap.Load(int3(pix, 0)).w;
     return LinearizeDepth(ndc);
 }
 
 bool WorldToPixel(float3 pos, out int2 pix)
 {
-    float4 clip = mul(float4(pos, 1.0f), ViewProj);
+    float4 clip = mul(float4(pos, 1.0f), cbMainPass.ViewProj);
     if (abs(clip.w) < 1e-6f)
         return false;
 
@@ -174,15 +133,15 @@ bool WorldToPixel(float3 pos, out int2 pix)
 
     float2 uv = ndc.xy * 0.5f + 0.5f;
     uv.y = 1.0f - uv.y;
-    pix = int2(uv * RenderTargetSize + 0.5f);
-    pix = clamp(pix, int2(0, 0), int2(RenderTargetSize) - int2(1, 1));
+    pix = int2(uv * cbMainPass.RenderTargetSize + 0.5f);
+    pix = clamp(pix, int2(0, 0), int2(cbMainPass.RenderTargetSize) - int2(1, 1));
     return true;
 }
 
 
 float3 FetchNormal(int2 pix)
 {
-    float3 enc = gNormalTex.Load(int3(pix, 0)).xyz;
+    float3 enc = NormalTex.Load(int3(pix, 0)).xyz;
     
     float3 n = normalize(enc * 2.0f - 1.0f);
     
@@ -192,20 +151,20 @@ float3 FetchNormal(int2 pix)
 
 float3 SceneWorld(int2 pix)
 {
-    float ndcDepth = gEmissiveMap.Load(int3(pix, 0)).w;
-    float2 uv = (float2(pix) + 0.5f) / RenderTargetSize;
+    float ndcDepth = EmissiveMap.Load(int3(pix, 0)).w;
+    float2 uv = (float2(pix) + 0.5f) / cbMainPass.RenderTargetSize;
     float4 clip = float4(uv * 2.0f - 1.0f, ndcDepth, 1.0f);
-    float4 ws = mul(clip, InvViewProj);
+    float4 ws = mul(clip, cbMainPass.InvViewProj);
     return ws.xyz / ws.w;
 }
 
 float3 SceneNormal(int2 pix)
 {
-    float3 enc = gNormalTex.Load(int3(pix, 0)).xyz; // [0..1]
+    float3 enc = NormalTex.Load(int3(pix, 0)).xyz; // [0..1]
     float3 nVS = normalize(enc * 2.0f - 1.0f); // view-space
 
     // world = transpose(View) * nVS
-    float3x3 viewInvT = (float3x3) View;
+    float3x3 viewInvT = (float3x3) cbMainPass.View;
     return normalize(mul(nVS, viewInvT));
 }
 
@@ -268,36 +227,36 @@ void SimulateCS(uint3 tid : SV_DispatchThreadID)
     float CollisionRestitution = 0.8f;
     float CollisionThreshold = 0.1f;
     uint idx = tid.x;
-    if (idx >= gMaxParticles)
+    if (idx >= cbParticle.MaxParticles)
         return;
 
-    Particle p = gParticlePool[idx];
+    Particle p = ParticlePool[idx];
     if (p.LifeTime <= 0.0f)
     {
-        gDeadListsAppend[1 - gCurrentDeadList].Append(idx);
+        DeadListsAppend[1 - cbParticle.CurrentDeadList].Append(idx);
         return;
     }
     
-    p.LifeTime -= gDeltaTime;
+    p.LifeTime -= cbMainPass.DeltaTime;
     
     const int kSteps = 2;
-    const float dt = gDeltaTime / kSteps;
+    const float dt = cbMainPass.DeltaTime / kSteps;
 
     for (int s = 0; s < kSteps; ++s)
     {
-        p.Vel += Gravity * dt;
-        float3 nextPos = p.Pos + p.Vel * dt;
+        p.Velocity += Gravity * dt;
+        float3 nextPos = p.Pos + p.Velocity * dt;
 
         int2 pix;
         if (WorldToPixel(nextPos, pix))
-            DepthBounce(nextPos, p.Vel, pix); // НОВЫЙ вызов
+            DepthBounce(nextPos, p.Velocity, pix); // НОВЫЙ вызов
 
         p.Pos = nextPos;
     }
     
     {
     // Проецируем позицию частицы
-        float4 clip = mul(float4(p.Pos, 1.0f), ViewProj);
+        float4 clip = mul(float4(p.Pos, 1.0f), cbMainPass.ViewProj);
 
     // Отбрасываем частицы за пределами вьюпорта
         if (abs(clip.w) > 1e-6f)
@@ -308,10 +267,10 @@ void SimulateCS(uint3 tid : SV_DispatchThreadID)
             // Пиксель в render-таргете
                 float2 uv = ndc.xy * 0.5f + 0.5f;
                 uv.y = 1.0f - uv.y;
-                int2 pix = int2(uv * RenderTargetSize + 0.5f);
+                int2 pix = int2(uv * cbMainPass.RenderTargetSize + 0.5f);
 
             // Глубина сцены (переводим в линейную!)
-                float ndcScene = gEmissiveMap.Load(int3(pix, 0)).w;
+                float ndcScene = EmissiveMap.Load(int3(pix, 0)).w;
                 float sceneDepth = LinearizeDepth(ndcScene);
 
             // Глубина частицы
@@ -320,18 +279,18 @@ void SimulateCS(uint3 tid : SV_DispatchThreadID)
                 if (particleDepth > sceneDepth)            // частица «позади» геометрии
                 {
                     float3 n = SceneNormal(pix);
-                    if (dot(n, p.Vel) > 0.0f)
+                    if (dot(n, p.Velocity) > 0.0f)
                         n = -n; // направляем к частице
 
-                    p.Vel = reflect(p.Vel, n) * 2.f; // 0.8 = restitution
+                    p.Velocity = reflect(p.Velocity, n) * 2.f; // 0.8 = restitution
                 }
             }
         }
     }
    
     
-    gParticlePool[idx] = p;
-    gAliveListAppend.Append(idx);
+    ParticlePool[idx] = p;
+    AliveListAppend.Append(idx);
 }
 
 
@@ -395,12 +354,12 @@ float3 curlNoise(float3 p)
 [numthreads(256, 1, 1)]
 void EmitSmokeCS(uint3 dispatchThreadID : SV_DispatchThreadID)
 {
-    if (dispatchThreadID.x >= gNumEmit)
+    if (dispatchThreadID.x >= cbParticle.NumEmit)
         return;
 
-    uint slot = gDeadListsConsume[gCurrentDeadList].Consume();
+    uint slot = DeadListsConsume[cbParticle.CurrentDeadList].Consume();
     
-    uint seed = slot * 9781 + gFrameIndex * gNumEmit + dispatchThreadID.x;
+    uint seed = slot * 9781 + cbParticle.FrameIndex * cbParticle.NumEmit + dispatchThreadID.x;
     
     {
         uint s = seed;
@@ -410,48 +369,48 @@ void EmitSmokeCS(uint3 dispatchThreadID : SV_DispatchThreadID)
             rand_float(s++)
         );
         float3 offset = (rnd * 2.0f - 1.0f) * float3(0.1f, 0.4f, 0.2f);
-        gParticlePool[slot].Pos = gEmitterPos + offset;
+        ParticlePool[slot].Pos = cbParticle.EmitterPos + offset;
     }
     
     //gParticlePool[slot].Pos = gEmitterPos + offset;
     
-    gParticlePool[slot].Vel = float3(
+    ParticlePool[slot].Velocity = float3(
         (hash11(seed++) - 0.5) * 0.5,
          2.0 + hash11(seed++) * 0.4,
         (hash11(seed++) - 0.5) * 0.5);
 
-    gParticlePool[slot].LifeTime = 5.0 + hash11(seed++) * 1.5;
-    gParticlePool[slot].Size = particleSize * (0.6 + hash11(seed++) * 0.4);
-    gParticlePool[slot].Color = float4(0.06, 0.06, 0.06, 0.85);
+    ParticlePool[slot].LifeTime = 5.0 + hash11(seed++) * 1.5;
+    ParticlePool[slot].Size = cbParticle.ParticleSize * (0.6 + hash11(seed++) * 0.4);
+    ParticlePool[slot].Color = float4(0.06, 0.06, 0.06, 0.85);
 }
 
 [numthreads(256, 1, 1)]
 void SimulateSmokeCS(uint3 dispatchThreadID : SV_DispatchThreadID)
 {
     uint idx = dispatchThreadID.x;
-    if (idx >= gMaxParticles)
+    if (idx >= cbParticle.MaxParticles)
         return;
 
-    Particle p = gParticlePool[idx];
+    Particle p = ParticlePool[idx];
     
     if (p.LifeTime > 0.0f)
     {
-        p.LifeTime -= gDeltaTime;
+        p.LifeTime -= cbMainPass.DeltaTime;
         
         if (p.LifeTime > 0.0f)
         {
             float3 buoyancy = float3(0.0, 0.3, 0.0);
             //float3 windDir = float3(0.25, 0.0, 0.05);
             //p.Vel += (buoyancy + windDir) * gDeltaTime;
-            p.Vel += buoyancy * gDeltaTime;
+            p.Velocity += buoyancy * cbMainPass.DeltaTime;
 
-            float3 field = curlNoise(p.Pos * 0.25 + gTime * 0.5);
-            p.Vel += field * 0.2 * gDeltaTime;
+            float3 field = curlNoise(p.Pos * 0.25 + cbMainPass.TotalTime * 0.5);
+            p.Velocity += field * 0.2 * cbMainPass.DeltaTime;
             
-            p.Vel *= 0.96;
-            p.Pos += p.Vel * gDeltaTime;
+            p.Velocity *= 0.96;
+            p.Pos += p.Velocity * cbMainPass.DeltaTime;
             
-            p.Size += particleSize * 0.4 * gDeltaTime;
+            p.Size += cbParticle.ParticleSize * 0.4 * cbMainPass.DeltaTime;
             
             float t_fade = p.LifeTime / 5.0f;
             p.Color.a = saturate(1.0 - (1.0 - t_fade) * (1.0 - t_fade)) * 0.8f;
@@ -466,16 +425,16 @@ void SimulateSmokeCS(uint3 dispatchThreadID : SV_DispatchThreadID)
             //    ratio
             //);
 
-            gParticlePool[idx] = p;
-            gAliveListAppend.Append(idx);
+            ParticlePool[idx] = p;
+            AliveListAppend.Append(idx);
         }
         else
         {
-            gDeadListsAppend[1 - gCurrentDeadList].Append(idx);
+            DeadListsAppend[1 - cbParticle.CurrentDeadList].Append(idx);
         }
     }
     else
     {
-        gDeadListsAppend[1 - gCurrentDeadList].Append(idx);
+        DeadListsAppend[1 - cbParticle.CurrentDeadList].Append(idx);
     }
 }

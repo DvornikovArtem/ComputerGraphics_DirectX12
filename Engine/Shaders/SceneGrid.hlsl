@@ -1,16 +1,6 @@
-// SceneGrid.hlsl
+#include "CBufferStructures.hlsl"
 
-cbuffer PassCB : register(b0)
-{
-    float4x4 gView, gInvView, gProj, gInvProj, gViewProj, gInvViewProj;
-    float3 gEyePosW;
-    float _pad0;
-    float2 gRenderTargetSize, gInvRenderTargetSize;
-    float gNearZ, gFarZ, gTotalTime, gDeltaTime;
-    float4 gAmbientLight, gFogColor;
-    float gFogStart, gFogRange;
-    float2 _pad1;
-}
+ConstantBuffer<MainPassCB> cbMainPass : register(b0);
 
 static const float GRID_Y = 0.0;
 static const float CELL_MINOR = 1.0;
@@ -60,9 +50,9 @@ VSOut SceneGridVS(uint vid : SV_VertexID)
 
 float3 RayDirFromNDC(float2 ndc)
 {
-    float4 farW = mul(float4(ndc, 1.0, 1.0), gInvViewProj);
+    float4 farW = mul(float4(ndc, 1.0, 1.0), cbMainPass.InvViewProj);
     farW.xyz /= farW.w;
-    return normalize(farW.xyz - gEyePosW);
+    return normalize(farW.xyz - cbMainPass.EyePosW);
 }
 
 float smstep(float a, float b, float x)
@@ -103,7 +93,7 @@ PSOut SceneGridPS(VSOut i)
     o.color = 0;
     o.depth = 1;
     
-    float3 ro = gEyePosW;
+    float3 ro = cbMainPass.EyePosW;
     float3 rd = RayDirFromNDC(i.ndc);
     if (rd.y >= -1e-6)
         clip(-1);
@@ -138,7 +128,7 @@ PSOut SceneGridPS(VSOut i)
     float endMega = DENSITY_FADE_END_MEGA * fadeScale;
     float wMegaFade = 1.0 - smstep(startMega, endMega, max(fw_Mgx, fw_Mgy));
     
-    float zView = mul(float4(Pw, 1.0), gView).z;
+    float zView = mul(float4(Pw, 1.0), cbMainPass.View).z;
     float depthVS = abs(zView);
     float thicknessK = 1.0 - smstep(T_FADE_START, T_FADE_END, depthVS);
     thicknessK = max(thicknessK, 1e-3);
@@ -204,7 +194,7 @@ PSOut SceneGridPS(VSOut i)
     fadeActivity = max(fadeActivity, 1.0 - wMinorFade);
     fadeActivity = saturate(fadeActivity);
 
-    float noise = hash_w(Pw.xz, gTotalTime);
+    float noise = hash_w(Pw.xz, cbMainPass.TotalTime);
     float alphaStoch = alphaGeom;
     
     float k = fadeActivity;
@@ -221,7 +211,7 @@ PSOut SceneGridPS(VSOut i)
     rgb = lerp(rgb, COL_HORZ, HL_H);
     rgb = lerp(rgb, COL_VERT, HL_V);
     
-    float4 clipPos = mul(float4(Pw, 1.0), gViewProj);
+    float4 clipPos = mul(float4(Pw, 1.0), cbMainPass.ViewProj);
     o.depth = clipPos.z / clipPos.w;
 
     o.color = float4(rgb, finalAlpha * 0.85);

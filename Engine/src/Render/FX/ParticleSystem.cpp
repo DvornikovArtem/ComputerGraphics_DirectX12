@@ -16,6 +16,7 @@ void ParticleSystem::Initialize(const ParticleSystemDescriptor& particleSystemDe
     mSimulateComputeShader = particleSystemDesc.simulateComputeShader;
     mCBIndex = particleSystemDesc.CBIndex;
     mInputLayout = particleSystemDesc.InputLayout;
+    IsBillboard = particleSystemDesc.IsBillboard;
 }
 
 void ParticleSystem::Build(ComPtr<ID3D12Device> device, ComPtr<ID3D12GraphicsCommandList> cmdList)
@@ -245,7 +246,13 @@ void ParticleSystem::SetGeometry(MeshGeometry* NewGeometry) { mGeometry = NewGeo
 
 void ParticleSystem::BuildShadersAndPSOs()
 {
-    auto vsByteCode = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\Particle.hlsl", nullptr, "VS", "vs_5_1");
+    const D3D_SHADER_MACRO defines[] =
+    {
+        { "BILLBOARDGEOMETRY", "1" },
+        { NULL, NULL }
+    };
+
+    auto vsByteCode = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\Particle.hlsl", IsBillboard ? defines : nullptr, "VS", "vs_5_1");
     auto psByteCode = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\Particle.hlsl", nullptr, "PS", "ps_5_1");
     auto sortCS = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\ParticleSortCS.hlsl", nullptr, "CS", "cs_5_1");
 
