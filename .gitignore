@@ -416,6 +416,10 @@ FodyWeavers.xsd
 !Engine/Extern/DirectXTex/
 !Engine/Extern/DirectXTex/lib/
 !Engine/Extern/DirectXTex/lib/**
+!Engine/Extern/FideltyFX/
+!Engine/Extern/FideltyFX/ffx-api/
+!Engine/Extern/FideltyFX/ffx-api/bin/
+!Engine/Extern/FideltyFX/ffx-api/bin/**
 
 # Engine/Include/Engine/Debug (entire folder)
 !Engine/Include/
@@ -444,9 +448,7 @@ FodyWeavers.xsd
 !Application/x64/Debug/*.dll
 
 # --- Terrain: ignore per-terrain Tiles folders ---
-/Application/assets/textures/terrain/*/Tiles/
+Application/assets/textures/terrain/*/Tiles/
 
 # Application/x64/Debug/<trash_files>
-Application/x64/
-Application/x64/Debug/
-Application/x64/Debug/*.dll
+Application/x64/Debug/*.lib
