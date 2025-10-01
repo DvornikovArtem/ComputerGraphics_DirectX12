@@ -110,6 +110,18 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 	BuildSceneGrid();
 	//BuildTerrain();
 
+	ffxContext* context{};
+
+	ffxCreateContextDescHeader* desc{};
+
+	ffxAllocationCallbacks* callbacks{};
+
+
+	ffxCreateContext(context, desc, callbacks);
+
+
+
+
 	// Execute the initialization commands.
 	ThrowIfFailed(mCommandList->Close());
 	ID3D12CommandList* cmdsLists[] = { mCommandList.Get() };
@@ -672,8 +684,8 @@ void RenderingSystem::BuildTerrain()
 	terrainRendererDesc.perlinOffsetX = 0.f;
 	terrainRendererDesc.perlinOffsetZ = 0.f;
 
-	terrainRenderer = new TerrainRenderer();
-	terrainRenderer->Initialize(terrainRendererDesc);
+	//terrainRenderer = new TerrainRenderer();
+	//terrainRenderer->Initialize(terrainRendererDesc);
 
 
 	// Create geometry for a single quadtree tile as a grid with 6 LODs 
@@ -2779,7 +2791,7 @@ void RenderingSystem::UpdateRenderItems(std::vector<DrawableObject*>& mAllObject
 	if (terrainRenderer) terrainRenderer->SelectLOD(mCamera, mChosenTerrainRitems, 3.0f);
 
 	// Iterate over all OctTree leaves containing the current terrain tile,
-	// and if at least one leaf is inside the frustum —> render this tile
+	// and if at least one leaf is inside the frustum Â—> render this tile
 	for (auto* terrainTile : mChosenTerrainRitems)
 	{
 		for (auto leaf : terrainTile->occupiedLeaves)

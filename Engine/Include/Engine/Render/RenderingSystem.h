@@ -33,6 +33,8 @@
 #include <Engine/Render/Descriptors.h>
 //#include "../Terrain/TerrainRenderer.h"
 
+#include <ffx_api/ffx_api.h>
+
 
 #pragma comment(lib,"d3dcompiler.lib")
 #pragma comment(lib, "D3D12.lib")
@@ -295,6 +297,14 @@ protected:
 
     std::vector<RenderItem*> mChosenTerrainRitems;
     std::vector<RenderItem*> mVisibleTerrainRitems;
+
+    ffxContext           mFfxCtx = {};
+    bool                 mFfxInited = false;
+
+    // Upscale output (UAV texture of size displaySize)
+    ComPtr<ID3D12Resource> mFfxUpscaledOutput;
+    D3D12_CPU_DESCRIPTOR_HANDLE mFfxUpscaledUavCPU{};
+    D3D12_GPU_DESCRIPTOR_HANDLE mFfxUpscaledUavGPU{};
 };
 
 
