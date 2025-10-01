@@ -1,15 +1,13 @@
 // Gbuffer.cpp
 
 #include <Engine/Render/Gbuffer.h>
-#include <Engine/Core/d3dUtil.h>    // ??????????????, ??? ????? ???? ??????? d3dUtil::GetDevice()
-#include <Engine/RHI/DX12/d3dx12.h>     // ??? ????????????? ??????? CD3DX12_*
+#include <Engine/Core/d3dUtil.h>    
+#include <Engine/RHI/DX12/d3dx12.h>     
 #include <stdexcept>
 
-// ??????????? ??????? ??????? (????????) ? ????????????? ???? ??? RTV ? SRV.
 Gbuffer::Gbuffer(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device> device)
 {
 
-    // ??????? ????????????? ???? ??? RTV (5 ????????????: Diffuse, Emissive, Normal, Accumulation, Bloom)
     D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc = {};
     rtvHeapDesc.NumDescriptors = NumBuffers;
     rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
@@ -17,7 +15,6 @@ Gbuffer::Gbuffer(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device> dev
     if (FAILED(device->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(&m_RTVDescriptorHeap))))
         throw std::runtime_error("Failed to create RTV Descriptor Heap");
 
-    // ??????? ????????????? ???? ??? SRV
     D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
     srvHeapDesc.NumDescriptors = NumBuffers;
     srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
@@ -25,15 +22,20 @@ Gbuffer::Gbuffer(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device> dev
     if (FAILED(device->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&m_SRVDescriptorHeap))))
         throw std::runtime_error("Failed to create SRV Descriptor Heap");
 
-    // ???????? ??????? ???????????? ??? ??????????????? ???
     UINT rtvDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
     UINT srvDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
-    // ????????? CPU-?????? ??? RTV ? SRV
     D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = m_RTVDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
     D3D12_CPU_DESCRIPTOR_HANDLE srvHandle = m_SRVDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
 
     HRESULT hr = S_OK;
+
+    D3D12_CLEAR_VALUE clearValue_TWOFLOAT = {};
+    clearValue_TWOFLOAT.Format = DXGI_FORMAT_R16G16_FLOAT;
+    clearValue_TWOFLOAT.Color[0] = 0.0f;
+    clearValue_TWOFLOAT.Color[1] = 0.0f;
+    clearValue_TWOFLOAT.Color[2] = 0.0f;
+    clearValue_TWOFLOAT.Color[3] = 1.0f;
 
     D3D12_CLEAR_VALUE clearValue_UNORM = {};
     clearValue_UNORM.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -70,7 +72,7 @@ Gbuffer::Gbuffer(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device> dev
     clearValue3.Color[2] = 0.0f;
     clearValue3.Color[3] = 1.0f;
 
-    // ??????? ?????? ??? DiffuseTex (?????? 8-?????? UNORM)
+    //Resources
     hr = device->CreateCommittedResource(
         &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
         D3D12_HEAP_FLAG_NONE,
@@ -82,7 +84,6 @@ Gbuffer::Gbuffer(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device> dev
     if (FAILED(hr))
         throw std::runtime_error("Failed to create DiffuseTex");
 
-    // ??????? ?????? ??? EmissiveTex (?????? 8-?????? UNORM)
     hr = device->CreateCommittedResource(
         &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
         D3D12_HEAP_FLAG_NONE,
@@ -94,7 +95,6 @@ Gbuffer::Gbuffer(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device> dev
     if (FAILED(hr))
         throw std::runtime_error("Failed to create EmissiveTex");
 
-    // ??????? ?????? ??? NormalTex (?????? 8-?????? UNORM)
     hr = device->CreateCommittedResource(
         &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
         D3D12_HEAP_FLAG_NONE,
@@ -106,7 +106,6 @@ Gbuffer::Gbuffer(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device> dev
     if (FAILED(hr))
         throw std::runtime_error("Failed to create NormalTex");
 
-    // ??????? ?????? ??? MaterialAlbedoTex (?????? 8-?????? UNORM)
     hr = device->CreateCommittedResource(
         &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
         D3D12_HEAP_FLAG_NONE,
@@ -118,7 +117,6 @@ Gbuffer::Gbuffer(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device> dev
     if (FAILED(hr))
         throw std::runtime_error("Failed to create MaterialAlbedoTex");
 
-    // ??????? ?????? ??? MaterialFresnelRoughnessTex (?????? 8-?????? UNORM)
     hr = device->CreateCommittedResource(
         &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
         D3D12_HEAP_FLAG_NONE,
@@ -130,7 +128,6 @@ Gbuffer::Gbuffer(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device> dev
     if (FAILED(hr))
         throw std::runtime_error("Failed to create MaterialFresnelRoughnessTex");
 
-    // ??????? ?????? ??? AccumulationBuf (?????? 16-?????? FLOAT)
     hr = device->CreateCommittedResource(
         &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
         D3D12_HEAP_FLAG_NONE,
@@ -142,7 +139,6 @@ Gbuffer::Gbuffer(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device> dev
     if (FAILED(hr))
         throw std::runtime_error("Failed to create AccumulationBuf");
 
-    // ??????? ?????? ??? BloomTex (?????? 8-?????? UNORM)
     hr = device->CreateCommittedResource(
         &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
         D3D12_HEAP_FLAG_NONE,
@@ -154,7 +150,18 @@ Gbuffer::Gbuffer(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device> dev
     if (FAILED(hr))
         throw std::runtime_error("Failed to create BloomTex");
 
-    // ??????? RTV ??? DiffuseTex
+    hr = device->CreateCommittedResource(
+        &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+        D3D12_HEAP_FLAG_NONE,
+        &CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R16G16_FLOAT, width, height, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET),
+        D3D12_RESOURCE_STATE_COMMON,
+        &clearValue_TWOFLOAT,
+        IID_PPV_ARGS(&VelocityBufferTex)
+    );
+    if (FAILED(hr))
+        throw std::runtime_error("Failed to create VelocityBuffer");
+
+    //RTVs
     D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
     rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
     rtvDesc.Texture2D.MipSlice = 0;
@@ -164,44 +171,40 @@ Gbuffer::Gbuffer(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device> dev
     DiffuseRTV = rtvHandle;
     rtvHandle.ptr += rtvDescriptorSize;
 
-    // ??????? RTV ??? EmissiveTex
     rtvDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
     device->CreateRenderTargetView(EmissiveTex.Get(), &rtvDesc, rtvHandle);
     EmissiveRTV = rtvHandle;
     rtvHandle.ptr += rtvDescriptorSize;
 
-    // ??????? RTV ??? NormalTex
     rtvDesc.Format = DXGI_FORMAT_R16G16B16A16_SNORM;
     device->CreateRenderTargetView(NormalTex.Get(), &rtvDesc, rtvHandle);
     NormalRTV = rtvHandle;
     rtvHandle.ptr += rtvDescriptorSize;
 
-    // ??????? RTV ??? MaterialAlbedoTex
     rtvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
     device->CreateRenderTargetView(MaterialAlbedoTex.Get(), &rtvDesc, rtvHandle);
     MaterialAlbedoRTV = rtvHandle;
     rtvHandle.ptr += rtvDescriptorSize;
 
-    // ??????? RTV ??? MaterialFresnelRoughnessTex
     device->CreateRenderTargetView(MaterialFresnelRoughnessTex.Get(), &rtvDesc, rtvHandle);
     MaterialFresnelRoughnessRTV = rtvHandle;
     rtvHandle.ptr += rtvDescriptorSize;
 
-    // RTV ??? AccumulationBuf (?????? FLOAT)
     rtvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
     device->CreateRenderTargetView(AccumulationBuf.Get(), &rtvDesc, rtvHandle);
     AccumulationRTV = rtvHandle;
     rtvHandle.ptr += rtvDescriptorSize;
 
-    // RTV ??? BloomTex (?????????? ?????? UNORM)
     rtvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
     device->CreateRenderTargetView(BloomTex.Get(), &rtvDesc, rtvHandle);
     BloomRTV = rtvHandle;
-    // rtvHandle ????? ?? ????????????
+    rtvHandle.ptr += rtvDescriptorSize;
 
+    rtvDesc.Format = DXGI_FORMAT_R16G16_FLOAT;
+    device->CreateRenderTargetView(VelocityBufferTex.Get(), &rtvDesc, rtvHandle);
+    VelocityBufferRTV = rtvHandle;
 
-
-    // ??????? SRV ??? DiffuseTex
+    //SRVs
     D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
     srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
     srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
@@ -211,61 +214,55 @@ Gbuffer::Gbuffer(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device> dev
     DiffuseSRV = srvHandle;
     srvHandle.ptr += srvDescriptorSize;
 
-    // SRV ??? EmissiveTex
     srvDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
     device->CreateShaderResourceView(EmissiveTex.Get(), &srvDesc, srvHandle);
     EmissiveSRV = srvHandle;
     srvHandle.ptr += srvDescriptorSize;
 
-    // SRV ??? NormalTex
     srvDesc.Format = DXGI_FORMAT_R16G16B16A16_SNORM;
     device->CreateShaderResourceView(NormalTex.Get(), &srvDesc, srvHandle);
     NormalSRV = srvHandle;
     srvHandle.ptr += srvDescriptorSize;
 
-    // SRV ??? MaterialAlbedoTex
     srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
     device->CreateShaderResourceView(MaterialAlbedoTex.Get(), &srvDesc, srvHandle);
     MaterialAlbedoSRV = srvHandle;
     srvHandle.ptr += srvDescriptorSize;
 
-    // SRV ??? MaterialFresnelRoughnessTex
     device->CreateShaderResourceView(MaterialFresnelRoughnessTex.Get(), &srvDesc, srvHandle);
     MaterialFresnelRoughnessSRV = srvHandle;
     srvHandle.ptr += srvDescriptorSize;
 
-    // SRV ??? AccumulationBuf (FLOAT)
     srvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
     device->CreateShaderResourceView(AccumulationBuf.Get(), &srvDesc, srvHandle);
     AccumulationSRV = srvHandle;
     srvHandle.ptr += srvDescriptorSize;
 
-    // SRV ??? BloomTex
     srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
     device->CreateShaderResourceView(BloomTex.Get(), &srvDesc, srvHandle);
     BloomSRV = srvHandle;
+    srvHandle.ptr += srvDescriptorSize;
+
+    srvDesc.Format = DXGI_FORMAT_R16G16_FLOAT;
+    device->CreateShaderResourceView(VelocityBufferTex.Get(), &srvDesc, srvHandle);
+    VelocityBufferSRV = srvHandle;
 
     md3dDevice = device;
 }
 
-// ??????? ? ????????? ??? ????????? ???????????? ????????.
-// ????? ????????? ???????? G-buffer (Diffuse, Emissive, Normal) ? ????????? RENDER_TARGET.
 void Gbuffer::TransitToOpaqueRenderingState(ComPtr<ID3D12GraphicsCommandList>& cmdList)
 {
-    CD3DX12_RESOURCE_BARRIER barriers[7];
+    CD3DX12_RESOURCE_BARRIER barriers[8];
     barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
         DiffuseTex.Get(),
         D3D12_RESOURCE_STATE_COMMON,
-        //D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, // ????????????, ??? ?? ????? ???????? ?????????????? ??? SRV
         D3D12_RESOURCE_STATE_RENDER_TARGET);
     barriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(
         EmissiveTex.Get(),
-        //D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
         D3D12_RESOURCE_STATE_COMMON,
         D3D12_RESOURCE_STATE_RENDER_TARGET);
     barriers[2] = CD3DX12_RESOURCE_BARRIER::Transition(
         NormalTex.Get(),
-        //D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
         D3D12_RESOURCE_STATE_COMMON,
         D3D12_RESOURCE_STATE_RENDER_TARGET);
     barriers[3] = CD3DX12_RESOURCE_BARRIER::Transition(
@@ -284,15 +281,16 @@ void Gbuffer::TransitToOpaqueRenderingState(ComPtr<ID3D12GraphicsCommandList>& c
         BloomTex.Get(),
         D3D12_RESOURCE_STATE_COMMON,
         D3D12_RESOURCE_STATE_RENDER_TARGET);
-    cmdList->ResourceBarrier(7, barriers);
+    barriers[7] = CD3DX12_RESOURCE_BARRIER::Transition(
+        VelocityBufferTex.Get(),
+        D3D12_RESOURCE_STATE_COMMON,
+        D3D12_RESOURCE_STATE_RENDER_TARGET);
+    cmdList->ResourceBarrier(8, barriers);
 }
 
-// ??????? ? ????????? ??? ????????? ?????????.
-// ????? ????????? Diffuse, Emissive ? Normal ?? ????????? RENDER_TARGET ? SRV,
-// ? ????? ?????????????? ?????? Accumulation ? Bloom ??? ?????? (RENDER_TARGET).
 void Gbuffer::TransitToLightsRenderingState(ComPtr<ID3D12GraphicsCommandList>& cmdList)
 {
-    CD3DX12_RESOURCE_BARRIER barriers[5];
+    CD3DX12_RESOURCE_BARRIER barriers[6];
     barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
         DiffuseTex.Get(),
         D3D12_RESOURCE_STATE_RENDER_TARGET,
@@ -313,11 +311,13 @@ void Gbuffer::TransitToLightsRenderingState(ComPtr<ID3D12GraphicsCommandList>& c
         MaterialFresnelRoughnessTex.Get(),
         D3D12_RESOURCE_STATE_RENDER_TARGET,
         D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-    cmdList->ResourceBarrier(5, barriers);
+    barriers[5] = CD3DX12_RESOURCE_BARRIER::Transition(
+        VelocityBufferTex.Get(),
+        D3D12_RESOURCE_STATE_RENDER_TARGET,
+        D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    cmdList->ResourceBarrier(6, barriers);
 }
 
-// ??????? ? ????????? ??? ????????????.
-// ????????? ?????? Accumulation ? Bloom ?? ????????? RENDER_TARGET ? SRV ??? ??????????? ???????.
 void Gbuffer::TransitToTonemappingState(ComPtr<ID3D12GraphicsCommandList>& cmdList)
 {
     CD3DX12_RESOURCE_BARRIER barriers[2];
@@ -394,7 +394,7 @@ void Gbuffer::TransitFromRenderTargetToCommon(ComPtr<ID3D12GraphicsCommandList>&
 
 void Gbuffer::TransitFromShaderResourceToCommon(ComPtr<ID3D12GraphicsCommandList>& cmdList)
 {
-    CD3DX12_RESOURCE_BARRIER barriers[7];
+    CD3DX12_RESOURCE_BARRIER barriers[8];
     barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
         DiffuseTex.Get(),
         D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
@@ -423,7 +423,11 @@ void Gbuffer::TransitFromShaderResourceToCommon(ComPtr<ID3D12GraphicsCommandList
         BloomTex.Get(),
         D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
         D3D12_RESOURCE_STATE_PRESENT);
-    cmdList->ResourceBarrier(7, barriers);
+    barriers[7] = CD3DX12_RESOURCE_BARRIER::Transition(
+        VelocityBufferTex.Get(),
+        D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+        D3D12_RESOURCE_STATE_PRESENT);
+    cmdList->ResourceBarrier(8, barriers);
 }
 
 void Gbuffer::ClearRTVs(ComPtr<ID3D12GraphicsCommandList>& cmdList)
@@ -436,12 +440,11 @@ void Gbuffer::ClearRTVs(ComPtr<ID3D12GraphicsCommandList>& cmdList)
     cmdList->ClearRenderTargetView(MaterialFresnelRoughnessRTV, clearColor, 0, nullptr);
     cmdList->ClearRenderTargetView(AccumulationRTV, clearColor, 0, nullptr);
     cmdList->ClearRenderTargetView(BloomRTV, clearColor, 0, nullptr);
+    cmdList->ClearRenderTargetView(VelocityBufferRTV, clearColor, 0, nullptr);
 }
 
-// ??????? ????????? ????????: ??????????? ??????? ??????? ? ?????????? ?? ? ?????? ?????????.
 void Gbuffer::Resize(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device> device)
 {
-    // ??????????? ?????? ???????
     DiffuseTex.Reset();
     EmissiveTex.Reset();
     NormalTex.Reset();
@@ -449,10 +452,9 @@ void Gbuffer::Resize(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device>
     MaterialFresnelRoughnessTex.Reset();
     AccumulationBuf.Reset();
     BloomTex.Reset();
+    VelocityBufferTex.Reset();
 
     HRESULT hr = S_OK;
-
-    // ?????????? ??????? ? ?????? ????????? ?????????? ????????????
 
     D3D12_CLEAR_VALUE clearValue_UNORM = {};
     clearValue_UNORM.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -460,6 +462,13 @@ void Gbuffer::Resize(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device>
     clearValue_UNORM.Color[1] = 0.0f;
     clearValue_UNORM.Color[2] = 0.0f;
     clearValue_UNORM.Color[3] = 1.0f;
+
+    D3D12_CLEAR_VALUE clearValue_TWOFLOAT = {};
+    clearValue_TWOFLOAT.Format = DXGI_FORMAT_R16G16_FLOAT;
+    clearValue_TWOFLOAT.Color[0] = 0.0f;
+    clearValue_TWOFLOAT.Color[1] = 0.0f;
+    clearValue_TWOFLOAT.Color[2] = 0.0f;
+    clearValue_TWOFLOAT.Color[3] = 1.0f;
 
     D3D12_CLEAR_VALUE clearValue_SNORM = {};
     clearValue_SNORM.Format = DXGI_FORMAT_R8G8B8A8_SNORM;
@@ -566,14 +575,24 @@ void Gbuffer::Resize(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device>
     if (FAILED(hr))
         throw std::runtime_error("Failed to recreate BloomTex during Resize");
 
-    // ????????? ??????????? RTV ? SRV. ??????????????, ??? ????????????? ???? ??? ???????.
+    hr = device->CreateCommittedResource(
+        &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+        D3D12_HEAP_FLAG_NONE,
+        &CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R16G16_FLOAT, width, height, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET),
+        D3D12_RESOURCE_STATE_COMMON,
+        &clearValue_TWOFLOAT,
+        IID_PPV_ARGS(&VelocityBufferTex)
+    );
+    if (FAILED(hr))
+        throw std::runtime_error("Failed to recreate VelocityBuffer during Resize");
+
     UINT rtvDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
     UINT srvDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
     D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = m_RTVDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
     D3D12_CPU_DESCRIPTOR_HANDLE srvHandle = m_SRVDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
 
-    // RTV ??? DiffuseTex
+    // Resize RTVs
     D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
     rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
     rtvDesc.Texture2D.MipSlice = 0;
@@ -583,41 +602,40 @@ void Gbuffer::Resize(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device>
     DiffuseRTV = rtvHandle;
     rtvHandle.ptr += rtvDescriptorSize;
 
-    // RTV ??? EmissiveTex
     rtvDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
     device->CreateRenderTargetView(EmissiveTex.Get(), &rtvDesc, rtvHandle);
     EmissiveRTV = rtvHandle;
     rtvHandle.ptr += rtvDescriptorSize;
 
-    // RTV ??? NormalTex
     rtvDesc.Format = DXGI_FORMAT_R16G16B16A16_SNORM;
     device->CreateRenderTargetView(NormalTex.Get(), &rtvDesc, rtvHandle);
     NormalRTV = rtvHandle;
     rtvHandle.ptr += rtvDescriptorSize;
 
-    // RTV ??? MaterialAlbedoTex
     rtvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
     device->CreateRenderTargetView(MaterialAlbedoTex.Get(), &rtvDesc, rtvHandle);
     MaterialAlbedoRTV = rtvHandle;
     rtvHandle.ptr += rtvDescriptorSize;
 
-    // RTV ??? MaterialFresnelRoughnessTex
     device->CreateRenderTargetView(MaterialFresnelRoughnessTex.Get(), &rtvDesc, rtvHandle);
     MaterialFresnelRoughnessRTV = rtvHandle;
     rtvHandle.ptr += rtvDescriptorSize;
 
-    // RTV ??? AccumulationBuf
     rtvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
     device->CreateRenderTargetView(AccumulationBuf.Get(), &rtvDesc, rtvHandle);
     AccumulationRTV = rtvHandle;
     rtvHandle.ptr += rtvDescriptorSize;
 
-    // RTV ??? BloomTex
     rtvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
     device->CreateRenderTargetView(BloomTex.Get(), &rtvDesc, rtvHandle);
     BloomRTV = rtvHandle;
+    rtvHandle.ptr += rtvDescriptorSize;
 
-    // SRV ??? DiffuseTex
+    rtvDesc.Format = DXGI_FORMAT_R16G16_FLOAT;
+    device->CreateRenderTargetView(VelocityBufferTex.Get(), &rtvDesc, rtvHandle);
+    VelocityBufferRTV = rtvHandle;
+
+    //Resize SRVs
     D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
     srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
     srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
@@ -627,42 +645,40 @@ void Gbuffer::Resize(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device>
     DiffuseSRV = srvHandle;
     srvHandle.ptr += srvDescriptorSize;
 
-    // SRV ??? EmissiveTex
     srvDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
     device->CreateShaderResourceView(EmissiveTex.Get(), &srvDesc, srvHandle);
     EmissiveSRV = srvHandle;
     srvHandle.ptr += srvDescriptorSize;
 
-    // SRV ??? NormalTex
     srvDesc.Format = DXGI_FORMAT_R16G16B16A16_SNORM;
     device->CreateShaderResourceView(NormalTex.Get(), &srvDesc, srvHandle);
     NormalSRV = srvHandle;
     srvHandle.ptr += srvDescriptorSize;
 
-    // SRV ??? MaterialAlbedoTex
     srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
     device->CreateShaderResourceView(MaterialAlbedoTex.Get(), &srvDesc, srvHandle);
     MaterialAlbedoSRV = srvHandle;
     srvHandle.ptr += srvDescriptorSize;
 
-    // SRV ??? MaterialFresnelRoughnessTex
     device->CreateShaderResourceView(MaterialFresnelRoughnessTex.Get(), &srvDesc, srvHandle);
     MaterialFresnelRoughnessSRV = srvHandle;
     srvHandle.ptr += srvDescriptorSize;
 
-    // SRV ??? AccumulationBuf
     srvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
     device->CreateShaderResourceView(AccumulationBuf.Get(), &srvDesc, srvHandle);
     AccumulationSRV = srvHandle;
     srvHandle.ptr += srvDescriptorSize;
 
-    // SRV ??? BloomTex
     srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
     device->CreateShaderResourceView(BloomTex.Get(), &srvDesc, srvHandle);
     BloomSRV = srvHandle;
+    srvHandle.ptr += srvDescriptorSize;
+
+    srvDesc.Format = DXGI_FORMAT_R16G16_FLOAT;
+    device->CreateShaderResourceView(VelocityBufferTex.Get(), &srvDesc, srvHandle);
+    VelocityBufferSRV = srvHandle;
 }
 
-// ??????????? ??? ???????
 void Gbuffer::Dispose()
 {
     DiffuseTex.Reset();
@@ -672,6 +688,7 @@ void Gbuffer::Dispose()
     MaterialFresnelRoughnessTex.Reset();
     AccumulationBuf.Reset();
     BloomTex.Reset();
+    VelocityBufferTex.Reset();
 
     m_RTVDescriptorHeap.Reset();
     m_SRVDescriptorHeap.Reset();
