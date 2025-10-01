@@ -34,6 +34,8 @@
 //#include "../Terrain/TerrainRenderer.h"
 
 #include <ffx_api/ffx_api.h>
+#include <ffx_api/ffx_upscale.h>
+#include <ffx_api/dx12/ffx_api_dx12.h>
 
 
 #pragma comment(lib,"d3dcompiler.lib")
@@ -98,6 +100,8 @@ public:
 
         for (auto& i : mAllTerrainRitems)
             delete i;
+
+        if(mFFXContext) ffxDestroyContext(&mFFXContext, nullptr);
     }
 
 
@@ -143,6 +147,8 @@ public:
     void BuildTerrain();
     void BuildSceneGrid();
     void DrawSceneGrid();
+    void BuildFSRContext();
+    void FSRUpscale();
 
     void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems, std::string PSOName);
 
@@ -298,13 +304,11 @@ protected:
     std::vector<RenderItem*> mChosenTerrainRitems;
     std::vector<RenderItem*> mVisibleTerrainRitems;
 
-    ffxContext           mFfxCtx = {};
-    bool                 mFfxInited = false;
-
-    // Upscale output (UAV texture of size displaySize)
-    ComPtr<ID3D12Resource> mFfxUpscaledOutput;
-    D3D12_CPU_DESCRIPTOR_HANDLE mFfxUpscaledUavCPU{};
-    D3D12_GPU_DESCRIPTOR_HANDLE mFfxUpscaledUavGPU{};
+    //FSR sctructures and resources
+    ffxContext mFFXContext;
+    UINT mRecommendedRenderResolutionX = 0;
+    UINT mRecommendedRenderResolutionY = 0;
+    FfxApiUpscaleQualityMode mFSRQualityMode = FFX_UPSCALE_QUALITY_MODE_QUALITY;
 };
 
 

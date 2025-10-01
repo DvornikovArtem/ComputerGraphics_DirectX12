@@ -13,6 +13,8 @@ class Gbuffer {
 
     Microsoft::WRL::ComPtr<ID3D12Device> md3dDevice;
 
+public:
+
     ComPtr<ID3D12Resource> DiffuseTex       = nullptr;
     ComPtr<ID3D12Resource> EmissiveTex      = nullptr;
     ComPtr<ID3D12Resource> NormalTex        = nullptr;
@@ -22,8 +24,6 @@ class Gbuffer {
     ComPtr<ID3D12Resource> AccumulationBuf  = nullptr;
     ComPtr<ID3D12Resource> BloomTex         = nullptr;
 
-
-public:
     D3D12_CPU_DESCRIPTOR_HANDLE DiffuseSRV;
     D3D12_CPU_DESCRIPTOR_HANDLE EmissiveSRV;
     D3D12_CPU_DESCRIPTOR_HANDLE NormalSRV;

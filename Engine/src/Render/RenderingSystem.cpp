@@ -81,6 +81,7 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 
 	CreateCommandObjects();
 	CreateSwapChain();
+	BuildFSRContext();
 
 	mGbuffer = std::make_unique<Gbuffer>(mClientWidth, mClientHeight, md3dDevice);
 
@@ -109,17 +110,6 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 	BuildBasicGeometry();
 	BuildSceneGrid();
 	//BuildTerrain();
-
-	ffxContext* context{};
-
-	ffxCreateContextDescHeader* desc{};
-
-	ffxAllocationCallbacks* callbacks{};
-
-
-	ffxCreateContext(context, desc, callbacks);
-
-
 
 
 	// Execute the initialization commands.
@@ -278,6 +268,17 @@ void RenderingSystem::OnResize() {
 	{
 		particleSystem->setEmissiveTex(mGbuffer->getEmissiveTex(), mGbuffer->getNormalTex());
 	}
+
+	//ASKING FFX_API FOR RENDER RESOLUTION
+	ffxQueryDescUpscaleGetRenderResolutionFromQualityMode queryDesc = {};
+	queryDesc.header.type = FFX_API_QUERY_DESC_TYPE_UPSCALE_GETRENDERRESOLUTIONFROMQUALITYMODE;
+	queryDesc.displayHeight = mClientHeight;
+	queryDesc.displayWidth = mClientWidth;
+	queryDesc.qualityMode = mFSRQualityMode;
+	queryDesc.pOutRenderHeight = &mRecommendedRenderResolutionY;
+	queryDesc.pOutRenderWidth = &mRecommendedRenderResolutionX;
+
+	ffxQuery(&mFFXContext, &queryDesc.header);
 }
 
 void RenderingSystem::Render()
@@ -873,6 +874,69 @@ void RenderingSystem::DrawSceneGrid()
 
 	//mCommandList->DrawInstanced(6, 1, 0, 0);
 	mCommandList->DrawInstanced(3, 1, 0, 0);
+}
+
+void RenderingSystem::BuildFSRContext()
+{
+	ffxCreateBackendDX12Desc backendDesc = {};
+	backendDesc.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_BACKEND_DX12;
+	backendDesc.device = md3dDevice.Get();
+
+	ffxCreateContextDescUpscale upscaleDesc = {};
+	upscaleDesc.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_UPSCALE;
+	upscaleDesc.header.pNext = &backendDesc.header;
+	upscaleDesc.maxRenderSize = { static_cast<uint32_t>(mClientWidth), static_cast<uint32_t>(mClientHeight) };
+	upscaleDesc.maxUpscaleSize = { static_cast<uint32_t>(mClientWidth), static_cast<uint32_t>(mClientHeight) };
+	upscaleDesc.flags = FFX_UPSCALE_ENABLE_DEPTH_INVERTED | FFX_UPSCALE_ENABLE_DEPTH_INFINITE;
+
+	ffxReturnCode_t errorCode = ffxCreateContext(&mFFXContext, &upscaleDesc.header, nullptr);
+	if (errorCode != FFX_API_RETURN_OK)
+	{
+		std::string errorMsg = "ERROR: FSR3 CONTEXT NOT CREATED\n";
+		OutputDebugStringA(errorMsg.c_str());
+	}
+	else
+	{
+		std::string successMsg = "SUCCESS: FSR3 CONTEXT CREATED!\n";
+		OutputDebugStringA(successMsg.c_str());
+	}
+}
+
+void RenderingSystem::FSRUpscale()
+{
+	ffxDispatchDescUpscale dispatchDesc;
+
+	dispatchDesc.header.type = FFX_API_DISPATCH_DESC_TYPE_UPSCALE;
+	dispatchDesc.commandList = mCommandList.Get();
+
+	dispatchDesc.color = ffxApiGetResourceDX12(mGbuffer->AccumulationBuf.Get());
+	dispatchDesc.depth = ffxApiGetResourceDX12(mDepthStencilBuffer.Get());
+	//dispatchDesc.motionVectors = ffxApiGetResourceDX12(mMotionVectorBuffer.Get()); // ADD MOTION VECTOR CALCULATION
+
+	dispatchDesc.renderSize = { (UINT)mClientWidth, (UINT)mClientHeight };    // Resolution before upscaling
+	//dispatchDesc.displaySize = { mDisplayWidth, mDisplayHeight }; // Resolution after upscaling
+
+	dispatchDesc.cameraNear = mCamera.GetNearZ();
+	dispatchDesc.cameraFar = mCamera.GetFarZ();
+	dispatchDesc.cameraFovAngleVertical = mCamera.GetFovY();
+
+	// IN CASE TAA IS USED 
+	//dispatchDesc.jitterOffset = { mJitterX, mJitterY };
+
+	dispatchDesc.sharpness = 0.8f; // 0.0 - 1.0
+	dispatchDesc.frameTimeDelta = gt->DeltaTime() * 1000.f; //expects milliseconds
+	dispatchDesc.reset = false; // set to true if camera teleports or moves not smoothly
+
+	//dispatchDesc.output = ffxApiGetResourceDX12(); // Output Result Buffer into this resource
+
+
+	ffxReturnCode_t dispatchError = ffxDispatch(&mFFXContext, &dispatchDesc.header);
+
+	if (dispatchError != FFX_API_RETURN_OK)
+	{
+		std::string errorMsg = "FSR3 DISPATCH ERROR" + std::to_string(dispatchError);
+		OutputDebugStringA(errorMsg.c_str());
+	}
 }
 
 
