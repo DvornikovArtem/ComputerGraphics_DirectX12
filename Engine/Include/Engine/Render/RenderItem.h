@@ -111,6 +111,9 @@ struct RenderItem
     UINT currentLOD = 0;
 
     bool IsInViewFrustum = false;
+
+    DirectX::XMFLOAT4X4 PrevWorld = MathHelper::Identity4x4();
+    bool InitFrame = true;
 };
 
 

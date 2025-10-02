@@ -8,7 +8,7 @@ struct MainPassCB
     float4x4 InvProj;
     float4x4 ViewProj;
     float4x4 InvViewProj;
-    float3 EyePosW;
+    float3 CameraPos;
     float _pad0;
     float2 RenderTargetSize;
     float2 InvRenderTargetSize;
@@ -17,10 +17,11 @@ struct MainPassCB
     float TotalTime;
     float DeltaTime;
     float4 AmbientLight;
-    float4 FogColor;
-    float FogStart;
-    float FogRange;
-    float2 _pad1;
+    float3 PrevCameraPos;
+    float _pad1;
+    float4x4 PrevViewProj;
+    float _pad2;
+    float3 CameraDirection;
 };
 
 struct ObjectCB
@@ -29,6 +30,8 @@ struct ObjectCB
     float4x4 TexTransform;
     float TesselationFactor;
     float HeightMapScale;
+    float2 _pad0;
+    float4x4 PrevWorld;
 };
 
 struct MaterialCB

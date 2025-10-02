@@ -211,3 +211,16 @@ float4 PS(VertexOut pin) : SV_Target
     Color.xyz = pow(saturate(Color.xyz), 1.0 / 2.2);
     return Color;
 }
+
+float4 PS_DrawTexture(VertexOut pin) : SV_Target
+{
+    uint2 TexelCoord = pin.PosH.xy;
+    float2 quarterSize = cbMainPass.RenderTargetSize * 0.5f;
+    if (TexelCoord.y >= quarterSize.y && TexelCoord.x < quarterSize.x)
+    {
+        uint2 sourceCoord = uint2(TexelCoord.x, TexelCoord.y - quarterSize.y) * 2;
+        return DiffuseMap.Load(int3(sourceCoord, 0));
+    }
+    discard;
+    return float4(0.0f, 0.0f, 0.0f, 0.1f);
+}

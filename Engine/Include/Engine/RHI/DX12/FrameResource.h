@@ -11,6 +11,7 @@ struct ObjectConstants
     float TesselationFactor = 1;
     float HeightMapScale = 1.0f;
     DirectX::XMFLOAT2 pad;
+    DirectX::XMFLOAT4X4 PrevWorld = MathHelper::Identity4x4();
 };
 
 struct PassConstants
@@ -21,7 +22,7 @@ struct PassConstants
     DirectX::XMFLOAT4X4 InvProj = MathHelper::Identity4x4();
     DirectX::XMFLOAT4X4 ViewProj = MathHelper::Identity4x4();
     DirectX::XMFLOAT4X4 InvViewProj = MathHelper::Identity4x4();
-    DirectX::XMFLOAT3 EyePosW = { 0.0f, 0.0f, 0.0f };
+    DirectX::XMFLOAT3 CameraPos = { 0.0f, 0.0f, 0.0f };
     float cbPerObjectPad1 = 0.0f;
     DirectX::XMFLOAT2 RenderTargetSize = { 0.0f, 0.0f };
     DirectX::XMFLOAT2 InvRenderTargetSize = { 0.0f, 0.0f };
@@ -32,10 +33,11 @@ struct PassConstants
 
     DirectX::XMFLOAT4 AmbientLight = { 0.0f, 0.0f, 0.0f, 1.0f };
 
-	DirectX::XMFLOAT4 FogColor = { 0.f, 0.f, 0.f, 1.0f };//{ 0.18f, 0.53f, 0.9f, 1.0f };
-	float gFogStart = 5.0f;
-	float gFogRange = 150.0f;
-	DirectX::XMFLOAT2 cbPerObjectPad2;
+    DirectX::XMFLOAT3 PrevCameraPos = { 0.f, 0.f, 0.f };
+    float cbmainPassPad;
+    DirectX::XMFLOAT4X4 PrevViewProj = MathHelper::Identity4x4();
+    float Pad2;
+    DirectX::XMFLOAT3 CameraDirection = { 0.f, 0.f, 0.f };
 };
 
 struct Vertex

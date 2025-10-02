@@ -32,6 +32,7 @@ struct DS_VS_OUTPUT_PS_INPUT
     float2 TexC : TEXCOORD;
     float3 Normal : NORMAL;
     float3 Tangent : TANGENT;
+    float4 PrevPosCS : POSITION1;
 };
 
 DS_VS_OUTPUT_PS_INPUT VS(VS_INPUT vin)
@@ -50,6 +51,9 @@ DS_VS_OUTPUT_PS_INPUT VS(VS_INPUT vin)
 	
     float4 texC = mul(float4(vin.TexC, 0.0f, 1.0f), cbObject.TexTransform);
     vout.TexC = mul(texC, cbMaterial.MatTransform).xy;
+    
+    float4 prevPosW = mul(float4(vin.Pos, 1.0f), cbObject.PrevWorld);
+    vout.PrevPosCS = mul(prevPosW, cbMainPass.PrevViewProj);
 
     return vout;
 }
@@ -69,7 +73,7 @@ HS_CONSTANT_DATA_OUTPUT ConstantsHS(InputPatch<DS_VS_OUTPUT_PS_INPUT, 3> Patch, 
     float3 vEdge0 = Patch[1].PosW - Patch[0].PosW;
     float3 vEdge2 = Patch[2].PosW - Patch[0].PosW;
     float3 vFaceNormal = normalize(cross(vEdge2, vEdge0));
-    float3 vView = normalize(Patch[0].PosW - cbMainPass.EyePosW);
+    float3 vView = normalize(Patch[0].PosW - cbMainPass.CameraPos);
     
     // A negative dot product means facing away from view direction.
     // Use a small epsilon to avoid popping, since displaced vertices
@@ -99,6 +103,7 @@ struct HS_CONTROL_POINT_OUTPUT
     float2 vTexCoord : TEXCOORD;
     float3 vNormal : NORMAL;
     float3 vTangent : TANGENT;
+    float4 vPrevPosCS : POSITION1;
 };
 
 [domain("tri")] // indicates a triangle patch (3 verts)
@@ -116,6 +121,7 @@ HS_CONTROL_POINT_OUTPUT HSMain(InputPatch<DS_VS_OUTPUT_PS_INPUT, 3> inputPatch, 
     Out.vTexCoord = inputPatch[uCPID].TexC;
     Out.vNormal = inputPatch[uCPID].Normal;
     Out.vTangent = inputPatch[uCPID].Tangent;
+    Out.vPrevPosCS = inputPatch[uCPID].PrevPosCS;
     return Out;
 }
 
@@ -126,11 +132,10 @@ DS_VS_OUTPUT_PS_INPUT DSMain(HS_CONSTANT_DATA_OUTPUT input, float3 BarycentricCo
 {
     DS_VS_OUTPUT_PS_INPUT Out;
     // Interpolate world space position with barycentric coordinates
-    float3 vWorldPos =
+    Out.PosW =
     BarycentricCoordinates.x * TrianglePatch[0].vWorldPos +
     BarycentricCoordinates.y * TrianglePatch[1].vWorldPos +
     BarycentricCoordinates.z * TrianglePatch[2].vWorldPos;
-    Out.PosW = vWorldPos;
     // Interpolate texture coordinates with barycentric coordinates
     Out.TexC =
     BarycentricCoordinates.x * TrianglePatch[0].vTexCoord +
@@ -146,6 +151,11 @@ DS_VS_OUTPUT_PS_INPUT DSMain(HS_CONSTANT_DATA_OUTPUT input, float3 BarycentricCo
     BarycentricCoordinates.x * TrianglePatch[0].vTangent +
     BarycentricCoordinates.y * TrianglePatch[1].vTangent +
     BarycentricCoordinates.z * TrianglePatch[2].vTangent;
+    
+    Out.PrevPosCS =
+    BarycentricCoordinates.x * TrianglePatch[0].vPrevPosCS +
+    BarycentricCoordinates.y * TrianglePatch[1].vPrevPosCS +
+    BarycentricCoordinates.z * TrianglePatch[2].vPrevPosCS;
 
     // sample the displacement map for the magnitude of displacement
     float fDisplacement = HeightMap.SampleLevel(samAnisotropicWrap, Out.TexC.xy, 0).r;
@@ -155,11 +165,11 @@ DS_VS_OUTPUT_PS_INPUT DSMain(HS_CONSTANT_DATA_OUTPUT input, float3 BarycentricCo
  
     fDisplacement *= (2.5f / (scale_x + scale_y));
     
-    float3 vDirection = normalize(Out.Normal); // direction is opposite normal
+    float3 vDirection = normalize(Out.Normal);
     // translate the position
-    vWorldPos += vDirection * fDisplacement;
+    Out.PosW += vDirection * fDisplacement;
     // transform to clip space
-    Out.PosCS = mul(float4(vWorldPos.xyz, 1), cbMainPass.ViewProj);
+    Out.PosCS = mul(float4(Out.PosW.xyz, 1), cbMainPass.ViewProj);
     return Out;
 }
 
@@ -207,7 +217,16 @@ GBufferData PS(DS_VS_OUTPUT_PS_INPUT pin)
     pout.normal = float4(WorldNormal, cbMaterial.Metallic); //w is free for now
     pout.materialAlbedo = cbMaterial.DiffuseAlbedo;
     pout.MaterialFresnelRoughness = float4(cbMaterial.FresnelR0, cbMaterial.Roughness);
-    pout.MotionVector = uv;
+    
+    float2 currentNDC = pin.PosCS.xy / pin.PosCS.w;
+    float2 prevNDC = pin.PrevPosCS.xy / pin.PrevPosCS.w;
+    
+    currentNDC = currentNDC * 0.5f + 0.5f;
+    prevNDC = prevNDC * 0.5f + 0.5f;
+    
+    float2 motionVector = prevNDC - currentNDC;
+    
+    pout.MotionVector = prevNDC;
     
     return pout;
 }

@@ -274,7 +274,7 @@ void RenderingSystem::OnResize() {
 	md3dDevice->CreateCommittedResource(
 		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
 		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Tex2D(mBackBufferFormat, mClientWidth, mClientHeight, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET),
+		&CD3DX12_RESOURCE_DESC::Tex2D(mBackBufferFormat, mClientWidth, mClientHeight, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
 		D3D12_RESOURCE_STATE_COMMON,
 		&clearValue,
 		IID_PPV_ARGS(&mFSROutput));
@@ -322,7 +322,8 @@ void RenderingSystem::Render()
 		D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
 
 	// Clear the back buffer and depth buffer.
-	mCommandList->ClearRenderTargetView(CurrentBackBufferView(), (float*)&mMainPassCB.FogColor, 0, nullptr);
+	FLOAT ClearValue[4] = { 0.f, 0.f, 0.f, 1.f };
+	mCommandList->ClearRenderTargetView(CurrentBackBufferView(), ClearValue, 0, nullptr);
 	mCommandList->ClearDepthStencilView(DepthStencilView(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
 
 	// Create frame shadow maps
@@ -363,8 +364,9 @@ void RenderingSystem::Render()
 
 	DrawParticleSystems();
 
-
+	//FSRUpscale();
 	//DrawSceneGrid();
+
 
 	//
 	// Post-Processing
@@ -382,6 +384,8 @@ void RenderingSystem::Render()
 		this,
 		mCurrFrameResourceIndex
 	);
+
+	DrawDebugTexture(GetGpuSrv(mGBuffer->Channel0SRVHeapIndex + 7));
 
 
 	// Clear
@@ -912,7 +916,9 @@ void RenderingSystem::BuildFSRContext()
 	upscaleDesc.header.pNext = &backendDesc.header;
 	upscaleDesc.maxRenderSize = { static_cast<uint32_t>(mClientWidth), static_cast<uint32_t>(mClientHeight) };
 	upscaleDesc.maxUpscaleSize = { static_cast<uint32_t>(mClientWidth), static_cast<uint32_t>(mClientHeight) };
-	upscaleDesc.flags = FFX_UPSCALE_ENABLE_DEPTH_INVERTED | FFX_UPSCALE_ENABLE_DEPTH_INFINITE;
+	upscaleDesc.flags = FFX_UPSCALE_ENABLE_DEPTH_INVERTED | FFX_UPSCALE_ENABLE_DEPTH_INFINITE | FFX_UPSCALE_ENABLE_DEBUG_CHECKING;
+	upscaleDesc.fpMessage = &RenderingSystem::FSRMessageCallback;
+
 
 	ffxReturnCode_t errorCode = ffxCreateContext(&mFFXContext, &upscaleDesc.header, nullptr);
 	if (errorCode != FFX_API_RETURN_OK)
@@ -929,20 +935,37 @@ void RenderingSystem::BuildFSRContext()
 
 void RenderingSystem::FSRUpscale()
 {
+	CD3DX12_RESOURCE_BARRIER barriers1[4];
+	barriers1[0] = CD3DX12_RESOURCE_BARRIER::Transition(
+		mFSROutput.Get(),
+		D3D12_RESOURCE_STATE_COMMON,
+		D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+	barriers1[1] = CD3DX12_RESOURCE_BARRIER::Transition(
+		mGBuffer->AccumulationBuf.Get(),
+		D3D12_RESOURCE_STATE_RENDER_TARGET,
+		D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+	barriers1[2] = CD3DX12_RESOURCE_BARRIER::Transition(
+		mDepthStencilBuffer.Get(),
+		D3D12_RESOURCE_STATE_DEPTH_WRITE,
+		D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+	barriers1[3] = CD3DX12_RESOURCE_BARRIER::Transition(
+		mGBuffer->VelocityBufferTex.Get(),
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+		D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+	mCommandList->ResourceBarrier(4, barriers1);
+
 	ffxDispatchDescUpscale dispatchDesc;
 
 	dispatchDesc.header.type = FFX_API_DISPATCH_DESC_TYPE_UPSCALE;
 	dispatchDesc.commandList = mCommandList.Get();
-
-	dispatchDesc.color = ffxApiGetResourceDX12(mGBuffer->AccumulationBuf.Get());
-	dispatchDesc.depth = ffxApiGetResourceDX12(mDepthStencilBuffer.Get());
-	//dispatchDesc.motionVectors = ffxApiGetResourceDX12(mMotionVectorBuffer.Get()); // ADD MOTION VECTOR CALCULATION
+	dispatchDesc.color = ffxApiGetResourceDX12(mGBuffer->AccumulationBuf.Get(), FFX_API_RESOURCE_STATE_PIXEL_COMPUTE_READ);
+	dispatchDesc.depth = ffxApiGetResourceDX12(mDepthStencilBuffer.Get(), FFX_API_RESOURCE_STATE_PIXEL_COMPUTE_READ);
+	dispatchDesc.motionVectors = ffxApiGetResourceDX12(mGBuffer->VelocityBufferTex.Get(), FFX_API_RESOURCE_STATE_PIXEL_COMPUTE_READ);
 
 	dispatchDesc.renderSize = { mRecommendedRenderResolutionX, mRecommendedRenderResolutionY };    // Resolution before upscaling
 	dispatchDesc.cameraNear = mCamera.GetNearZ();
 	dispatchDesc.cameraFar = mCamera.GetFarZ();
 	dispatchDesc.cameraFovAngleVertical = mCamera.GetFovY();
-
 	// IN CASE TAA IS USED 
 	//dispatchDesc.jitterOffset = { mJitterX, mJitterY };
 
@@ -950,7 +973,7 @@ void RenderingSystem::FSRUpscale()
 	dispatchDesc.frameTimeDelta = gt->DeltaTime() * 1000.f; //expects milliseconds
 	dispatchDesc.reset = false; // set to true if camera teleports or moves not smoothly
 
-	dispatchDesc.output = ffxApiGetResourceDX12(mFSROutput.Get()); // Output Result Buffer into this resource
+	dispatchDesc.output = ffxApiGetResourceDX12(mFSROutput.Get(), FFX_API_RESOURCE_STATE_UNORDERED_ACCESS);
 	//not sure if RTV is even needed here
 
 
@@ -958,11 +981,56 @@ void RenderingSystem::FSRUpscale()
 
 	if (dispatchError != FFX_API_RETURN_OK)
 	{
-		std::string errorMsg = "FSR3 DISPATCH ERROR" + std::to_string(dispatchError);
+		std::string errorMsg = "FSR3 DISPATCH ERROR: " + std::to_string(dispatchError) + " \n";
 		OutputDebugStringA(errorMsg.c_str());
 	}
+	else
+	{
+		std::string successMsg = "FSR3 DISPATCH SUCCESS\n";
+		OutputDebugStringA(successMsg.c_str());
+	}
+
+	CD3DX12_RESOURCE_BARRIER barriers2[4];
+	barriers2[0] = CD3DX12_RESOURCE_BARRIER::Transition(
+		mFSROutput.Get(),
+		D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+		D3D12_RESOURCE_STATE_COMMON);
+	barriers2[1] = CD3DX12_RESOURCE_BARRIER::Transition(
+		mGBuffer->AccumulationBuf.Get(),
+		D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+		D3D12_RESOURCE_STATE_RENDER_TARGET);
+	barriers2[2] = CD3DX12_RESOURCE_BARRIER::Transition(
+		mDepthStencilBuffer.Get(),
+		D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+		D3D12_RESOURCE_STATE_DEPTH_WRITE);
+	barriers2[3] = CD3DX12_RESOURCE_BARRIER::Transition(
+		mGBuffer->VelocityBufferTex.Get(),
+		D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+	mCommandList->ResourceBarrier(4, barriers2);
 }
 
+void RenderingSystem::FSRMessageCallback(uint32_t type, const wchar_t* message)
+{
+	std::wstring wideMessage(message);
+	std::string narrowMessage(wideMessage.begin(), wideMessage.end());
+
+	std::string prefix;
+	switch (type) {
+	case FFX_API_MESSAGE_TYPE_ERROR:
+		prefix = "[FFX ERROR] ";
+		break;
+	case FFX_API_MESSAGE_TYPE_WARNING:
+		prefix = "[FFX WARNING] ";
+		break;
+	default:
+		prefix = "[FFX DEBUG] ";
+		break;
+	}
+
+	std::string fullMessage = prefix + narrowMessage + "\n";
+	OutputDebugStringA(fullMessage.c_str());
+}
 
 void RenderingSystem::LogAdapterOutputs(IDXGIAdapter* adapter)
 {
@@ -1307,9 +1375,18 @@ void RenderingSystem::UpdateObjectCBs(const GameTimer& gt)
 			XMMATRIX world = XMLoadFloat4x4(&e->World);
 			XMMATRIX texTransform = XMLoadFloat4x4(&e->TexTransform);
 
+
 			ObjectConstants objConstants;
 			XMStoreFloat4x4(&objConstants.World, XMMatrixTranspose(world));
 			XMStoreFloat4x4(&objConstants.TexTransform, XMMatrixTranspose(texTransform));
+
+			if (e->InitFrame) 
+			{
+				XMStoreFloat4x4(&objConstants.PrevWorld, XMMatrixTranspose(world));
+				e->InitFrame = false;
+			}
+			else XMStoreFloat4x4(&objConstants.PrevWorld, XMMatrixTranspose(XMLoadFloat4x4(&e->PrevWorld)));
+			XMStoreFloat4x4(&e->PrevWorld, world);
 
 
 			XMVECTOR diff = XMVectorSubtract(XMLoadFloat4x4(&e->World).r[3], mCamera.GetPosition());
@@ -2021,6 +2098,13 @@ void RenderingSystem::BuildGlobalPSOs()
 	};
 	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&PPPsoDesc, IID_PPV_ARGS(&GlobalPSOs["PostProcessing"])));
 
+	PPPsoDesc.PS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["PPPS_DrawTexture"]->GetBufferPointer()),
+		mShaders["PPPS_DrawTexture"]->GetBufferSize()
+	};
+	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&PPPsoDesc, IID_PPV_ARGS(&GlobalPSOs["PostProcessing_DrawDebugTexture"])));
+
 }
 
 void RenderingSystem::BuildFrameResources()
@@ -2382,11 +2466,27 @@ void RenderingSystem::PostProcessingPass()
 
 	mCommandList->SetGraphicsRootConstantBufferView(0, passCB->GetGPUVirtualAddress());
 
-	//mCommandList->SetGraphicsRootDescriptorTable(1, GetGpuSrv(mGbuffer->Channel0SRVHeapIndex + 6));
 	mCommandList->SetGraphicsRootDescriptorTable(1, GetGpuSrv(mGBuffer->Channel0SRVHeapIndex + 5));
 	mCommandList->SetGraphicsRootDescriptorTable(2, GetGpuSrv(mGBuffer->Channel0SRVHeapIndex + 1));
 	mCommandList->SetGraphicsRootDescriptorTable(3, GetGpuSrv(mGBuffer->Channel0SRVHeapIndex + 2));
 
+
+	mCommandList->DrawInstanced(6, 1, 0, 0);
+}
+
+//Draws given texture in bottom-left corner of the screen
+void RenderingSystem::DrawDebugTexture(CD3DX12_GPU_DESCRIPTOR_HANDLE SRVHandle)
+{
+	mCommandList->SetGraphicsRootSignature(RootSignatures["PostProcessing"].Get());
+	mCommandList->SetPipelineState(GlobalPSOs["PostProcessing_DrawDebugTexture"].Get());
+	UINT passCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(PassConstants));
+	auto passCB = mCurrFrameResource->PassCB->Resource();
+
+	ID3D12DescriptorHeap* descriptorHeaps[] = { mSrvDescriptorHeap.Get() };
+	mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
+
+	mCommandList->SetGraphicsRootConstantBufferView(0, passCB->GetGPUVirtualAddress());
+	mCommandList->SetGraphicsRootDescriptorTable(1, SRVHandle);
 
 	mCommandList->DrawInstanced(6, 1, 0, 0);
 }
@@ -2942,6 +3042,7 @@ void RenderingSystem::BuildShaders(std::vector<ShaderDesc>& ShaderDescs)
 	//for post-processing
 	mShaders["PPVS"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\PostProcessing.hlsl", nullptr, "VS_FSQuad", "vs_5_1");
 	mShaders["PPPS"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\PostProcessing.hlsl", nullptr, "PS", "ps_5_1");
+	mShaders["PPPS_DrawTexture"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\PostProcessing.hlsl", nullptr, "PS_DrawTexture", "ps_5_1");
 }
 
 void RenderingSystem::BuildBasicGeometry()
@@ -3107,13 +3208,18 @@ void RenderingSystem::UpdateMainPassCB(const GameTimer& gt)
 	XMMATRIX invProj = XMMatrixInverse(nullptr, proj);
 	XMMATRIX invViewProj = XMMatrixInverse(nullptr, viewProj);
 
+	static XMMATRIX prevViewProj = viewProj;
+	static XMFLOAT3 prevCameraPos = mCamera.GetPosition3f();
+
 	XMStoreFloat4x4(&mMainPassCB.View, XMMatrixTranspose(view));
 	XMStoreFloat4x4(&mMainPassCB.InvView, XMMatrixTranspose(invView));
 	XMStoreFloat4x4(&mMainPassCB.Proj, XMMatrixTranspose(proj));
 	XMStoreFloat4x4(&mMainPassCB.InvProj, XMMatrixTranspose(invProj));
 	XMStoreFloat4x4(&mMainPassCB.ViewProj, XMMatrixTranspose(viewProj));
 	XMStoreFloat4x4(&mMainPassCB.InvViewProj, XMMatrixTranspose(invViewProj));
-	mMainPassCB.EyePosW = mCamera.GetPosition3f();
+	XMStoreFloat4x4(&mMainPassCB.PrevViewProj, XMMatrixTranspose(prevViewProj));
+	mMainPassCB.PrevCameraPos = prevCameraPos;
+	mMainPassCB.CameraPos = mCamera.GetPosition3f();
 	mMainPassCB.RenderTargetSize = XMFLOAT2((float)mClientWidth, (float)mClientHeight);
 	mMainPassCB.InvRenderTargetSize = XMFLOAT2(1.0f / mClientWidth, 1.0f / mClientHeight);
 	mMainPassCB.NearZ = 1.0f;
@@ -3121,6 +3227,10 @@ void RenderingSystem::UpdateMainPassCB(const GameTimer& gt)
 	mMainPassCB.TotalTime = gt.TotalTime();
 	mMainPassCB.DeltaTime = gt.DeltaTime();
 	mMainPassCB.AmbientLight = { 0.4f, 0.4f, 0.4f, 1.0f };
+	mMainPassCB.CameraDirection = mCamera.GetLook3f();
+
+	prevViewProj = viewProj;
+	prevCameraPos = mCamera.GetPosition3f();
 
 	// Main pass stored in index 2
 	auto currPassCB = mCurrFrameResource->PassCB.get();

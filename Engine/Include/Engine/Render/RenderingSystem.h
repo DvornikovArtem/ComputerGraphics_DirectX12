@@ -149,6 +149,7 @@ public:
     void DrawSceneGrid();
     void BuildFSRContext();
     void FSRUpscale();
+    static void FSRMessageCallback(uint32_t type, const wchar_t* message);
 
     void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems, std::string PSOName);
 
@@ -171,6 +172,7 @@ public:
     void DrawSkyBox();
     void DrawShadowMaps();
     void PostProcessingPass();
+    void DrawDebugTexture(CD3DX12_GPU_DESCRIPTOR_HANDLE SRVHandle);
 
     void Render();
 

@@ -191,7 +191,7 @@ float4 PS(VertexOut pin) : SV_Target
     float3 Normal = NormalChannel.rgb;
     
     // Vector from point being lit to eye.
-    float3 toEyeW = cbMainPass.EyePosW - WorldPosition;
+    float3 toEyeW = cbMainPass.CameraPos - WorldPosition;
     float distToEye = length(toEyeW);
     toEyeW /= distToEye; // normalize
     float NdotV = max(dot(Normal, toEyeW), 0.0);
@@ -209,7 +209,7 @@ float4 PS(VertexOut pin) : SV_Target
     if (cbLight.lightData.LightType == 0)
     {
         float shadowFactor = 1.f;
-        float distanceFromEye = length(WorldPosition - cbMainPass.EyePosW);
+        float distanceFromEye = length(WorldPosition - cbMainPass.CameraPos);
         
         for (uint cascade = 0; cascade < 5; cascade++)
         {
@@ -348,7 +348,7 @@ float4 PS_AddAmbient(VertexOut pin) : SV_Target
     
     float2 UV = pin.PosH.xy / cbMainPass.RenderTargetSize;
     float3 worldPos = ReconstructWorldPosition(UV, Emissive.w);
-    float3 viewDir = normalize(cbMainPass.EyePosW - worldPos);
+    float3 viewDir = normalize(cbMainPass.CameraPos - worldPos);
     float NdotV = max(dot(normal, viewDir), 0.0);
     
     // --- PBR IBL ---
