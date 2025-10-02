@@ -33,6 +33,8 @@ struct DS_VS_OUTPUT_PS_INPUT
     float3 Normal : NORMAL;
     float3 Tangent : TANGENT;
     float4 PrevPosCS : POSITION1;
+    //We could just use PosCS but IT DOESN'T FUCKING WORK for some reason, instead of [-1, 1] it stays in [0, some big positive] and idk why
+    float4 CurrPosCS : POSITION2;
 };
 
 DS_VS_OUTPUT_PS_INPUT VS(VS_INPUT vin)
@@ -54,6 +56,9 @@ DS_VS_OUTPUT_PS_INPUT VS(VS_INPUT vin)
     
     float4 prevPosW = mul(float4(vin.Pos, 1.0f), cbObject.PrevWorld);
     vout.PrevPosCS = mul(prevPosW, cbMainPass.PrevViewProj);
+    
+    float4 currPosW = mul(float4(vin.Pos, 1.0f), cbObject.World);
+    vout.CurrPosCS = mul(currPosW, cbMainPass.ViewProj);
 
     return vout;
 }
@@ -104,6 +109,7 @@ struct HS_CONTROL_POINT_OUTPUT
     float3 vNormal : NORMAL;
     float3 vTangent : TANGENT;
     float4 vPrevPosCS : POSITION1;
+    float4 vCurrPosCS : POSITION2;
 };
 
 [domain("tri")] // indicates a triangle patch (3 verts)
@@ -122,6 +128,7 @@ HS_CONTROL_POINT_OUTPUT HSMain(InputPatch<DS_VS_OUTPUT_PS_INPUT, 3> inputPatch, 
     Out.vNormal = inputPatch[uCPID].Normal;
     Out.vTangent = inputPatch[uCPID].Tangent;
     Out.vPrevPosCS = inputPatch[uCPID].PrevPosCS;
+    Out.vCurrPosCS = inputPatch[uCPID].CurrPosCS;
     return Out;
 }
 
@@ -156,6 +163,11 @@ DS_VS_OUTPUT_PS_INPUT DSMain(HS_CONSTANT_DATA_OUTPUT input, float3 BarycentricCo
     BarycentricCoordinates.x * TrianglePatch[0].vPrevPosCS +
     BarycentricCoordinates.y * TrianglePatch[1].vPrevPosCS +
     BarycentricCoordinates.z * TrianglePatch[2].vPrevPosCS;
+    
+    Out.CurrPosCS =
+    BarycentricCoordinates.x * TrianglePatch[0].vCurrPosCS +
+    BarycentricCoordinates.y * TrianglePatch[1].vCurrPosCS +
+    BarycentricCoordinates.z * TrianglePatch[2].vCurrPosCS;
 
     // sample the displacement map for the magnitude of displacement
     float fDisplacement = HeightMap.SampleLevel(samAnisotropicWrap, Out.TexC.xy, 0).r;
@@ -211,22 +223,18 @@ GBufferData PS(DS_VS_OUTPUT_PS_INPUT pin)
         WorldNormal = normalize(pin.Normal);
     
     float4 diffuseAlbedo = DiffuseMap.Sample(samAnisotropicWrap, uv);
+    
+    float2 currentNDC = pin.CurrPosCS.xy / pin.CurrPosCS.w;
+    float2 prevNDC = pin.PrevPosCS.xy / pin.PrevPosCS.w;
+    currentNDC = currentNDC * 0.5f + 0.5f;
+    prevNDC = prevNDC * 0.5f + 0.5f;
 
     pout.diffuse = diffuseAlbedo;
     pout.emissive = float4(0.f, 0.f, 0.f, pin.PosCS.z); //xyz is free for now
     pout.normal = float4(WorldNormal, cbMaterial.Metallic); //w is free for now
     pout.materialAlbedo = cbMaterial.DiffuseAlbedo;
     pout.MaterialFresnelRoughness = float4(cbMaterial.FresnelR0, cbMaterial.Roughness);
-    
-    float2 currentNDC = pin.PosCS.xy / pin.PosCS.w;
-    float2 prevNDC = pin.PrevPosCS.xy / pin.PrevPosCS.w;
-    
-    currentNDC = currentNDC * 0.5f + 0.5f;
-    prevNDC = prevNDC * 0.5f + 0.5f;
-    
-    float2 motionVector = prevNDC - currentNDC;
-    
-    pout.MotionVector = prevNDC;
+    pout.MotionVector = prevNDC - currentNDC;
     
     return pout;
 }
