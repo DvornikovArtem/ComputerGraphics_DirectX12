@@ -189,10 +189,10 @@ void StencilApp::OnKeyboardInput(const GameTimer& gt)
         mRenderingSystem->mCamera.Strafe(mCameraMoveSpeed * dt);
 
     if (GetAsyncKeyState('Q') & 0x8000)
-        mRenderingSystem->mCamera.VerticalMove(-mCameraMoveSpeed * dt);
+        mRenderingSystem->mCamera.VerticalMove(-mCameraMoveSpeed * 0.5f * dt);
 
     if (GetAsyncKeyState('E') & 0x8000)
-        mRenderingSystem->mCamera.VerticalMove(mCameraMoveSpeed * dt);
+        mRenderingSystem->mCamera.VerticalMove(mCameraMoveSpeed * 0.5f * dt);
 
     mRenderingSystem->mCamera.UpdateViewMatrix();
 }

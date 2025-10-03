@@ -57,8 +57,7 @@ DS_VS_OUTPUT_PS_INPUT VS(VS_INPUT vin)
     float4 prevPosW = mul(float4(vin.Pos, 1.0f), cbObject.PrevWorld);
     vout.PrevPosCS = mul(prevPosW, cbMainPass.PrevViewProj);
     
-    float4 currPosW = mul(float4(vin.Pos, 1.0f), cbObject.World);
-    vout.CurrPosCS = mul(currPosW, cbMainPass.ViewProj);
+    vout.CurrPosCS = vout.PosCS;
 
     return vout;
 }

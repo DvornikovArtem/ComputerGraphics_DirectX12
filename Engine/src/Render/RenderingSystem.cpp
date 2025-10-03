@@ -385,7 +385,7 @@ void RenderingSystem::Render()
 		mCurrFrameResourceIndex
 	);
 
-	DrawDebugTexture(GetGpuSrv(mGBuffer->Channel0SRVHeapIndex + 7));
+	//DrawDebugTexture(GetGpuSrv(mGBuffer->Channel0SRVHeapIndex + 7));
 
 
 	// Clear
@@ -714,8 +714,8 @@ void RenderingSystem::BuildTerrain()
 	terrainRendererDesc.perlinOffsetX = 0.f;
 	terrainRendererDesc.perlinOffsetZ = 0.f;
 
-	//terrainRenderer = new TerrainRenderer();
-	//terrainRenderer->Initialize(terrainRendererDesc);
+	terrainRenderer = new TerrainRenderer();
+	terrainRenderer->Initialize(terrainRendererDesc);
 
 
 	// Create geometry for a single quadtree tile as a grid with 6 LODs 
