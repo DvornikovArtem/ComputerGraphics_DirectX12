@@ -149,6 +149,7 @@ public:
     void DrawSceneGrid();
     void BuildFSRContext();
     void FSRUpscale();
+    void GenerateReactiveMask();
     static void FSRMessageCallback(uint32_t type, const wchar_t* message);
 
     void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems, std::string PSOName);
@@ -306,12 +307,17 @@ protected:
     std::vector<RenderItem*> mChosenTerrainRitems;
     std::vector<RenderItem*> mVisibleTerrainRitems;
 
+    int SRVHeapHeadIndex = 0;
+
     //FSR sctructures and resources
     ffxContext mFFXContext;
     UINT mRecommendedRenderResolutionX = 0;
     UINT mRecommendedRenderResolutionY = 0;
     FfxApiUpscaleQualityMode mFSRQualityMode = FFX_UPSCALE_QUALITY_MODE_QUALITY;
     Microsoft::WRL::ComPtr<ID3D12Resource> mFSROutput;
+    D3D12_VIEWPORT mDownscaledScreenViewport;
+    D3D12_RECT mDownscaledScissorRect;
+    int mFSROutputSRVHeapIndex;
 };
 
 
