@@ -38,6 +38,8 @@ struct PassConstants
     DirectX::XMFLOAT4X4 PrevViewProj = MathHelper::Identity4x4();
     float Pad2;
     DirectX::XMFLOAT3 CameraDirection = { 0.f, 0.f, 0.f };
+    DirectX::XMFLOAT2 ViewportSize = { 0.0f, 0.0f };
+    DirectX::XMFLOAT2 pad3 = { 0.0f, 0.0f };
 };
 
 struct Vertex

@@ -22,6 +22,8 @@ struct MainPassCB
     float4x4 PrevViewProj;
     float _pad2;
     float3 CameraDirection;
+    float2 ViewportSize;
+    float2 _pad3;
 };
 
 struct ObjectCB

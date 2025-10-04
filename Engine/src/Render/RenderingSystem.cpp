@@ -405,7 +405,7 @@ void RenderingSystem::Render()
 		mCurrFrameResourceIndex
 	);
 
-	//DrawDebugTexture(GetGpuSrv(mFSROutputSRVHeapIndex));
+	//DrawDebugTexture(GetGpuSrv(mGBuffer->Channel0SRVHeapIndex + 5));
 
 
 	// Clear
@@ -3267,6 +3267,7 @@ void RenderingSystem::UpdateMainPassCB(const GameTimer& gt)
 	mMainPassCB.CameraPos = mCamera.GetPosition3f();
 	mMainPassCB.RenderTargetSize = XMFLOAT2((float)mRecommendedRenderResolutionX, (float)mRecommendedRenderResolutionY);
 	mMainPassCB.InvRenderTargetSize = XMFLOAT2(1.0f / mRecommendedRenderResolutionX, 1.0f / mRecommendedRenderResolutionY);
+	mMainPassCB.ViewportSize = XMFLOAT2((float)mClientWidth, (float)mClientHeight);
 	mMainPassCB.NearZ = mCamera.GetNearZ();
 	mMainPassCB.FarZ = mCamera.GetFarZ();
 	mMainPassCB.TotalTime = gt.TotalTime();
