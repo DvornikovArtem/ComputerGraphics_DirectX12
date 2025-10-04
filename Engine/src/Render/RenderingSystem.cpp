@@ -145,16 +145,14 @@ void RenderingSystem::FinishInitialize()
 		k++;
 	}
 
-	CD3DX12_CPU_DESCRIPTOR_HANDLE hDescriptor(mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
-	hDescriptor.Offset(mFSROutputSRVHeapIndex, mCbvSrvDescriptorSize);
-
 	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
 	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 	srvDesc.Format = mBackBufferFormat;
 	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
 	srvDesc.Texture2D.MostDetailedMip = 0;
 	srvDesc.Texture2D.MipLevels = 1;
-	md3dDevice->CreateShaderResourceView(mFSROutput.Get(), &srvDesc, hDescriptor);
+	md3dDevice->CreateShaderResourceView(mFSROutput.Get(), &srvDesc, 
+		CD3DX12_CPU_DESCRIPTOR_HANDLE(mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), mFSROutputSRVHeapIndex, mCbvSrvDescriptorSize));
 
 	BuildFrameResources();
 
@@ -276,6 +274,9 @@ void RenderingSystem::OnResize() {
 
 	ffxQuery(&mFFXContext, &queryDesc.header);
 
+	ffxDestroyContext(&mFFXContext, nullptr);
+	BuildFSRContext();
+
 	//Resize FSROutput && MotionVector textures
 	D3D12_CLEAR_VALUE clearValue = {};
 	clearValue.Format = mBackBufferFormat;
@@ -308,16 +309,14 @@ void RenderingSystem::OnResize() {
 			mGBuffer->m_SRVDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
 			D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
-		CD3DX12_CPU_DESCRIPTOR_HANDLE hDescriptor(mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
-		hDescriptor.Offset(mFSROutputSRVHeapIndex, mCbvSrvDescriptorSize);
-
 		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
 		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 		srvDesc.Format = mBackBufferFormat;
 		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
 		srvDesc.Texture2D.MostDetailedMip = 0;
 		srvDesc.Texture2D.MipLevels = 1;
-		md3dDevice->CreateShaderResourceView(mFSROutput.Get(), &srvDesc, hDescriptor);
+		md3dDevice->CreateShaderResourceView(mFSROutput.Get(), &srvDesc,
+			CD3DX12_CPU_DESCRIPTOR_HANDLE(mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), mFSROutputSRVHeapIndex, mCbvSrvDescriptorSize));
 	}
 
 	for (ParticleSystem* particleSystem : mAllParticleSystems)
@@ -946,11 +945,6 @@ void RenderingSystem::BuildFSRContext()
 	{
 		std::string errorMsg = "ERROR: FSR3 CONTEXT NOT CREATED\n";
 		OutputDebugStringA(errorMsg.c_str());
-	}
-	else
-	{
-		std::string successMsg = "SUCCESS: FSR3 CONTEXT CREATED!\n";
-		OutputDebugStringA(successMsg.c_str());
 	}
 }
 
