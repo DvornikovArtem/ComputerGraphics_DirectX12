@@ -386,8 +386,6 @@ void RenderingSystem::Render()
 
 	FSRUpscale();
 	//DrawSceneGrid();
-
-
 	//
 	// Post-Processing
 	//
@@ -950,25 +948,6 @@ void RenderingSystem::BuildFSRContext()
 
 void RenderingSystem::FSRUpscale()
 {
-	CD3DX12_RESOURCE_BARRIER barriers1[4];
-	barriers1[0] = CD3DX12_RESOURCE_BARRIER::Transition(
-		mFSROutput.Get(),
-		D3D12_RESOURCE_STATE_COMMON,
-		D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-	barriers1[1] = CD3DX12_RESOURCE_BARRIER::Transition(
-		mGBuffer->AccumulationBuf.Get(),
-		D3D12_RESOURCE_STATE_RENDER_TARGET,
-		D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-	barriers1[2] = CD3DX12_RESOURCE_BARRIER::Transition(
-		mDepthStencilBuffer.Get(),
-		D3D12_RESOURCE_STATE_DEPTH_WRITE,
-		D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-	barriers1[3] = CD3DX12_RESOURCE_BARRIER::Transition(
-		mGBuffer->VelocityBufferTex.Get(),
-		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
-		D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-	mCommandList->ResourceBarrier(4, barriers1);
-
 	ffxDispatchDescUpscale dispatchDesc;
 	
 	dispatchDesc.header.type = FFX_API_DISPATCH_DESC_TYPE_UPSCALE;
@@ -978,7 +957,7 @@ void RenderingSystem::FSRUpscale()
 	dispatchDesc.motionVectors = ffxApiGetResourceDX12(mGBuffer->VelocityBufferTex.Get(), FFX_API_RESOURCE_STATE_PIXEL_COMPUTE_READ);
 
 	dispatchDesc.renderSize = { (UINT)mRecommendedRenderResolutionX, (UINT)mRecommendedRenderResolutionY };    // Resolution before upscaling
-	dispatchDesc.motionVectorScale = { 1.f, 1.f };
+	dispatchDesc.motionVectorScale = { (float)mRecommendedRenderResolutionX, (float)mRecommendedRenderResolutionY };
 	dispatchDesc.upscaleSize = { (UINT)mClientWidth, (UINT)mClientHeight };
 	dispatchDesc.cameraNear = mCamera.GetNearZ();
 	dispatchDesc.cameraFar = mCamera.GetFarZ();
@@ -1000,6 +979,7 @@ void RenderingSystem::FSRUpscale()
 	dispatchDesc.exposure = ffxApiGetResourceDX12(nullptr, FFX_API_RESOURCE_STATE_PIXEL_COMPUTE_READ);
 	dispatchDesc.reactive = ffxApiGetResourceDX12(nullptr, FFX_API_RESOURCE_STATE_PIXEL_COMPUTE_READ);
 	dispatchDesc.transparencyAndComposition = ffxApiGetResourceDX12(nullptr, FFX_API_RESOURCE_STATE_PIXEL_COMPUTE_READ);
+	dispatchDesc.flags = FFX_UPSCALE_FLAG_DRAW_DEBUG_VIEW;
 
 
 	ffxReturnCode_t dispatchError = ffxDispatch(&mFFXContext, &dispatchDesc.header);
@@ -1009,25 +989,6 @@ void RenderingSystem::FSRUpscale()
 		std::string errorMsg = "FSR DISPATCH ERROR: " + std::to_string(dispatchError) + " \n";
 		OutputDebugStringA(errorMsg.c_str());
 	}
-
-	CD3DX12_RESOURCE_BARRIER barriers2[4];
-	barriers2[0] = CD3DX12_RESOURCE_BARRIER::Transition(
-		mFSROutput.Get(),
-		D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-		D3D12_RESOURCE_STATE_COMMON);
-	barriers2[1] = CD3DX12_RESOURCE_BARRIER::Transition(
-		mGBuffer->AccumulationBuf.Get(),
-		D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
-		D3D12_RESOURCE_STATE_RENDER_TARGET);
-	barriers2[2] = CD3DX12_RESOURCE_BARRIER::Transition(
-		mDepthStencilBuffer.Get(),
-		D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
-		D3D12_RESOURCE_STATE_DEPTH_WRITE);
-	barriers2[3] = CD3DX12_RESOURCE_BARRIER::Transition(
-		mGBuffer->VelocityBufferTex.Get(),
-		D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
-		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-	mCommandList->ResourceBarrier(4, barriers2);
 }
 
 void RenderingSystem::GenerateReactiveMask()

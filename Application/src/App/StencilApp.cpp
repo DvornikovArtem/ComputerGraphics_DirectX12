@@ -416,7 +416,7 @@ void StencilApp::MakeDrawableObjects()
     Patrick1->GeometryName = MeshParsingResults["PatrickStar"][0].GeometryName;
     Patrick1->MaterialName = "PatrickMat";
     Patrick1->renderLayer = RenderLayer::Opaque;
-    Patrick1->WorldLocation = XMFLOAT3(-4.0f, 2.0f, 0.0f);
+    Patrick1->WorldLocation = XMFLOAT3(-100.0f, 2.0f, 0.0f);
 
     mAllDrawableObjects[Patrick1->Name] = Patrick1;
 
