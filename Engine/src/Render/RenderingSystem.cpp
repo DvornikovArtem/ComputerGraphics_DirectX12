@@ -81,7 +81,7 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 
 	CreateCommandObjects();
 	CreateSwapChain();
-	BuildFSRContext();
+	if(mFSREnabled) BuildFSRContext();
 
 	mGBuffer = std::make_unique<Gbuffer>(mClientWidth, mClientHeight, md3dDevice);
 
@@ -145,14 +145,17 @@ void RenderingSystem::FinishInitialize()
 		k++;
 	}
 
-	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-	srvDesc.Format = mBackBufferFormat;
-	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-	srvDesc.Texture2D.MostDetailedMip = 0;
-	srvDesc.Texture2D.MipLevels = 1;
-	md3dDevice->CreateShaderResourceView(mFSROutput.Get(), &srvDesc, 
-		CD3DX12_CPU_DESCRIPTOR_HANDLE(mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), mFSROutputSRVHeapIndex, mCbvSrvDescriptorSize));
+	if (mFSREnabled)
+	{
+		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+		srvDesc.Format = mBackBufferFormat;
+		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+		srvDesc.Texture2D.MostDetailedMip = 0;
+		srvDesc.Texture2D.MipLevels = 1;
+		md3dDevice->CreateShaderResourceView(mFSROutput.Get(), &srvDesc,
+			CD3DX12_CPU_DESCRIPTOR_HANDLE(mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), mFSROutputSRVHeapIndex, mCbvSrvDescriptorSize));
+	}
 
 	BuildFrameResources();
 
@@ -264,44 +267,47 @@ void RenderingSystem::OnResize() {
 	mCamera.SetLens(0.25f * MathHelper::Pi, AspectRatio(), 1.0f, 100000.0f);
 	
 	//ASKING FFX_API FOR RENDER RESOLUTION
-	ffxQueryDescUpscaleGetRenderResolutionFromQualityMode queryDesc = {};
-	queryDesc.header.type = FFX_API_QUERY_DESC_TYPE_UPSCALE_GETRENDERRESOLUTIONFROMQUALITYMODE;
-	queryDesc.displayHeight = mClientHeight;
-	queryDesc.displayWidth = mClientWidth;
-	queryDesc.qualityMode = mFSRQualityMode;
-	queryDesc.pOutRenderHeight = &mRecommendedRenderResolutionY;
-	queryDesc.pOutRenderWidth = &mRecommendedRenderResolutionX;
+	if (mFSREnabled)
+	{
+		ffxQueryDescUpscaleGetRenderResolutionFromQualityMode queryDesc = {};
+		queryDesc.header.type = FFX_API_QUERY_DESC_TYPE_UPSCALE_GETRENDERRESOLUTIONFROMQUALITYMODE;
+		queryDesc.displayHeight = mClientHeight;
+		queryDesc.displayWidth = mClientWidth;
+		queryDesc.qualityMode = mFSRQualityMode;
+		queryDesc.pOutRenderHeight = &mRecommendedRenderResolutionY;
+		queryDesc.pOutRenderWidth = &mRecommendedRenderResolutionX;
 
-	ffxQuery(&mFFXContext, &queryDesc.header);
+		ffxQuery(&mFFXContext, &queryDesc.header);
 
-	ffxDestroyContext(&mFFXContext, nullptr);
-	BuildFSRContext();
+		ffxDestroyContext(&mFFXContext, nullptr);
+		BuildFSRContext();
 
-	//Resize FSROutput && MotionVector textures
-	D3D12_CLEAR_VALUE clearValue = {};
-	clearValue.Format = mBackBufferFormat;
-	clearValue.DepthStencil.Depth = 1.0f;
-	clearValue.DepthStencil.Stencil = 0;
+		//Resize FSROutput && MotionVector textures
+		D3D12_CLEAR_VALUE clearValue = {};
+		clearValue.Format = mBackBufferFormat;
+		clearValue.DepthStencil.Depth = 1.0f;
+		clearValue.DepthStencil.Stencil = 0;
 
-	md3dDevice->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
-		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Tex2D(mBackBufferFormat, mClientWidth, mClientHeight, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
-		D3D12_RESOURCE_STATE_COMMON,
-		&clearValue,
-		IID_PPV_ARGS(&mFSROutput));
+		md3dDevice->CreateCommittedResource(
+			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+			D3D12_HEAP_FLAG_NONE,
+			&CD3DX12_RESOURCE_DESC::Tex2D(mBackBufferFormat, mClientWidth, mClientHeight, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
+			D3D12_RESOURCE_STATE_COMMON,
+			&clearValue,
+			IID_PPV_ARGS(&mFSROutput));
 
-	mDownscaledScreenViewport.TopLeftX = 0;
-	mDownscaledScreenViewport.TopLeftY = 0;
-	mDownscaledScreenViewport.Width = static_cast<float>(mRecommendedRenderResolutionX);
-	mDownscaledScreenViewport.Height = static_cast<float>(mRecommendedRenderResolutionY);
-	mDownscaledScreenViewport.MinDepth = 0.0f;
-	mDownscaledScreenViewport.MaxDepth = 1.0f;
+		mDownscaledScreenViewport.TopLeftX = 0;
+		mDownscaledScreenViewport.TopLeftY = 0;
+		mDownscaledScreenViewport.Width = static_cast<float>(mRecommendedRenderResolutionX);
+		mDownscaledScreenViewport.Height = static_cast<float>(mRecommendedRenderResolutionY);
+		mDownscaledScreenViewport.MinDepth = 0.0f;
+		mDownscaledScreenViewport.MaxDepth = 1.0f;
 
-	mDownscaledScissorRect = { 0, 0, (long)mRecommendedRenderResolutionX, (long)mRecommendedRenderResolutionY };
-
+		mDownscaledScissorRect = { 0, 0, (long)mRecommendedRenderResolutionX, (long)mRecommendedRenderResolutionY };
+	}
 	//mGbuffer->Resize(mRecommendedRenderResolutionX, mRecommendedRenderResolutionY, md3dDevice.Get());
-	mGBuffer->Resize(mRecommendedRenderResolutionX, mRecommendedRenderResolutionY, md3dDevice.Get());
+	mGBuffer->Resize(mFSREnabled ? mRecommendedRenderResolutionX : mClientWidth, 
+		mFSREnabled ? mRecommendedRenderResolutionY : mClientHeight, md3dDevice.Get());
 
 	if (mSrvDescriptorHeap)
 	{
@@ -309,14 +315,17 @@ void RenderingSystem::OnResize() {
 			mGBuffer->m_SRVDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
 			D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
-		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-		srvDesc.Format = mBackBufferFormat;
-		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-		srvDesc.Texture2D.MostDetailedMip = 0;
-		srvDesc.Texture2D.MipLevels = 1;
-		md3dDevice->CreateShaderResourceView(mFSROutput.Get(), &srvDesc,
-			CD3DX12_CPU_DESCRIPTOR_HANDLE(mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), mFSROutputSRVHeapIndex, mCbvSrvDescriptorSize));
+		if (mFSREnabled)
+		{
+			D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+			srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+			srvDesc.Format = mBackBufferFormat;
+			srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+			srvDesc.Texture2D.MostDetailedMip = 0;
+			srvDesc.Texture2D.MipLevels = 1;
+			md3dDevice->CreateShaderResourceView(mFSROutput.Get(), &srvDesc,
+				CD3DX12_CPU_DESCRIPTOR_HANDLE(mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), mFSROutputSRVHeapIndex, mCbvSrvDescriptorSize));
+		}
 	}
 
 	for (ParticleSystem* particleSystem : mAllParticleSystems)
@@ -382,9 +391,9 @@ void RenderingSystem::Render()
 
 	DrawParticleSystems();
 
-	//GenerateReactiveMask();
 
-	FSRUpscale();
+	if (mFSREnabled) FSRUpscale();
+
 	//DrawSceneGrid();
 	//
 	// Post-Processing
@@ -935,8 +944,27 @@ void RenderingSystem::BuildFSRContext()
 	upscaleDesc.maxRenderSize = { static_cast<uint32_t>(mClientWidth), static_cast<uint32_t>(mClientHeight) };
 	upscaleDesc.maxUpscaleSize = { static_cast<uint32_t>(mClientWidth), static_cast<uint32_t>(mClientHeight) };
 	upscaleDesc.flags = FFX_UPSCALE_ENABLE_DEBUG_CHECKING;
-	upscaleDesc.fpMessage = &RenderingSystem::FSRMessageCallback;
+	upscaleDesc.fpMessage = [](uint32_t type, const wchar_t* message)
+		{
+			std::wstring wideMessage(message);
+			std::string narrowMessage(wideMessage.begin(), wideMessage.end());
 
+			std::string prefix;
+			switch (type) {
+			case FFX_API_MESSAGE_TYPE_ERROR:
+				prefix = "[FFX ERROR] ";
+				break;
+			case FFX_API_MESSAGE_TYPE_WARNING:
+				prefix = "[FFX WARNING] ";
+				break;
+			default:
+				prefix = "[FFX DEBUG] ";
+				break;
+			}
+
+			std::string fullMessage = prefix + narrowMessage + "\n";
+			OutputDebugStringA(fullMessage.c_str());
+		};
 
 	ffxReturnCode_t errorCode = ffxCreateContext(&mFFXContext, &upscaleDesc.header, nullptr);
 	if (errorCode != FFX_API_RETURN_OK)
@@ -979,7 +1007,7 @@ void RenderingSystem::FSRUpscale()
 	dispatchDesc.exposure = ffxApiGetResourceDX12(nullptr, FFX_API_RESOURCE_STATE_PIXEL_COMPUTE_READ);
 	dispatchDesc.reactive = ffxApiGetResourceDX12(nullptr, FFX_API_RESOURCE_STATE_PIXEL_COMPUTE_READ);
 	dispatchDesc.transparencyAndComposition = ffxApiGetResourceDX12(nullptr, FFX_API_RESOURCE_STATE_PIXEL_COMPUTE_READ);
-	dispatchDesc.flags = FFX_UPSCALE_FLAG_DRAW_DEBUG_VIEW;
+	//dispatchDesc.flags = FFX_UPSCALE_FLAG_DRAW_DEBUG_VIEW;
 
 
 	ffxReturnCode_t dispatchError = ffxDispatch(&mFFXContext, &dispatchDesc.header);
@@ -989,47 +1017,6 @@ void RenderingSystem::FSRUpscale()
 		std::string errorMsg = "FSR DISPATCH ERROR: " + std::to_string(dispatchError) + " \n";
 		OutputDebugStringA(errorMsg.c_str());
 	}
-}
-
-void RenderingSystem::GenerateReactiveMask()
-{
-	ffxDispatchDescUpscaleGenerateReactiveMask dispatchDesc;
-	dispatchDesc.header.type = FFX_API_DISPATCH_DESC_TYPE_UPSCALE_GENERATEREACTIVEMASK;
-	dispatchDesc.commandList = mCommandList.Get();
-	dispatchDesc.renderSize = { (UINT)mClientWidth, (UINT)mClientHeight };
-	dispatchDesc.colorOpaqueOnly = ffxApiGetResourceDX12(mGBuffer->AccumulationBuf.Get(), FFX_API_RESOURCE_STATE_PIXEL_COMPUTE_READ);
-	dispatchDesc.colorPreUpscale = ffxApiGetResourceDX12(mGBuffer->AccumulationBuf.Get(), FFX_API_RESOURCE_STATE_PIXEL_COMPUTE_READ);
-
-	dispatchDesc.outReactive = ffxApiGetResourceDX12(mFSROutput.Get(), FFX_API_RESOURCE_STATE_PIXEL_COMPUTE_READ);
-	ffxReturnCode_t dispatchError = ffxDispatch(&mFFXContext, &dispatchDesc.header);
-
-	if (dispatchError != FFX_API_RETURN_OK)
-	{
-		std::string errorMsg = "FSR3 REACTIVEGEN DISPATCH ERROR: " + std::to_string(dispatchError) + " \n";
-		OutputDebugStringA(errorMsg.c_str());
-	}
-}
-
-void RenderingSystem::FSRMessageCallback(uint32_t type, const wchar_t* message)
-{
-	std::wstring wideMessage(message);
-	std::string narrowMessage(wideMessage.begin(), wideMessage.end());
-
-	std::string prefix;
-	switch (type) {
-	case FFX_API_MESSAGE_TYPE_ERROR:
-		prefix = "[FFX ERROR] ";
-		break;
-	case FFX_API_MESSAGE_TYPE_WARNING:
-		prefix = "[FFX WARNING] ";
-		break;
-	default:
-		prefix = "[FFX DEBUG] ";
-		break;
-	}
-
-	std::string fullMessage = prefix + narrowMessage + "\n";
-	OutputDebugStringA(fullMessage.c_str());
 }
 
 void RenderingSystem::LogAdapterOutputs(IDXGIAdapter* adapter)
@@ -2194,8 +2181,8 @@ void RenderingSystem::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const 
 
 void RenderingSystem::GBufferGeometryPass()
 {
-	mCommandList->RSSetViewports(1, &mDownscaledScreenViewport);
-	mCommandList->RSSetScissorRects(1, &mDownscaledScissorRect);
+	mCommandList->RSSetViewports(1, mFSREnabled ? &mDownscaledScreenViewport : &mScreenViewport);
+	mCommandList->RSSetScissorRects(1, mFSREnabled ? &mDownscaledScissorRect : &mScissorRect);
 	mCommandList->SetGraphicsRootSignature(RootSignatures["Default"].Get());
 
 	D3D12_CPU_DESCRIPTOR_HANDLE rtvs[6] = {
@@ -2453,7 +2440,7 @@ void RenderingSystem::DrawShadowMaps()
 
 void RenderingSystem::PostProcessingPass()
 {
-	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mFSROutput.Get(),
+	if (mFSREnabled) mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mFSROutput.Get(),
 		D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
 	mCommandList->RSSetViewports(1, &mScreenViewport);
 	mCommandList->RSSetScissorRects(1, &mScissorRect);
@@ -2470,13 +2457,13 @@ void RenderingSystem::PostProcessingPass()
 
 	mCommandList->SetGraphicsRootConstantBufferView(0, passCB->GetGPUVirtualAddress());
 
-	mCommandList->SetGraphicsRootDescriptorTable(1, GetGpuSrv(mFSROutputSRVHeapIndex));
+	mCommandList->SetGraphicsRootDescriptorTable(1, GetGpuSrv(mFSREnabled ? mFSROutputSRVHeapIndex : mGBuffer->Channel0SRVHeapIndex + 5));
 	mCommandList->SetGraphicsRootDescriptorTable(2, GetGpuSrv(mGBuffer->Channel0SRVHeapIndex + 1));
 	mCommandList->SetGraphicsRootDescriptorTable(3, GetGpuSrv(mGBuffer->Channel0SRVHeapIndex + 2));
 
 
 	mCommandList->DrawInstanced(6, 1, 0, 0);
-	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mFSROutput.Get(),
+	if (mFSREnabled) mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mFSROutput.Get(),
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON));
 }
 
@@ -3226,8 +3213,8 @@ void RenderingSystem::UpdateMainPassCB(const GameTimer& gt)
 	XMStoreFloat4x4(&mMainPassCB.PrevViewProj, XMMatrixTranspose(prevViewProj));
 	mMainPassCB.PrevCameraPos = prevCameraPos;
 	mMainPassCB.CameraPos = mCamera.GetPosition3f();
-	mMainPassCB.RenderTargetSize = XMFLOAT2((float)mRecommendedRenderResolutionX, (float)mRecommendedRenderResolutionY);
-	mMainPassCB.InvRenderTargetSize = XMFLOAT2(1.0f / mRecommendedRenderResolutionX, 1.0f / mRecommendedRenderResolutionY);
+	mMainPassCB.RenderTargetSize = mFSREnabled ? XMFLOAT2((float)mRecommendedRenderResolutionX, (float)mRecommendedRenderResolutionY) : XMFLOAT2((float)mClientWidth, (float)mClientHeight);
+	mMainPassCB.InvRenderTargetSize = XMFLOAT2(1.0f / (mFSREnabled ? mRecommendedRenderResolutionX : mClientWidth), 1.0f / (mFSREnabled ? mRecommendedRenderResolutionY : mClientHeight));
 	mMainPassCB.ViewportSize = XMFLOAT2((float)mClientWidth, (float)mClientHeight);
 	mMainPassCB.NearZ = mCamera.GetNearZ();
 	mMainPassCB.FarZ = mCamera.GetFarZ();

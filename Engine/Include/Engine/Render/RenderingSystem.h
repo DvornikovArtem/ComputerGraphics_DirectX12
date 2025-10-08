@@ -101,7 +101,7 @@ public:
         for (auto& i : mAllTerrainRitems)
             delete i;
 
-        if(mFFXContext) ffxDestroyContext(&mFFXContext, nullptr);
+        if(mFFXContext && mFSREnabled) ffxDestroyContext(&mFFXContext, nullptr);
     }
 
 
@@ -149,8 +149,6 @@ public:
     void DrawSceneGrid();
     void BuildFSRContext();
     void FSRUpscale();
-    void GenerateReactiveMask();
-    static void FSRMessageCallback(uint32_t type, const wchar_t* message);
 
     void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems, std::string PSOName);
 
@@ -318,6 +316,7 @@ protected:
     D3D12_VIEWPORT mDownscaledScreenViewport;
     D3D12_RECT mDownscaledScissorRect;
     int mFSROutputSRVHeapIndex;
+    bool mFSREnabled = false;
 };
 
 
