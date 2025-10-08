@@ -231,7 +231,7 @@ protected:
     Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> mDsvHeap;
 
     D3D12_VIEWPORT mScreenViewport;
-    D3D12_RECT mScissorRect;
+    D3D12_RECT mScreenScissorRect;
 
     UINT mRtvDescriptorSize = 0;
     UINT mDsvDescriptorSize = 0;

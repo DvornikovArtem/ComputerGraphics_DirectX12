@@ -262,7 +262,7 @@ void RenderingSystem::OnResize() {
 	mScreenViewport.MinDepth = 0.0f;
 	mScreenViewport.MaxDepth = 1.0f;
 
-	mScissorRect = { 0, 0, mClientWidth, mClientHeight };
+	mScreenScissorRect = { 0, 0, mClientWidth, mClientHeight };
 
 	mCamera.SetLens(0.25f * MathHelper::Pi, AspectRatio(), 1.0f, 100000.0f);
 	
@@ -343,7 +343,7 @@ void RenderingSystem::Render()
 	ThrowIfFailed(mCommandList->Reset(cmdListAlloc.Get(), nullptr));
 
 	mCommandList->RSSetViewports(1, &mScreenViewport);
-	mCommandList->RSSetScissorRects(1, &mScissorRect);
+	mCommandList->RSSetScissorRects(1, &mScreenScissorRect);
 
 	// Indicate a state transition on the resource usage.
 	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mSwapChainBuffer[mCurrBackBuffer].Get(),
@@ -407,7 +407,7 @@ void RenderingSystem::Render()
 		mCommandQueue,
 		mCommandList,
 		&mScreenViewport,
-		&mScissorRect,
+		&mScreenScissorRect,
 		this,
 		mCurrFrameResourceIndex
 	);
@@ -2182,7 +2182,7 @@ void RenderingSystem::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const 
 void RenderingSystem::GBufferGeometryPass()
 {
 	mCommandList->RSSetViewports(1, mFSREnabled ? &mDownscaledScreenViewport : &mScreenViewport);
-	mCommandList->RSSetScissorRects(1, mFSREnabled ? &mDownscaledScissorRect : &mScissorRect);
+	mCommandList->RSSetScissorRects(1, mFSREnabled ? &mDownscaledScissorRect : &mScreenScissorRect);
 	mCommandList->SetGraphicsRootSignature(RootSignatures["Default"].Get());
 
 	D3D12_CPU_DESCRIPTOR_HANDLE rtvs[6] = {
@@ -2440,10 +2440,13 @@ void RenderingSystem::DrawShadowMaps()
 
 void RenderingSystem::PostProcessingPass()
 {
-	if (mFSREnabled) mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mFSROutput.Get(),
-		D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
-	mCommandList->RSSetViewports(1, &mScreenViewport);
-	mCommandList->RSSetScissorRects(1, &mScissorRect);
+	if (mFSREnabled)
+	{
+		mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mFSROutput.Get(),
+			D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
+		mCommandList->RSSetViewports(1, &mScreenViewport);
+		mCommandList->RSSetScissorRects(1, &mScreenScissorRect);
+	}
 	mCommandList->SetGraphicsRootSignature(RootSignatures["PostProcessing"].Get());
 	mCommandList->OMSetRenderTargets(1, &CurrentBackBufferView(), false, &DepthStencilView());
 	mCommandList->SetPipelineState(GlobalPSOs["PostProcessing"].Get());
