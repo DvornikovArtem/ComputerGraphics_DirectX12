@@ -23,7 +23,8 @@ struct MainPassCB
     float _pad2;
     float3 CameraDirection;
     float2 ViewportSize;
-    float2 _pad3;
+    float postEffectsExposure;
+    float _pad;
 };
 
 struct ObjectCB

@@ -354,7 +354,7 @@ namespace gfw
 	}
 
 
-	void DebugRenderSysImpl::Draw(float, Microsoft::WRL::ComPtr<ID3D12CommandQueue> commandQueue,
+	void DebugRenderSysImpl::Draw(Microsoft::WRL::ComPtr<ID3D12CommandQueue> commandQueue,
 		Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> commandList,
 		const D3D12_VIEWPORT* m_Viewport,
 		const D3D12_RECT* m_ScissorRect,

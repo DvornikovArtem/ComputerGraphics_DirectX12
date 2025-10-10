@@ -158,7 +158,7 @@
       <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;SOLUTION_DIR=LR"($(SolutionDir))";PROJECT_DIR=LR"($(ProjectDir))";SHADERS_APPLICATION_DIR=LR"($(ProjectDir)Shaders)";SHADERS_ENGINE_DIR=LR"($(ProjectDir)..\Engine\Shaders)";%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>Default</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>$(SolutionDir)..\Engine\include;$(SolutionDir)..\Engine\extern\assimp\include;$(SolutionDir)src;$(SolutionDir)..\Engine\extern\DirectXTex\include;$(SolutionDir)..\Engine\Extern\FideltyFX\sdk\include;$(SolutionDir)..\Engine\Extern\FideltyFX\ffx-api\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)..\Engine\include;$(SolutionDir)..\Engine\extern\assimp\include;$(SolutionDir)src;$(SolutionDir)..\Engine\extern\DirectXTex\include;$(SolutionDir)..\Engine\Extern\FideltyFX\sdk\include;$(SolutionDir)..\Engine\Extern\FideltyFX\ffx-api\include;$(SolutionDir)..\Engine\extern\imgui;$(SolutionDir)..\Engine\extern\imgui\backends;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>

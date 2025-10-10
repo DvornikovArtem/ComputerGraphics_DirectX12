@@ -13,6 +13,7 @@
 #include <Engine/Core/GameTimer.h>
 #include <Engine/Render/RenderingSystem.h>
 #include <Engine/Render/FX/ParticleSystem.h>
+#include <Engine/UI/ImGui_Layer.h>
 
 // Link necessary d3d12 libraries.
 #pragma comment(lib,"d3dcompiler.lib")
@@ -82,8 +83,8 @@ protected:
 	D3D_DRIVER_TYPE md3dDriverType = D3D_DRIVER_TYPE_HARDWARE;
     DXGI_FORMAT mBackBufferFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
     DXGI_FORMAT mDepthStencilFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
-	int mClientWidth = 800;
-	int mClientHeight = 600;
+	int mClientWidth = 1000;
+	int mClientHeight = 800;
 
     //std::unique_ptr<RenderingSystem> mRenderingSystem;
 	std::unique_ptr<RenderingSystem> mRenderingSystem = std::make_unique<RenderingSystem>();
@@ -94,4 +95,6 @@ protected:
 	std::vector<LightObject*> LightObjectUpdateList;
 
 	std::unordered_map<std::string, ParticleSystemDescriptor> mParticleSystemDescriptors;
+
+	std::unique_ptr<Engine::UI::ImGuiLayer> mImGuiLayer = nullptr;
 };

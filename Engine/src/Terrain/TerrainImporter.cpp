@@ -478,7 +478,7 @@ bool TerrainImporter::BuildTilesFromSource(
         //        imgH.pixels[(size_t)y * imgH.width + (size_t)x] = hv;
         //    }
         //}
-        Noise::PerlinParams pp;
+        Engine::Helpers::NoiseGenerator::PerlinParams pp;
         pp.seed = outMeta.perlinSeed;
         pp.frequency = outMeta.perlinFrequency;
         pp.octaves = outMeta.perlinOctaves;
@@ -489,7 +489,7 @@ bool TerrainImporter::BuildTilesFromSource(
 
         const int W = imgD.width;
         const int H = imgD.height;
-        auto data = Noise::GeneratePerlinHeightMapR16(W, H, pp);
+        auto data = Engine::Helpers::NoiseGenerator::GeneratePerlinHeightMapR16(W, H, pp);
 
         imgH.width = W; imgH.height = H; imgH.channels = 1;
         imgH.pixels = std::move(data);

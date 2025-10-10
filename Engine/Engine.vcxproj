@@ -340,6 +340,24 @@
     <ClInclude Include="Extern\FideltyFX\sdk\include\FidelityFX\host\ffx_types.h" />
     <ClInclude Include="Extern\FideltyFX\sdk\include\FidelityFX\host\ffx_util.h" />
     <ClInclude Include="Extern\FideltyFX\sdk\include\FidelityFX\host\ffx_vrs.h" />
+    <ClInclude Include="Extern\imgui\backends\imgui_impl_dx12.h" />
+    <ClInclude Include="Extern\imgui\backends\imgui_impl_win32.h" />
+    <ClInclude Include="Extern\imgui\imconfig.h" />
+    <ClInclude Include="Extern\imgui\imgui.h" />
+    <ClInclude Include="Extern\imgui\imgui_internal.h" />
+    <ClInclude Include="Extern\imgui\imstb_rectpack.h" />
+    <ClInclude Include="Extern\imgui\imstb_textedit.h" />
+    <ClInclude Include="Extern\imgui\imstb_truetype.h" />
+    <ClInclude Include="Extern\imgui\misc\cpp\imgui_stdlib.h" />
+    <ClInclude Include="Extern\imgui\misc\single_file\imgui_single_file.h" />
+    <ClInclude Include="Extern\minhook\include\MinHook.h" />
+    <ClInclude Include="Extern\minhook\src\buffer.h" />
+    <ClInclude Include="Extern\minhook\src\hde\hde32.h" />
+    <ClInclude Include="Extern\minhook\src\hde\hde64.h" />
+    <ClInclude Include="Extern\minhook\src\hde\pstdint.h" />
+    <ClInclude Include="Extern\minhook\src\hde\table32.h" />
+    <ClInclude Include="Extern\minhook\src\hde\table64.h" />
+    <ClInclude Include="Extern\minhook\src\trampoline.h" />
     <ClInclude Include="Include\Engine\Core\d3d12.h" />
     <ClInclude Include="Include\Engine\Core\d3dUtil.h" />
     <ClInclude Include="Include\Engine\Core\DxException.h" />
@@ -376,6 +394,9 @@
     <ClInclude Include="Include\Engine\Terrain\TerrainRenderer.h" />
     <ClInclude Include="Include\Engine\Terrain\TerrainTile.h" />
     <ClInclude Include="Include\Engine\Terrain\TerrainImporter.h" />
+    <ClInclude Include="Include\Engine\UI\DebugOutputHook.h" />
+    <ClInclude Include="Include\Engine\UI\ImGui_Layer.h" />
+    <ClInclude Include="Include\Engine\UI\UIPanel.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Extern\DirectXTex\include\DirectXTex\DirectXTex.inl" />
@@ -391,6 +412,20 @@
     <None Include="src\RHI\DX12\GenerateMips_main.inc" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="Extern\imgui\backends\imgui_impl_dx12.cpp" />
+    <ClCompile Include="Extern\imgui\backends\imgui_impl_win32.cpp" />
+    <ClCompile Include="Extern\imgui\imgui.cpp" />
+    <ClCompile Include="Extern\imgui\imgui_demo.cpp" />
+    <ClCompile Include="Extern\imgui\imgui_draw.cpp" />
+    <ClCompile Include="Extern\imgui\imgui_tables.cpp" />
+    <ClCompile Include="Extern\imgui\imgui_widgets.cpp" />
+    <ClCompile Include="Extern\imgui\misc\cpp\imgui_stdlib.cpp" />
+    <ClCompile Include="Extern\imgui\misc\fonts\binary_to_compressed_c.cpp" />
+    <ClCompile Include="Extern\minhook\src\buffer.c" />
+    <ClCompile Include="Extern\minhook\src\hde\hde32.c" />
+    <ClCompile Include="Extern\minhook\src\hde\hde64.c" />
+    <ClCompile Include="Extern\minhook\src\hook.c" />
+    <ClCompile Include="Extern\minhook\src\trampoline.c" />
     <ClCompile Include="src\Core\d3dUtil.cpp" />
     <ClCompile Include="src\Core\GameTimer.cpp" />
     <ClCompile Include="src\Debug\DebugRenderSysImpl.cpp" />
@@ -416,6 +451,8 @@
     <ClCompile Include="src\Terrain\TerrainQuadTree.cpp" />
     <ClCompile Include="src\Terrain\TerrainRenderer.cpp" />
     <ClCompile Include="src\Terrain\TerrainTile.cpp" />
+    <ClCompile Include="src\UI\DebugOutputHook.cpp" />
+    <ClCompile Include="src\UI\ImGui_Layer.cpp" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>
@@ -515,7 +552,7 @@
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>$(ProjectDir)Extern\assimp\include;$(ProjectDir)Include;$(ProjectDir)Extern\DirectXTex\include;$(ProjectDir)Extern\FideltyFX\ffx-api\include;$(ProjectDir)Extern\FideltyFX\sdk\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)Extern\assimp\include;$(ProjectDir)Include;$(ProjectDir)Extern\DirectXTex\include;$(ProjectDir)Extern\FideltyFX\ffx-api\include;$(ProjectDir)Extern\FideltyFX\sdk\include;$(ProjectDir)Extern\imgui;$(ProjectDir)Extern\imgui\backends;$(ProjectDir)Extern\minhook\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <UndefinePreprocessorDefinitions>%(UndefinePreprocessorDefinitions)</UndefinePreprocessorDefinitions>
     </ClCompile>
     <Link>

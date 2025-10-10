@@ -7,7 +7,8 @@
 #include <cstdint>
 #include <vector>
 
-namespace Noise
+
+namespace Engine::Helpers::NoiseGenerator
 {
     struct PerlinParams {
         uint32_t seed = 1337;

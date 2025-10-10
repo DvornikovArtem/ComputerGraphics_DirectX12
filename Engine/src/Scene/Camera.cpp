@@ -139,6 +139,8 @@ void Camera::LookAt(FXMVECTOR pos, FXMVECTOR target, FXMVECTOR worldUp)
 	XMStoreFloat3(&mRight, R);
 	XMStoreFloat3(&mUp, U);
 
+	mPitch = asinf(std::clamp(mLook.y, -1.0f, 1.0f));
+
 	mViewDirty = true;
 }
 
@@ -209,14 +211,36 @@ void Camera::VerticalMove(float d)
 	mViewDirty = true;
 }
 
+void Camera::MoveWorld(const XMFLOAT3& deltaWorld)
+{
+	mPosition.x += deltaWorld.x;
+	mPosition.y += deltaWorld.y;
+	mPosition.z += deltaWorld.z;
+	mViewDirty = true;
+}
+
+void Camera::ElevateWorld(float dy)
+{
+	mPosition.y += dy;
+	mViewDirty = true;
+}
+
 void Camera::Pitch(float angle)
 {
 	// Rotate up and look vector about the right vector.
 
-	XMMATRIX R = XMMatrixRotationAxis(XMLoadFloat3(&mRight), angle);
+	float targetPitch = mPitch + angle;
+	targetPitch = std::clamp(targetPitch, mMinPitch, mMaxPitch);
+
+	float allowedDelta = targetPitch - mPitch;
+	if (fabsf(allowedDelta) < 1e-6f) return;
+
+	XMMATRIX R = XMMatrixRotationAxis(XMLoadFloat3(&mRight), allowedDelta);
 
 	XMStoreFloat3(&mUp,   XMVector3TransformNormal(XMLoadFloat3(&mUp), R));
 	XMStoreFloat3(&mLook, XMVector3TransformNormal(XMLoadFloat3(&mLook), R));
+
+	mPitch = targetPitch;
 
 	mViewDirty = true;
 }

@@ -66,6 +66,10 @@ public:
 	void Walk(float d);
 	void VerticalMove(float d);
 
+	// World-space moves
+	void MoveWorld(const DirectX::XMFLOAT3& deltaWorld);
+	void ElevateWorld(float dy);
+
 	// Rotate the camera.
 	void Pitch(float angle);
 	void RotateY(float angle);
@@ -73,7 +77,23 @@ public:
 	// After modifying camera position/orientation, call to rebuild the view matrix.
 	void UpdateViewMatrix();
 
+	void SetMoveSpeed(float newMoveSpeed) { mMoveSpeed = newMoveSpeed; }
+	float GetMoveSpeed() const { return mMoveSpeed; }
+	float* GetMoveSpeedPtr() { return &mMoveSpeed; }
+
+	float GetMinMoveSpeed() const { return mMinMoveSpeed; }
+	float GetMaxMoveSpeed() const { return mMaxMoveSpeed; }
+
+	void SetPitchLimits(float minPitch, float maxPitch) { mMinPitch = minPitch; mMaxPitch = maxPitch; }
+
 private:
+	float mPitch = 0.0f;
+	float mMinPitch = -DirectX::XM_PIDIV2 + 0.01f; // ~ -89.4°
+	float mMaxPitch = DirectX::XM_PIDIV2 - 0.01f; // ~ +89.4°
+
+	float mMoveSpeed = 10.0f;
+	float mMinMoveSpeed = 0.1f;
+	float mMaxMoveSpeed = 10000.0f;
 
 	// Camera coordinate system with coordinates relative to world space.
 	DirectX::XMFLOAT3 mPosition = { 0.0f, 0.0f, 0.0f };

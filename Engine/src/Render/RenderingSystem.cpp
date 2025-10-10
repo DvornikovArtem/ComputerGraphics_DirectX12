@@ -2,32 +2,61 @@
 
 #include <Engine/Render/RenderingSystem.h>
 #include <Engine/RHI/DX12/stb_image.h>
+#include <shobjidl.h>
 
 
-RenderingSystem::RenderingSystem() {}
+RenderingSystem::~RenderingSystem()
+{
+	if (mOctTree) delete mOctTree;
+
+	if (terrainRenderer) delete terrainRenderer;
+
+	if (mDebugDrawer) delete mDebugDrawer;
+
+	for (auto& pair : mGeometries) delete pair.second;
+
+	for (auto& pair : mMaterials) delete pair.second;
+
+	for (auto& pair : mTextures) delete pair.second;
+
+	for (auto& light : mAllLights) delete light;
+
+	for (auto& ri : mAllRitems) delete ri;
+
+	for (auto& i : terrainDrawableObjects) delete i;
+
+	for (auto& i : mAllTerrainRitems) delete i;
+
+	for (auto& layer : mRitemLayer) layer.clear();
+
+	for (auto& ps : mAllParticleSystems) delete ps;
+
+	mFrameResources.clear();
+
+	if (mFFXContext && mFSREnabled) ffxDestroyContext(&mFFXContext, nullptr);
+
+	UninstallDebugOutputHooks();
+}
 
 
 void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer* gt) {
 #if defined(DEBUG) || defined(_DEBUG) 
 	// Enable the D3D12 debug layer.
-	{
-		ComPtr<ID3D12Debug> debugController;
-		ThrowIfFailed(D3D12GetDebugInterface(IID_PPV_ARGS(&debugController)));
-		debugController->EnableDebugLayer();
-	}
+	ComPtr<ID3D12Debug> debugController;
+	ThrowIfFailed(D3D12GetDebugInterface(IID_PPV_ARGS(&debugController)));
+	debugController->EnableDebugLayer();
 #endif
+
+	InstallDebugOutputHooks();
 
 	this->mhMainWnd = mhMainWnd;
 	this->mhAppInst = mhAppInst;
 	this->gt = gt;
-	
+
 	ThrowIfFailed(CreateDXGIFactory1(IID_PPV_ARGS(&mdxgiFactory)));
 
 	// Try to create hardware device.
-	HRESULT hardwareResult = D3D12CreateDevice(
-		nullptr,             // default adapter
-		D3D_FEATURE_LEVEL_12_0,
-		IID_PPV_ARGS(&md3dDevice));
+	HRESULT hardwareResult = D3D12CreateDevice(/*default adapter*/nullptr, D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(&md3dDevice));
 
 	// Fallback to WARP device.
 	if (FAILED(hardwareResult))
@@ -35,10 +64,7 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 		ComPtr<IDXGIAdapter> pWarpAdapter;
 		ThrowIfFailed(mdxgiFactory->EnumWarpAdapter(IID_PPV_ARGS(&pWarpAdapter)));
 
-		ThrowIfFailed(D3D12CreateDevice(
-			pWarpAdapter.Get(),
-			D3D_FEATURE_LEVEL_11_0,
-			IID_PPV_ARGS(&md3dDevice)));
+		ThrowIfFailed(D3D12CreateDevice(pWarpAdapter.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&md3dDevice)));
 	}
 
 	IDXGIAdapter* currentAdapter;
@@ -51,8 +77,7 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 	OutputDebugStringA("\n\n");
 
 
-	ThrowIfFailed(md3dDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE,
-		IID_PPV_ARGS(&mFence)));
+	ThrowIfFailed(md3dDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&mFence)));
 
 	mRtvDescriptorSize = md3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 	mDsvDescriptorSize = md3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
@@ -81,9 +106,9 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 
 	CreateCommandObjects();
 	CreateSwapChain();
-	if(mFSREnabled) BuildFSRContext();
+	if (mFSREnabled) BuildFSRContext();
 
-	mGBuffer = std::make_unique<Gbuffer>(mClientWidth, mClientHeight, md3dDevice);
+	mGbuffer = std::make_unique<Gbuffer>(mClientWidth, mClientHeight, md3dDevice);
 
 	// For Debug System =========================================================
 	mDebugDrawer = new gfw::DebugRenderSysImpl(md3dDevice);
@@ -101,8 +126,8 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 		mCommandList.Get(),
 		5000);*/
 
-	// Get the increment size of a descriptor in this heap type.  This is hardware specific, 
-	// so we have to query this information.
+		// Get the increment size of a descriptor in this heap type.  This is hardware specific, 
+		// so we have to query this information.
 	mCbvSrvDescriptorSize = md3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
 	BuildRootSignatures();
@@ -124,12 +149,13 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 void RenderingSystem::FinishInitialize()
 {
 	CreateRtvAndDsvDescriptorHeaps();
+	CreateOrResizeSceneColor(mClientWidth, mClientHeight);
 
-	mGBuffer->Channel0SRVHeapIndex = static_cast<int>(TexDescsLength + MPRTextures.size() + MPRTerrainTextures.size() + 1);
+	mGbuffer->Channel0SRVHeapIndex = static_cast<int>(TexDescsLength + MPRTextures.size() + MPRTerrainTextures.size() + 1);
 
 	//copy GBuffer SRVs into main SRVHeap
-	md3dDevice->CopyDescriptorsSimple(mGBuffer->NumBuffers, GetCpuSrv(mGBuffer->Channel0SRVHeapIndex),
-		mGBuffer->m_SRVDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
+	md3dDevice->CopyDescriptorsSimple(mGbuffer->NumBuffers, GetCpuSrv(mGbuffer->Channel0SRVHeapIndex),
+		mGbuffer->m_SRVDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
 		D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
 	int k = 0;
@@ -138,7 +164,7 @@ void RenderingSystem::FinishInitialize()
 		+ static_cast<int>(MPRTextures.size())
 		+ static_cast<int>(MPRTerrainTextures.size())
 		+ 1
-		+ mGBuffer->NumBuffers;
+		+ mGbuffer->NumBuffers;
 	for (auto& litem : mAllLights) {
 		litem->shadowMap->BuildDescriptors(GetCpuSrv(shadowBase + k), GetGpuSrv(shadowBase + k), GetDsv(1 + k));
 		litem->shadowMap->SRVHeapIndex = shadowBase + k;
@@ -159,9 +185,25 @@ void RenderingSystem::FinishInitialize()
 
 	BuildFrameResources();
 
+	mGbufferImguiSlots.resize(mGbuffer->NumBuffers);
+	for (int i = 0; i < mGbuffer->NumBuffers; ++i) {
+		D3D12_CPU_DESCRIPTOR_HANDLE dummyCPU{};
+		D3D12_GPU_DESCRIPTOR_HANDLE slotGPU{};
+		mImGui->AllocSrv(dummyCPU, slotGPU);
+		mGbufferImguiSlots[i] = slotGPU;
+	}
+
+	auto gbCPU = mGbuffer->m_SRVDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
+	UINT stride = md3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	for (int i = 0; i < mGbuffer->NumBuffers && i < (int)mGbufferImguiSlots.size(); ++i) {
+		D3D12_CPU_DESCRIPTOR_HANDLE src = gbCPU;
+		src.ptr += SIZE_T(i) * stride;
+		mImGui->CopySrvIntoSlot(mGbufferImguiSlots[i], src);
+	}
+
 	for (ParticleSystem* particleSystem : mAllParticleSystems)
 	{
-		particleSystem->setEmissiveTex(mGBuffer->getEmissiveTex(), mGBuffer->getNormalTex());
+		particleSystem->setEmissiveTex(mGbuffer->getEmissiveTex(), mGbuffer->getNormalTex());
 	}
 }
 
@@ -262,10 +304,12 @@ void RenderingSystem::OnResize() {
 	mScreenViewport.MinDepth = 0.0f;
 	mScreenViewport.MaxDepth = 1.0f;
 
-	mScreenScissorRect = { 0, 0, mClientWidth, mClientHeight };
+	if (mRtvHeap) CreateOrResizeSceneColor(mClientWidth, mClientHeight);
+
+	mScissorRect = { 0, 0, mClientWidth, mClientHeight };
 
 	mCamera.SetLens(0.25f * MathHelper::Pi, AspectRatio(), 1.0f, 100000.0f);
-	
+
 	//ASKING FFX_API FOR RENDER RESOLUTION
 	if (mFSREnabled)
 	{
@@ -306,13 +350,13 @@ void RenderingSystem::OnResize() {
 		mDownscaledScissorRect = { 0, 0, (long)mRecommendedRenderResolutionX, (long)mRecommendedRenderResolutionY };
 	}
 	//mGbuffer->Resize(mRecommendedRenderResolutionX, mRecommendedRenderResolutionY, md3dDevice.Get());
-	mGBuffer->Resize(mFSREnabled ? mRecommendedRenderResolutionX : mClientWidth, 
+	mGbuffer->Resize(mFSREnabled ? mRecommendedRenderResolutionX : mClientWidth,
 		mFSREnabled ? mRecommendedRenderResolutionY : mClientHeight, md3dDevice.Get());
 
 	if (mSrvDescriptorHeap)
 	{
-		md3dDevice->CopyDescriptorsSimple(mGBuffer->NumBuffers, GetCpuSrv(mGBuffer->Channel0SRVHeapIndex),
-			mGBuffer->m_SRVDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
+		md3dDevice->CopyDescriptorsSimple(mGbuffer->NumBuffers, GetCpuSrv(mGbuffer->Channel0SRVHeapIndex),
+			mGbuffer->m_SRVDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
 			D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
 		if (mFSREnabled)
@@ -328,10 +372,62 @@ void RenderingSystem::OnResize() {
 		}
 	}
 
+	if (!mGbufferImguiSlots.empty()) {
+		auto gbCPU = mGbuffer->m_SRVDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
+		const UINT stride = md3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+		for (int i = 0; i < mGbuffer->NumBuffers && i < (int)mGbufferImguiSlots.size(); ++i) {
+			D3D12_CPU_DESCRIPTOR_HANDLE src = gbCPU;
+			src.ptr += SIZE_T(i) * stride;
+			mImGui->CopySrvIntoSlot(mGbufferImguiSlots[i], src);
+		}
+	}
+
 	for (ParticleSystem* particleSystem : mAllParticleSystems)
 	{
-		particleSystem->setEmissiveTex(mGBuffer->getEmissiveTex(), mGBuffer->getNormalTex());
+		particleSystem->setEmissiveTex(mGbuffer->getEmissiveTex(), mGbuffer->getNormalTex());
 	}
+}
+
+void RenderingSystem::CreateOrResizeSceneColor(int width, int height)
+{
+	mSceneColor.Reset();
+
+	D3D12_RESOURCE_DESC texDesc = {};
+	texDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+	texDesc.Alignment = 0;
+	texDesc.Width = width;
+	texDesc.Height = height;
+	texDesc.DepthOrArraySize = 1;
+	texDesc.MipLevels = 1;
+	texDesc.Format = mBackBufferFormat;
+	texDesc.SampleDesc.Count = 1;
+	texDesc.SampleDesc.Quality = 0;
+	texDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+	texDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+
+	D3D12_CLEAR_VALUE clear = {};
+	clear.Format = texDesc.Format;
+	clear.Color[0] = ClearValue.x;
+	clear.Color[1] = ClearValue.y;
+	clear.Color[2] = ClearValue.z;
+	clear.Color[3] = ClearValue.w;
+
+	ThrowIfFailed(md3dDevice->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+		D3D12_HEAP_FLAG_NONE,
+		&texDesc,
+		D3D12_RESOURCE_STATE_COMMON,
+		&clear,
+		IID_PPV_ARGS(&mSceneColor)));
+
+	auto rtvStart = mRtvHeap->GetCPUDescriptorHandleForHeapStart();
+	D3D12_CPU_DESCRIPTOR_HANDLE sceneRTV = rtvStart;
+	sceneRTV.ptr += (mRtvDescriptorSize * SwapChainBufferCount);
+	md3dDevice->CreateRenderTargetView(mSceneColor.Get(), nullptr, sceneRTV);
+	mSceneColorRTV = sceneRTV;
+
+	//mSceneColorSRV = mImGui->CreateTextureSRV(mSceneColor.Get(), mBackBufferFormat);
+	mSceneColorSRV = mImGui->CreateOrOverwriteTextureSRV(mSceneColor.Get(), mBackBufferFormat, mSceneColorSRV);
 }
 
 void RenderingSystem::Render()
@@ -343,33 +439,38 @@ void RenderingSystem::Render()
 	ThrowIfFailed(mCommandList->Reset(cmdListAlloc.Get(), nullptr));
 
 	mCommandList->RSSetViewports(1, &mScreenViewport);
-	mCommandList->RSSetScissorRects(1, &mScreenScissorRect);
+	mCommandList->RSSetScissorRects(1, &mScissorRect);
 
 	// Indicate a state transition on the resource usage.
-	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mSwapChainBuffer[mCurrBackBuffer].Get(),
-		D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
+	/*mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mSwapChainBuffer[mCurrBackBuffer].Get(),
+		D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));*/
 
 	// Clear the back buffer and depth buffer.
-	FLOAT ClearValue[4] = { 0.f, 0.f, 0.f, 1.f };
-	mCommandList->ClearRenderTargetView(CurrentBackBufferView(), ClearValue, 0, nullptr);
+	/*mCommandList->ClearRenderTargetView(CurrentBackBufferView(), reinterpret_cast<FLOAT*>(&ClearValue), 0, nullptr);
+	mCommandList->ClearDepthStencilView(DepthStencilView(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);*/
+	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mSceneColor.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_RENDER_TARGET));
+
+	mCommandList->ClearRenderTargetView(mSceneColorRTV, reinterpret_cast<FLOAT*>(&ClearValue), 0, nullptr);
 	mCommandList->ClearDepthStencilView(DepthStencilView(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
+
+	mCommandList->OMSetRenderTargets(1, &mSceneColorRTV, FALSE, &DepthStencilView());
 
 	// Create frame shadow maps
 	DrawShadowMaps();
 
 	// Deferred Passes:
-	
+
 	//
 	// 1. Geometry: draw scene into G-buffer.
 	//
-	mGBuffer->TransitToOpaqueRenderingState(mCommandList);
-	mGBuffer->ClearRTVs(mCommandList);
+	mGbuffer->TransitToOpaqueRenderingState(mCommandList);
+	mGbuffer->ClearRTVs(mCommandList);
 	GBufferGeometryPass();
 
 	//
 	// 2. Light: calculate light into G-buffer.
 	// 
-	mGBuffer->TransitToLightsRenderingState(mCommandList);
+	mGbuffer->TransitToLightsRenderingState(mCommandList);
 	GBufferLightPass();
 
 	//
@@ -386,7 +487,7 @@ void RenderingSystem::Render()
 		particleSystem->CameraPos = mCamera.GetPosition3f();
 		particleSystem->CameraDir = mCamera.GetLook3f();
 		//particleSystem->setEmissiveTex(mGbuffer->getEmissiveTex());
-		particleSystem->Update(gt->DeltaTime(),mCurrFrameResource);
+		particleSystem->Update(gt->DeltaTime(), mCurrFrameResource);
 	}
 
 	DrawParticleSystems();
@@ -398,14 +499,62 @@ void RenderingSystem::Render()
 	//
 	// Post-Processing
 	//
-	mGBuffer->TransitToTonemappingState(mCommandList);
+	mGbuffer->TransitToTonemappingState(mCommandList);
 	PostProcessingPass();
 
+	if (mShowBounds && mOctTree)
+	{
+		mOctTree->Draw(mDebugDrawer);
+	}
+
 	// Draw debug primitives
-	mDebugDrawer->Draw(gt->DeltaTime(), mCommandQueue, mCommandList, &mScreenViewport, &mScreenScissorRect, this, mCurrFrameResourceIndex);
+	mDebugDrawer->Draw(
+		mCommandQueue,
+		mCommandList,
+		&mScreenViewport,
+		&mScissorRect,
+		this,
+		mCurrFrameResourceIndex
+	);
+
+	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+		mSceneColor.Get(),
+		D3D12_RESOURCE_STATE_RENDER_TARGET,
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE
+	));
+
+	//DrawDebugTexture(GetGpuSrv(mGBuffer->Channel0SRVHeapIndex + 5));
+
+
+	// Clear
 	mDebugDrawer->Clear();
 
-	mGBuffer->TransitFromShaderResourceToCommon(mCommandList);
+	mGbuffer->TransitFromShaderResourceToCommon(mCommandList);
+
+	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+		mSwapChainBuffer[mCurrBackBuffer].Get(),
+		D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
+
+	mCommandList->ClearRenderTargetView(CurrentBackBufferView(), reinterpret_cast<FLOAT*>(&ClearValue), 0, nullptr);
+	mCommandList->OMSetRenderTargets(1, &CurrentBackBufferView(), FALSE, &DepthStencilView());
+
+
+	mCommandList->RSSetViewports(1, &mScreenViewport);
+	mCommandList->RSSetScissorRects(1, &mScissorRect);
+
+
+	for (Engine::UI::UILayerKind activeLayer : mActiveUILayers) mPanelRegistry.draw_layer(activeLayer);
+	mImGui->DrawBuiltins();
+
+	mCommandList->OMSetRenderTargets(1, &CurrentBackBufferView(), FALSE, &DepthStencilView());
+
+
+	mImGui->RenderDrawData(mCommandList.Get());
+
+	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+		mSceneColor.Get(),
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+		D3D12_RESOURCE_STATE_COMMON));
 
 
 	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
@@ -419,7 +568,8 @@ void RenderingSystem::Render()
 	mCommandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
 
 	// Swap the back and front buffers
-	ThrowIfFailed(mSwapChain->Present(1, 0));
+	UINT syncInterval = mVSync ? 1u : 0u;
+	ThrowIfFailed(mSwapChain->Present(syncInterval, 0));
 	mCurrBackBuffer = (mCurrBackBuffer + 1) % SwapChainBufferCount;
 
 
@@ -429,6 +579,470 @@ void RenderingSystem::Render()
 	// Notify the fence when the GPU completes commands up to this fence point.
 	mCommandQueue->Signal(mFence.Get(), mCurrentFence);
 }
+
+
+inline static std::wstring WOpenIniDialog(HWND owner)
+{
+	HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+	bool needUninit = SUCCEEDED(hr);
+
+	std::wstring result;
+
+	IFileOpenDialog* pDlg = nullptr;
+	if (SUCCEEDED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&pDlg))))
+	{
+		DWORD opts = 0;
+		if (SUCCEEDED(pDlg->GetOptions(&opts)))
+			pDlg->SetOptions(opts | FOS_FORCEFILESYSTEM | FOS_FILEMUSTEXIST | FOS_PATHMUSTEXIST);
+
+		COMDLG_FILTERSPEC types[] = {
+			{ L"ImGui Layout (*.ini)", L"*.ini" },
+			{ L"All Files (*.*)",      L"*.*"   }
+		};
+		pDlg->SetFileTypes(ARRAYSIZE(types), types);
+		pDlg->SetFileTypeIndex(1);
+		pDlg->SetDefaultExtension(L"ini");
+
+		if (SUCCEEDED(pDlg->Show(owner)))
+		{
+			IShellItem* pItem = nullptr;
+			if (SUCCEEDED(pDlg->GetResult(&pItem)))
+			{
+				PWSTR path = nullptr;
+				if (SUCCEEDED(pItem->GetDisplayName(SIGDN_FILESYSPATH, &path)))
+				{
+					result = path;
+					CoTaskMemFree(path);
+				}
+				pItem->Release();
+			}
+		}
+		pDlg->Release();
+	}
+
+	if (needUninit) CoUninitialize();
+	return result;
+}
+
+inline static std::wstring WSaveIniDialog(HWND owner)
+{
+	HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+	bool needUninit = SUCCEEDED(hr);
+
+	std::wstring result;
+
+	IFileSaveDialog* pDlg = nullptr;
+	if (SUCCEEDED(CoCreateInstance(CLSID_FileSaveDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&pDlg))))
+	{
+		DWORD opts = 0;
+		if (SUCCEEDED(pDlg->GetOptions(&opts)))
+			pDlg->SetOptions(opts | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST | FOS_OVERWRITEPROMPT);
+
+		COMDLG_FILTERSPEC types[] = {
+			{ L"ImGui Layout (*.ini)", L"*.ini" },
+			{ L"All Files (*.*)",      L"*.*"   }
+		};
+		pDlg->SetFileTypes(ARRAYSIZE(types), types);
+		pDlg->SetFileTypeIndex(1);
+		pDlg->SetDefaultExtension(L"ini");
+
+		if (SUCCEEDED(pDlg->Show(owner)))
+		{
+			IShellItem* pItem = nullptr;
+			if (SUCCEEDED(pDlg->GetResult(&pItem)))
+			{
+				PWSTR path = nullptr;
+				if (SUCCEEDED(pItem->GetDisplayName(SIGDN_FILESYSPATH, &path)))
+				{
+					result = path;
+					CoTaskMemFree(path);
+				}
+				pItem->Release();
+			}
+		}
+		pDlg->Release();
+	}
+
+	if (needUninit) CoUninitialize();
+	return result;
+}
+
+
+void RenderingSystem::RegisterScenePanels() {
+	using Engine::UI::PanelEntry;
+	using Engine::UI::UILayerKind;
+
+	// Dockspace — the earliest one (order = -1000)
+	{
+		PanelEntry p{};
+		p.id = "MainDockspaceHost";
+		p.draw = [] {
+			ImGuiWindowFlags f = ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoTitleBar |
+				ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize |
+				ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus |
+				ImGuiWindowFlags_NoNavFocus | ImGuiWindowFlags_NoBackground;
+			const ImGuiViewport* vp = ImGui::GetMainViewport();
+			ImGui::SetNextWindowPos(vp->Pos);
+			ImGui::SetNextWindowSize(vp->Size);
+			ImGui::SetNextWindowViewport(vp->ID);
+			ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+			ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+			ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+			ImGui::Begin("MainDockspaceHost", nullptr, f);
+			ImGui::PopStyleVar(3);
+			ImGui::DockSpace(ImGui::GetID("MyDockSpace"), ImVec2(0, 0), 0);
+			ImGui::End();
+			};
+		p.visible = true;
+		p.order = -1000;
+		p.layer = UILayerKind::Editor;
+		p.tags = { "core","dock" };
+		mPanelRegistry.register_panel(std::move(p));
+	}
+
+
+	// Scene View
+	{
+		Engine::UI::PanelEntry p{};
+		p.id = "Scene View";
+		p.draw = [this] {
+			ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+			if (ImGui::Begin("Scene View")) {
+				ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+				ImGui::BeginChild("##scene_img", ImVec2(0, 0), false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+
+				ImVec2 avail = ImGui::GetContentRegionAvail();
+				ImTextureID texId = (ImTextureID)mSceneColorSRV.ptr;
+
+				// COVER
+				float texW = (float)mClientWidth;
+				float texH = (float)mClientHeight;
+				float r_tex = texW / texH;
+				float r_av = (avail.y > 0.0f) ? (avail.x / avail.y) : r_tex;
+
+				float u0 = 0.f, v0 = 0.f, u1 = 1.f, v1 = 1.f;
+				if (r_av > r_tex) {
+					float newH = avail.x / r_tex;
+					float excess = (newH - avail.y) / newH;
+					float cut = 0.5f * excess; v0 = cut; v1 = 1.0f - cut;
+				}
+				else if (r_av < r_tex) {
+					float newW = avail.y * r_tex;
+					float excess = (newW - avail.x) / newW;
+					float cut = 0.5f * excess; u0 = cut; u1 = 1.0f - cut;
+				}
+
+				ImGui::Image(texId, avail, ImVec2(u0, v0), ImVec2(u1, v1));
+
+				mSceneImgRectMin = ImGui::GetItemRectMin();
+				mSceneImgRectMax = ImGui::GetItemRectMax();
+				mSceneViewportForImg = ImGui::GetWindowViewport();
+
+				mSceneUI.hovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
+				mSceneUI.focused = ImGui::IsWindowFocused();
+				mSceneUI.rmbDown = ImGui::IsMouseDown(ImGuiMouseButton_Right);
+
+				if (mSceneUI.hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) BeginMouseLook();
+				if (IsMouseLookActive() && ImGui::IsMouseReleased(ImGuiMouseButton_Right)) EndMouseLook();
+
+				ImGui::EndChild();
+				ImGui::PopStyleVar(1);
+			}
+			ImGui::End();
+			ImGui::PopStyleVar(1);
+			};
+		p.visible = true;
+		p.order = 0;
+		p.layer = Engine::UI::UILayerKind::Editor;
+		p.tags = { "scene" };
+		mPanelRegistry.register_panel(std::move(p));
+	}
+
+
+	// Info panel
+	{
+		Engine::UI::PanelEntry p{};
+		p.id = "Info";
+		p.draw = [this] {
+			if (ImGui::Begin("Info", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+			{
+				ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
+				ImGui::Text("Frame: %.3f ms", (ImGui::GetIO().Framerate > 0.f) ? 1000.0f / ImGui::GetIO().Framerate : 0.0f);
+				ImGui::Separator();
+				ImGui::Text("Scene View: %dx%d", (int)(mSceneImgRectMax.x - mSceneImgRectMin.x), (int)(mSceneImgRectMax.y - mSceneImgRectMin.y));
+				ImGui::Text("MSAA 4x: %s", m4xMsaaState ? "On" : "Off");
+			}
+			ImGui::End();
+			};
+		p.visible = true;
+		p.order = -10;
+		p.layer = Engine::UI::UILayerKind::Editor;
+		p.tags = { "info", "perf" };
+		mPanelRegistry.register_panel(std::move(p));
+	}
+
+
+	// Settings panel
+	{
+		Engine::UI::PanelEntry p{};
+		p.id = "Settings";
+		p.draw = [this] {
+			if (ImGui::Begin("Settings")) {
+				ImGui::BeginChild("##scroll_right", ImVec2(0, 0), false, ImGuiWindowFlags_AlwaysVerticalScrollbar);
+
+
+				// UI | Docking & Layout				
+				ImGui::SeparatorText("UI / Docking & Layout");
+				static char iniPath[260] = "imgui.ini";
+				if (ImGui::Button("Load Layout")) {
+					std::wstring wpath = WOpenIniDialog(mhMainWnd);
+					if (!wpath.empty()) {
+						int len = WideCharToMultiByte(CP_UTF8, 0, wpath.c_str(), -1, nullptr, 0, nullptr, nullptr);
+						std::string utf8(len - 1, '\0');
+						WideCharToMultiByte(CP_UTF8, 0, wpath.c_str(), -1, utf8.data(), len, nullptr, nullptr);
+
+						mImGui->queue_load_layout(utf8);
+
+						std::snprintf(iniPath, IM_ARRAYSIZE(iniPath), "%s", utf8.c_str());
+						Engine::UI::DebugConsole::Get().Info("%s", std::string(("Loaded layout from: ") + utf8).c_str());
+					}
+				}
+
+				ImGui::SameLine();
+				if (ImGui::Button("Save Layout")) {
+					std::wstring wpath = WSaveIniDialog(mhMainWnd);
+					if (!wpath.empty()) {
+						int len = WideCharToMultiByte(CP_UTF8, 0, wpath.c_str(), -1, nullptr, 0, nullptr, nullptr);
+						std::string utf8(len - 1, '\0');
+						WideCharToMultiByte(CP_UTF8, 0, wpath.c_str(), -1, utf8.data(), len, nullptr, nullptr);
+
+						mImGui->queue_save_layout(utf8);
+
+						std::snprintf(iniPath, IM_ARRAYSIZE(iniPath), "%s", utf8.c_str());
+						Engine::UI::DebugConsole::Get().Info("%s", std::string(("Saved layout to: ") + utf8).c_str());
+					}
+				}
+
+
+				// Camera
+				ImGui::SeparatorText("Camera");
+				ImGui::SliderFloat("Camera speed", mCamera.GetMoveSpeedPtr(), mCamera.GetMinMoveSpeed(), mCamera.GetMaxMoveSpeed(), "%.2f");
+
+
+				// PostProcess
+				ImGui::SeparatorText("PostProcess");
+				ImGui::SliderFloat("Exposure", &mPostEffectsExposure, 0.f, 10.0f, "%.3f");
+
+
+				// Render
+				ImGui::SeparatorText("Render");
+				bool vSync = GetVSync();
+				if (ImGui::Checkbox("VSync", &vSync)) {
+					SetVSync(vSync);
+					Engine::UI::DebugConsole::Get().Info("%s", std::string(("VSync: ") + std::string(vSync ? "On" : "Off")).c_str());
+				}
+
+				ImGui::BeginDisabled(true);
+				bool* msaaPtr = GetMSAATogglePtr();
+				if (ImGui::Checkbox("MSAA 4x", msaaPtr)) {
+					Engine::UI::DebugConsole::Get().Info("%s", std::string(("MSAA 4x: ") + std::string(*msaaPtr ? "On" : "Off")).c_str());
+					OnResize();
+				}
+				if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("Not available");
+				ImGui::EndDisabled();
+
+
+				bool wire = GetWireframe();
+				if (ImGui::Checkbox("Wireframe", &wire)) {
+					SetWireframe(wire);
+					Engine::UI::DebugConsole::Get().Info("%s", std::string(("Wireframe: ") + std::string(wire ? "On" : "Off")).c_str());
+				}
+
+				bool showBounds = GetShowBounds();
+				if (ImGui::Checkbox("Show Bounds", &showBounds)) {
+					SetShowBounds(showBounds);
+					Engine::UI::DebugConsole::Get().Info("%s", std::string(("Show Bounds: ") + std::string(showBounds ? "On" : "Off")).c_str());
+				}
+
+				if (ImGui::Button("Print Debug Text")) {
+					Engine::UI::DebugConsole::Get().Info("%s", "It is information");
+					Engine::UI::DebugConsole::Get().Warn("%s", "It is warning");
+					Engine::UI::DebugConsole::Get().Error("%s", "It is error");
+					Engine::UI::DebugConsole::Get().Info("%s", "It is a really LOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOONG text");
+				}
+
+
+				// Lights
+				ImGui::SeparatorText("Lights");
+				for (size_t i = 0; i < mAllLights.size(); ++i) {
+					auto* L = mAllLights[i];
+					ImGui::PushID((int)i);
+					ImGui::Text("Light %d", (int)i);
+					ImGui::SliderFloat3("Pos", (float*)&L->WorldLocation, -200.f, 200.f);
+					ImGui::SliderFloat3("Dir", (float*)&L->WorldDirection, -1.f, 1.f);
+					ImGui::ColorEdit3("Color", (float*)&L->Color);
+					ImGui::SliderFloat("Strength", &L->Strength, 0.0f, 50.0f);
+					ImGui::Separator();
+					ImGui::PopID();
+				}
+
+
+				// Resources
+				ImGui::SeparatorText("Resources");
+				if (ImGui::TreeNode("Geometries")) {
+					for (auto& [name, geo] : mGeometries) ImGui::BulletText("%s", name.c_str());
+					ImGui::TreePop();
+				}
+				if (ImGui::TreeNode("Materials")) {
+					for (auto& [name, mat] : mMaterials) ImGui::BulletText("%s", name.c_str());
+					ImGui::TreePop();
+				}
+				if (ImGui::TreeNode("Textures")) {
+					for (auto& [name, tex] : mTextures) ImGui::BulletText("%s", name.c_str());
+					ImGui::TreePop();
+				}
+
+
+				ImGui::EndChild();
+			}
+			ImGui::End();
+			};
+		p.visible = true;
+		p.order = 10;
+		p.layer = Engine::UI::UILayerKind::Editor;
+		p.tags = { "settings" };
+		mPanelRegistry.register_panel(std::move(p));
+	}
+
+
+	// GBuffer View panel
+	Engine::UI::PanelEntry p{};
+	p.id = "G-Buffer Viewer";
+	p.draw = [this]
+		{
+			if (!mGbuffer) return;
+
+			static int rows = 2;
+			static int cols = 4;
+			ImGui::Begin("G-Buffer Viewer Controls", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+			ImGui::SliderInt("Rows", &rows, 1, 8);
+			ImGui::SliderInt("Cols", &cols, 1, 8);
+			ImGui::End();
+
+			const ImVec2 sceneSize(
+				(std::max)(0.0f, mSceneImgRectMax.x - mSceneImgRectMin.x),
+				(std::max)(0.0f, mSceneImgRectMax.y - mSceneImgRectMin.y)
+			);
+
+			if (sceneSize.x <= 0.0f || sceneSize.y <= 0.0f)
+				return;
+
+			const float texW = float(mClientWidth);
+			const float texH = float(mClientHeight);
+			const float r_tex = (texH > 0.0f) ? (texW / texH) : 1.0f;
+			const float r_av = (sceneSize.y > 0.0f) ? (sceneSize.x / sceneSize.y) : r_tex;
+
+			float u0 = 0.f, v0 = 0.f, u1 = 1.f, v1 = 1.f;
+			if (r_av > r_tex) {
+				float newH = sceneSize.x / r_tex;
+				float excess = (newH - sceneSize.y) / newH;
+				float cut = 0.5f * excess; v0 = cut; v1 = 1.0f - cut;
+			}
+			else if (r_av < r_tex) {
+				float newW = sceneSize.y * r_tex;
+				float excess = (newW - sceneSize.x) / newW;
+				float cut = 0.5f * excess; u0 = cut; u1 = 1.0f - cut;
+			}
+
+			std::vector<std::pair<ImTextureID, std::string>> textures;
+			//textures.reserve(mGbuffer->NumBuffers);
+
+			textures.push_back({ (ImTextureID)mGbufferImguiSlots[/*Diffuse*/0].ptr, "Diffuse" });
+			textures.push_back({ (ImTextureID)mGbufferImguiSlots[/*Emissive*/1].ptr, "Emissive" });
+			textures.push_back({ (ImTextureID)mGbufferImguiSlots[/*Normal*/2].ptr, "Normal" });
+			textures.push_back({ (ImTextureID)mGbufferImguiSlots[/*Mat Albedo*/3].ptr, "Mat Albedo" });
+			textures.push_back({ (ImTextureID)mGbufferImguiSlots[/*Mat Fresnel/Rough*/4].ptr, "Mat Fresnel/Rough" });
+			textures.push_back({ (ImTextureID)mGbufferImguiSlots[/*Accumulation*/5].ptr, "Accumulation" });
+			textures.push_back({ (ImTextureID)mGbufferImguiSlots[/*Bloom*/6].ptr, "Bloom" });
+
+			mImGui->DrawTextureGridFixedSize_ImTexID("G-Buffer Viewer", textures, rows, cols, sceneSize, ImVec2(u0, v0), ImVec2(u1, v1), 0.0f, true);
+		};
+	p.visible = true;
+	p.order = 5;
+	p.layer = Engine::UI::UILayerKind::Editor;
+	p.tags = { "debug", "gbuffer", "textures" };
+	mPanelRegistry.register_panel(std::move(p));
+}
+
+
+
+
+void RenderingSystem::BeginMouseLook()
+{
+	if (mSceneUI.mouseLookActive) return;
+
+	ImGuiViewport* vp = mSceneViewportForImg ? mSceneViewportForImg : ImGui::GetWindowViewport();
+	HWND hwnd = (HWND)vp->PlatformHandleRaw;
+	if (!hwnd) return;
+	mSceneUI.mouseLookHwnd = hwnd;
+
+	GetCursorPos(&mSceneUI.savedCursorPos);
+
+	RECT r{};
+	r.left = (LONG)std::floor(mSceneImgRectMin.x);
+	r.top = (LONG)std::floor(mSceneImgRectMin.y);
+	r.right = (LONG)std::ceil(mSceneImgRectMax.x);
+	r.bottom = (LONG)std::ceil(mSceneImgRectMax.y);
+	mSceneUI.lockRect = r;
+
+	// The center of the scene texture
+	mSceneUI.lockCenterPos.x = (mSceneUI.lockRect.left + mSceneUI.lockRect.right) / 2;
+	mSceneUI.lockCenterPos.y = (mSceneUI.lockRect.top + mSceneUI.lockRect.bottom) / 2;
+
+	ClipCursor(&mSceneUI.lockRect);
+	SetCapture(hwnd);
+	ShowCursor(FALSE);
+
+	SetCursorPos(mSceneUI.lockCenterPos.x, mSceneUI.lockCenterPos.y);
+
+	ImGuiIO& io = ImGui::GetIO();
+	io.MousePos = ImVec2((float)mSceneUI.lockCenterPos.x, (float)mSceneUI.lockCenterPos.y);
+	io.MouseDelta = ImVec2(0, 0);
+	ImGui::ResetMouseDragDelta(ImGuiMouseButton_Right);
+
+	mSceneUI.mouseLookActive = true;
+	mSceneUI.skipFrames = 1;
+}
+
+void RenderingSystem::UpdateMouseLook()
+{
+	if (!mSceneUI.mouseLookActive) return;
+
+	SetCursorPos(mSceneUI.lockCenterPos.x, mSceneUI.lockCenterPos.y);
+
+	ImGuiIO& io = ImGui::GetIO();
+	io.MousePos = ImVec2((float)mSceneUI.lockCenterPos.x, (float)mSceneUI.lockCenterPos.y);
+
+	if (mSceneUI.skipFrames > 0) {
+		io.MouseDelta = ImVec2(0, 0);
+		--mSceneUI.skipFrames;
+	}
+}
+
+void RenderingSystem::EndMouseLook()
+{
+	if (!mSceneUI.mouseLookActive) return;
+
+	ClipCursor(nullptr);
+	ReleaseCapture();
+	ShowCursor(TRUE);
+	SetCursorPos(mSceneUI.savedCursorPos.x, mSceneUI.savedCursorPos.y);
+
+	mSceneUI.mouseLookHwnd = nullptr;
+	mSceneUI.mouseLookActive = false;
+	mSceneUI.skipFrames = 0;
+}
+
 
 void RenderingSystem::FlushCommandQueue()
 {
@@ -591,13 +1205,13 @@ void RenderingSystem::BuildRenderItems(std::unordered_map<std::string, DrawableO
 
 			terrainTile->renderItem = ri;
 			n.terrainTileItem = ri;
-			
+
 			terrainDrawableObjects.push_back(terrainTile);
 
 			k++;
 		});
-	
-	
+
+
 
 
 	//generate OctTree
@@ -690,7 +1304,7 @@ void RenderingSystem::BuildParticleSystems(std::unordered_map<std::string, Parti
 		particleSystem->Build(md3dDevice, mCommandList);
 
 
-		
+
 		mAllParticleSystems.push_back(particleSystem);
 
 		k++;
@@ -816,11 +1430,11 @@ void RenderingSystem::BuildTerrain()
 
 
 	if (terrainRenderer) terrainRenderer->ForEachTile([&](const TerrainTile& t)
-		{	
+		{
 			MPRTerrainTextures.push_back(TextureDesc("tile_diffuse_level" + std::to_string(t.lod) + "_" + std::to_string(t.ix) + "_" + std::to_string(t.iy), t.textures.diffusePath, TextureDesc::Texture2D, true));
 			MPRTerrainTextures.push_back(TextureDesc("tile_normal_level" + std::to_string(t.lod) + "_" + std::to_string(t.ix) + "_" + std::to_string(t.iy), t.textures.normalPath, TextureDesc::Texture2D, false));
 			MPRTerrainTextures.push_back(TextureDesc("tile_height_level" + std::to_string(t.lod) + "_" + std::to_string(t.ix) + "_" + std::to_string(t.iy), t.textures.heightPath, TextureDesc::Texture2D, false));
-		
+
 
 			MaterialDesc Tile;
 
@@ -901,7 +1515,7 @@ void RenderingSystem::BuildSceneGrid()
 
 void RenderingSystem::DrawSceneGrid()
 {
-	mCommandList->OMSetRenderTargets(1, &mGBuffer->AccumulationRTV, false, &DepthStencilView());
+	mCommandList->OMSetRenderTargets(1, &mGbuffer->AccumulationRTV, false, &DepthStencilView());
 
 	mCommandList->SetGraphicsRootSignature(RootSignatures["PostProcessing"].Get());
 
@@ -964,12 +1578,12 @@ void RenderingSystem::BuildFSRContext()
 void RenderingSystem::FSRUpscale()
 {
 	ffxDispatchDescUpscale dispatchDesc;
-	
+
 	dispatchDesc.header.type = FFX_API_DISPATCH_DESC_TYPE_UPSCALE;
 	dispatchDesc.commandList = mCommandList.Get();
-	dispatchDesc.color = ffxApiGetResourceDX12(mGBuffer->AccumulationBuf.Get(), FFX_API_RESOURCE_STATE_PIXEL_COMPUTE_READ);
+	dispatchDesc.color = ffxApiGetResourceDX12(mGbuffer->AccumulationBuf.Get(), FFX_API_RESOURCE_STATE_PIXEL_COMPUTE_READ);
 	dispatchDesc.depth = ffxApiGetResourceDX12(mDepthStencilBuffer.Get(), FFX_API_RESOURCE_STATE_PIXEL_COMPUTE_READ);
-	dispatchDesc.motionVectors = ffxApiGetResourceDX12(mGBuffer->VelocityBufferTex.Get(), FFX_API_RESOURCE_STATE_PIXEL_COMPUTE_READ);
+	dispatchDesc.motionVectors = ffxApiGetResourceDX12(mGbuffer->VelocityBufferTex.Get(), FFX_API_RESOURCE_STATE_PIXEL_COMPUTE_READ);
 
 	dispatchDesc.renderSize = { (UINT)mRecommendedRenderResolutionX, (UINT)mRecommendedRenderResolutionY };    // Resolution before upscaling
 	dispatchDesc.motionVectorScale = { (float)mRecommendedRenderResolutionX, (float)mRecommendedRenderResolutionY };
@@ -987,10 +1601,10 @@ void RenderingSystem::FSRUpscale()
 
 	dispatchDesc.preExposure = 1.f;
 	dispatchDesc.viewSpaceToMetersFactor = 1.f;
-	
+
 	dispatchDesc.output = ffxApiGetResourceDX12(mFSROutput.Get(), FFX_API_RESOURCE_STATE_UNORDERED_ACCESS);
 	//not sure if RTV is even needed here
-	
+
 	dispatchDesc.exposure = ffxApiGetResourceDX12(nullptr, FFX_API_RESOURCE_STATE_PIXEL_COMPUTE_READ);
 	dispatchDesc.reactive = ffxApiGetResourceDX12(nullptr, FFX_API_RESOURCE_STATE_PIXEL_COMPUTE_READ);
 	dispatchDesc.transparencyAndComposition = ffxApiGetResourceDX12(nullptr, FFX_API_RESOURCE_STATE_PIXEL_COMPUTE_READ);
@@ -1079,7 +1693,7 @@ void RenderingSystem::CreateSwapChain()
 void RenderingSystem::CreateRtvAndDsvDescriptorHeaps()
 {
 	D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc;
-	rtvHeapDesc.NumDescriptors = SwapChainBufferCount;
+	rtvHeapDesc.NumDescriptors = SwapChainBufferCount + 1;
 	rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
 	rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
 	rtvHeapDesc.NodeMask = 0;
@@ -1105,7 +1719,7 @@ void RenderingSystem::CreateRtvAndDsvDescriptorHeaps()
 
 
 	CD3DX12_CPU_DESCRIPTOR_HANDLE hDescriptor(DepthStencilView());
-	
+
 
 	D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc;
 	dsvDesc.Flags = D3D12_DSV_FLAG_NONE;
@@ -1114,7 +1728,7 @@ void RenderingSystem::CreateRtvAndDsvDescriptorHeaps()
 	dsvDesc.Texture2D.MipSlice = 0;
 	md3dDevice->CreateDepthStencilView(mDepthStencilBuffer.Get(), &dsvDesc, hDescriptor);
 	hDescriptor.Offset(1, mDsvDescriptorSize);
-	
+
 	for (int i = 0; i < mAllLights.size(); i++) {
 		md3dDevice->CreateDepthStencilView(nullptr, &dsvDesc, hDescriptor);
 		hDescriptor.Offset(1, mDsvDescriptorSize);
@@ -1233,11 +1847,11 @@ void RenderingSystem::BuildRootSignatures()
 	lightPassSlotRootParameter[7].InitAsDescriptorTable(1, &texTable6, D3D12_SHADER_VISIBILITY_ALL); //ShadowMap
 
 	lightPassSlotRootParameter[8].InitAsDescriptorTable(1, &texTable7, D3D12_SHADER_VISIBILITY_ALL); //IBL SkyMaps
-	lightPassSlotRootParameter[9].InitAsDescriptorTable(1, &texTable8, D3D12_SHADER_VISIBILITY_ALL); 
-	lightPassSlotRootParameter[10].InitAsDescriptorTable(1, &texTable9, D3D12_SHADER_VISIBILITY_ALL); 
+	lightPassSlotRootParameter[9].InitAsDescriptorTable(1, &texTable8, D3D12_SHADER_VISIBILITY_ALL);
+	lightPassSlotRootParameter[10].InitAsDescriptorTable(1, &texTable9, D3D12_SHADER_VISIBILITY_ALL);
 
 	//ShadowMap ComparisonSampler
-	const CD3DX12_STATIC_SAMPLER_DESC StaticSamplers[2] = 
+	const CD3DX12_STATIC_SAMPLER_DESC StaticSamplers[2] =
 	{
 		CD3DX12_STATIC_SAMPLER_DESC(
 		0, // register(s0)
@@ -1252,16 +1866,16 @@ void RenderingSystem::BuildRootSignatures()
 
 		CD3DX12_STATIC_SAMPLER_DESC(
 		1, // register(s1)
-		D3D12_FILTER_MIN_MAG_MIP_LINEAR, 
-		D3D12_TEXTURE_ADDRESS_MODE_CLAMP,  
+		D3D12_FILTER_MIN_MAG_MIP_LINEAR,
 		D3D12_TEXTURE_ADDRESS_MODE_CLAMP,
-		D3D12_TEXTURE_ADDRESS_MODE_CLAMP) 
+		D3D12_TEXTURE_ADDRESS_MODE_CLAMP,
+		D3D12_TEXTURE_ADDRESS_MODE_CLAMP)
 	};
 
 	CD3DX12_ROOT_SIGNATURE_DESC lightPassRootSigDesc(11, lightPassSlotRootParameter,
 		2, StaticSamplers,
 		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
-	
+
 	ComPtr<ID3DBlob> serializedLightPassRootSig = nullptr;
 	ComPtr<ID3DBlob> lightPassErrorBlob = nullptr;
 	HRESULT lightPassHr = D3D12SerializeRootSignature(&lightPassRootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1,
@@ -1354,7 +1968,7 @@ void RenderingSystem::UpdateObjectCBs(const GameTimer& gt)
 			XMStoreFloat4x4(&objConstants.World, XMMatrixTranspose(world));
 			XMStoreFloat4x4(&objConstants.TexTransform, XMMatrixTranspose(texTransform));
 
-			if (e->InitFrame) 
+			if (e->InitFrame)
 			{
 				XMStoreFloat4x4(&objConstants.PrevWorld, XMMatrixTranspose(world));
 				e->InitFrame = false;
@@ -1501,7 +2115,7 @@ void RenderingSystem::UpdateLightCBs(const GameTimer& gt)
 			case LightType::Directional:
 			{
 				float SphereRadiuses[5] = { 10, 50, 150, 400, 1500 };
-				
+
 				//for each cascade
 				for (int i = 0; i < 5; i++)
 				{
@@ -1509,11 +2123,11 @@ void RenderingSystem::UpdateLightCBs(const GameTimer& gt)
 					lightPos = mCamera.GetPosition() - 2.0f * SphereRadiuses[i] * lightDir;
 					targetPos = mCamera.GetPosition();
 					lightView = XMMatrixLookAtLH(lightPos, targetPos, lightUp);
-				
+
 					// Transform bounding sphere to light space.
 					sphereCenterLS;
 					XMStoreFloat3(&sphereCenterLS, XMVector3TransformCoord(targetPos, lightView));
-				
+
 					// Ortho frustum in light space encloses cascade.
 					l = sphereCenterLS.x - SphereRadiuses[i];
 					b = sphereCenterLS.y - SphereRadiuses[i];
@@ -1521,9 +2135,9 @@ void RenderingSystem::UpdateLightCBs(const GameTimer& gt)
 					r = sphereCenterLS.x + SphereRadiuses[i];
 					t = sphereCenterLS.y + SphereRadiuses[i];
 					f = sphereCenterLS.z + SphereRadiuses[i];
-				
+
 					lightProj = XMMatrixOrthographicOffCenterLH(l, r, b, t, n, f);
-				
+
 					S = lightView * lightProj * T;
 					XMStoreFloat4x4(&LightConstants.View[i], XMMatrixTranspose(lightView));
 					XMStoreFloat4x4(&LightConstants.Proj[i], XMMatrixTranspose(lightProj));
@@ -1536,7 +2150,7 @@ void RenderingSystem::UpdateLightCBs(const GameTimer& gt)
 					}
 				}
 			}
-				break;
+			break;
 
 			case LightType::Spotlight:
 				lightPos = XMLoadFloat3(&e->WorldLocation);
@@ -1545,7 +2159,7 @@ void RenderingSystem::UpdateLightCBs(const GameTimer& gt)
 
 				//ADD FOV CALCULATION
 				lightView = XMMatrixLookAtLH(lightPos, targetPos, lightUp);
-				lightProj = XMMatrixPerspectiveFovLH(XM_PI/6, 1.0f, 10.f, e->FalloffEnd);
+				lightProj = XMMatrixPerspectiveFovLH(XM_PI / 6, 1.0f, 10.f, e->FalloffEnd);
 
 				S = lightView * lightProj * T;
 
@@ -1602,13 +2216,13 @@ void RenderingSystem::UpdateLightCBs(const GameTimer& gt)
 	}
 }
 
-std::vector<MeshParsingResult> RenderingSystem::BuildMeshGeometry(std::string Name, const std::string& filename) 
+std::vector<MeshParsingResult> RenderingSystem::BuildMeshGeometry(std::string Name, const std::string& filename)
 {
 	Assimp::Importer importer;
 
 
 	//select texture types we're looking for
-	const std::vector<aiTextureType> textureTypes = 
+	const std::vector<aiTextureType> textureTypes =
 	{
 		aiTextureType_DIFFUSE,
 		aiTextureType_NORMALS,
@@ -1632,7 +2246,7 @@ std::vector<MeshParsingResult> RenderingSystem::BuildMeshGeometry(std::string Na
 	auto geo = new MeshGeometry;
 	geo->Name = Name;
 
-	for (unsigned int i = 0; i < scene->mNumMeshes; i++) 
+	for (unsigned int i = 0; i < scene->mNumMeshes; i++)
 	{
 		aiMesh* mesh = scene->mMeshes[i];
 		UINT baseVertexLocation = (UINT)vertices.size();
@@ -1857,10 +2471,10 @@ void RenderingSystem::BuildPSOs(MaterialDesc& MDesc, std::unordered_map<std::str
 	descPipelineState.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
 	descPipelineState.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
 	descPipelineState.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-	if (MDesc.bWireframe)
+	/*if (MDesc.bWireframe)
 		descPipelineState.RasterizerState.FillMode = D3D12_FILL_MODE_WIREFRAME;
 	else
-		descPipelineState.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
+		descPipelineState.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;*/
 	descPipelineState.SampleMask = UINT_MAX;
 	descPipelineState.NumRenderTargets = 6;
 	descPipelineState.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -1872,7 +2486,25 @@ void RenderingSystem::BuildPSOs(MaterialDesc& MDesc, std::unordered_map<std::str
 	descPipelineState.DSVFormat = mDepthStencilFormat;
 	descPipelineState.SampleDesc.Count = 1;
 
-	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&descPipelineState, IID_PPV_ARGS(&mPSOs["GBufferGeometryPass"])));
+	//ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&descPipelineState, IID_PPV_ARGS(&mPSOs["GBufferGeometryPass"])));
+
+	// SOLID
+	{
+		D3D12_GRAPHICS_PIPELINE_STATE_DESC solid = descPipelineState;
+		solid.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
+
+		ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&solid, IID_PPV_ARGS(&mPSOs["GBufferGeometryPass"])));
+	}
+
+	// WIREFRAME
+	{
+		D3D12_GRAPHICS_PIPELINE_STATE_DESC wire = descPipelineState;
+		wire.RasterizerState.FillMode = D3D12_FILL_MODE_WIREFRAME;
+		// For better grid vision
+		wire.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+
+		ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&wire, IID_PPV_ARGS(&mPSOs["GBufferGeometryPass_WireFrame"])));
+	}
 
 	///
 	/// PSO for ShadowMap generation (opaque geometry)
@@ -2071,6 +2703,14 @@ void RenderingSystem::BuildGlobalPSOs()
 		mShaders["PPPS"]->GetBufferSize()
 	};
 	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&PPPsoDesc, IID_PPV_ARGS(&GlobalPSOs["PostProcessing"])));
+
+	PPPsoDesc.PS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["PPPS_DrawTexture"]->GetBufferPointer()),
+		mShaders["PPPS_DrawTexture"]->GetBufferSize()
+	};
+	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&PPPsoDesc, IID_PPV_ARGS(&GlobalPSOs["PostProcessing_DrawDebugTexture"])));
+
 }
 
 void RenderingSystem::BuildFrameResources()
@@ -2161,16 +2801,16 @@ void RenderingSystem::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const 
 void RenderingSystem::GBufferGeometryPass()
 {
 	mCommandList->RSSetViewports(1, mFSREnabled ? &mDownscaledScreenViewport : &mScreenViewport);
-	mCommandList->RSSetScissorRects(1, mFSREnabled ? &mDownscaledScissorRect : &mScreenScissorRect);
+	mCommandList->RSSetScissorRects(1, mFSREnabled ? &mDownscaledScissorRect : &mScissorRect);
 	mCommandList->SetGraphicsRootSignature(RootSignatures["Default"].Get());
 
 	D3D12_CPU_DESCRIPTOR_HANDLE rtvs[6] = {
-		mGBuffer->DiffuseRTV,
-		mGBuffer->EmissiveRTV,
-		mGBuffer->NormalRTV,
-		mGBuffer->MaterialAlbedoRTV,
-		mGBuffer->MaterialFresnelRoughnessRTV,
-		mGBuffer->VelocityBufferRTV
+		mGbuffer->DiffuseRTV,
+		mGbuffer->EmissiveRTV,
+		mGbuffer->NormalRTV,
+		mGbuffer->MaterialAlbedoRTV,
+		mGbuffer->MaterialFresnelRoughnessRTV,
+		mGbuffer->VelocityBufferRTV
 	};
 
 	mCommandList->OMSetRenderTargets(6, rtvs, false, &DepthStencilView());
@@ -2178,16 +2818,19 @@ void RenderingSystem::GBufferGeometryPass()
 	//mCommandList->ClearDepthStencilView(DepthStencilView(), D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 
 
-	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Opaque], "GBufferGeometryPass");
+	const std::string psoName = GetWireframe() ? "GBufferGeometryPass_WireFrame" : "GBufferGeometryPass";
 
-	DrawRenderItems(mCommandList.Get(), mVisibleTerrainRitems, "GBufferGeometryPass");
+	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Opaque], psoName);
+
+	//DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Landscape], "GBufferGeometryPass");
+	DrawRenderItems(mCommandList.Get(), mVisibleTerrainRitems, psoName);
 }
 
 void RenderingSystem::GBufferLightPass()
 {
 	mCommandList->SetGraphicsRootSignature(RootSignatures["DeferredLightPass"].Get());
 	//mCommandList->OMSetRenderTargets(1, &mGbuffer->BloomRTV, false, &DepthStencilView());
-	mCommandList->OMSetRenderTargets(1, &mGBuffer->AccumulationRTV, false, &DepthStencilView());
+	mCommandList->OMSetRenderTargets(1, &mGbuffer->AccumulationRTV, false, &DepthStencilView());
 
 	UINT lightCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(Light));
 	UINT passCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(PassConstants));
@@ -2198,11 +2841,11 @@ void RenderingSystem::GBufferLightPass()
 	ID3D12DescriptorHeap* descriptorHeaps[] = { mSrvDescriptorHeap.Get() };
 	mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
 
-	mCommandList->SetGraphicsRootDescriptorTable(2, GetGpuSrv(mGBuffer->Channel0SRVHeapIndex));
-	mCommandList->SetGraphicsRootDescriptorTable(3, GetGpuSrv(mGBuffer->Channel0SRVHeapIndex + 1));
-	mCommandList->SetGraphicsRootDescriptorTable(4, GetGpuSrv(mGBuffer->Channel0SRVHeapIndex + 2));
-	mCommandList->SetGraphicsRootDescriptorTable(5, GetGpuSrv(mGBuffer->Channel0SRVHeapIndex + 3));
-	mCommandList->SetGraphicsRootDescriptorTable(6, GetGpuSrv(mGBuffer->Channel0SRVHeapIndex + 4));
+	mCommandList->SetGraphicsRootDescriptorTable(2, GetGpuSrv(mGbuffer->Channel0SRVHeapIndex));
+	mCommandList->SetGraphicsRootDescriptorTable(3, GetGpuSrv(mGbuffer->Channel0SRVHeapIndex + 1));
+	mCommandList->SetGraphicsRootDescriptorTable(4, GetGpuSrv(mGbuffer->Channel0SRVHeapIndex + 2));
+	mCommandList->SetGraphicsRootDescriptorTable(5, GetGpuSrv(mGbuffer->Channel0SRVHeapIndex + 3));
+	mCommandList->SetGraphicsRootDescriptorTable(6, GetGpuSrv(mGbuffer->Channel0SRVHeapIndex + 4));
 
 	mCommandList->SetGraphicsRootDescriptorTable(8, GetGpuSrv(mTextures["SkyIrradiance"]->srvHeapIndex));
 	mCommandList->SetGraphicsRootDescriptorTable(9, GetGpuSrv(mTextures["SkyPref"]->srvHeapIndex));
@@ -2220,7 +2863,7 @@ void RenderingSystem::GBufferLightPass()
 		mCommandList->SetGraphicsRootConstantBufferView(1, lightCBAddress);
 
 		mCommandList->SetGraphicsRootDescriptorTable(7, GetGpuSrv(li->shadowMap->SRVHeapIndex));
-		
+
 		if (li->LightType == LightType::Directional)
 		{
 			mCommandList->SetPipelineState(GlobalPSOs["DeferredLightPass_FSQuad"].Get());
@@ -2424,10 +3067,11 @@ void RenderingSystem::PostProcessingPass()
 		mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mFSROutput.Get(),
 			D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
 		mCommandList->RSSetViewports(1, &mScreenViewport);
-		mCommandList->RSSetScissorRects(1, &mScreenScissorRect);
+		mCommandList->RSSetScissorRects(1, &mScissorRect);
 	}
 	mCommandList->SetGraphicsRootSignature(RootSignatures["PostProcessing"].Get());
-	mCommandList->OMSetRenderTargets(1, &CurrentBackBufferView(), false, &DepthStencilView());
+	//mCommandList->OMSetRenderTargets(1, &CurrentBackBufferView(), false, &DepthStencilView());
+	mCommandList->OMSetRenderTargets(1, &mSceneColorRTV, FALSE, &DepthStencilView());
 	mCommandList->SetPipelineState(GlobalPSOs["PostProcessing"].Get());
 	mCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
@@ -2439,14 +3083,31 @@ void RenderingSystem::PostProcessingPass()
 
 	mCommandList->SetGraphicsRootConstantBufferView(0, passCB->GetGPUVirtualAddress());
 
-	mCommandList->SetGraphicsRootDescriptorTable(1, GetGpuSrv(mFSREnabled ? mFSROutputSRVHeapIndex : mGBuffer->Channel0SRVHeapIndex + 5));
-	mCommandList->SetGraphicsRootDescriptorTable(2, GetGpuSrv(mGBuffer->Channel0SRVHeapIndex + 1));
-	mCommandList->SetGraphicsRootDescriptorTable(3, GetGpuSrv(mGBuffer->Channel0SRVHeapIndex + 2));
+	mCommandList->SetGraphicsRootDescriptorTable(1, GetGpuSrv(mFSREnabled ? mFSROutputSRVHeapIndex : mGbuffer->Channel0SRVHeapIndex + 5));
+	mCommandList->SetGraphicsRootDescriptorTable(2, GetGpuSrv(mGbuffer->Channel0SRVHeapIndex + 1));
+	mCommandList->SetGraphicsRootDescriptorTable(3, GetGpuSrv(mGbuffer->Channel0SRVHeapIndex + 2));
 
 
 	mCommandList->DrawInstanced(6, 1, 0, 0);
 	if (mFSREnabled) mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mFSROutput.Get(),
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON));
+}
+
+//Draws given texture in bottom-left corner of the screen
+void RenderingSystem::DrawDebugTexture(CD3DX12_GPU_DESCRIPTOR_HANDLE SRVHandle)
+{
+	mCommandList->SetGraphicsRootSignature(RootSignatures["PostProcessing"].Get());
+	mCommandList->SetPipelineState(GlobalPSOs["PostProcessing_DrawDebugTexture"].Get());
+	UINT passCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(PassConstants));
+	auto passCB = mCurrFrameResource->PassCB->Resource();
+
+	ID3D12DescriptorHeap* descriptorHeaps[] = { mSrvDescriptorHeap.Get() };
+	mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
+
+	mCommandList->SetGraphicsRootConstantBufferView(0, passCB->GetGPUVirtualAddress());
+	mCommandList->SetGraphicsRootDescriptorTable(1, SRVHandle);
+
+	mCommandList->DrawInstanced(6, 1, 0, 0);
 }
 
 void RenderingSystem::UpdateMaterialCBs(const GameTimer& gt)
@@ -2542,12 +3203,12 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 	auto finish = upload.End(mCommandQueue.Get());
 	finish.get();
 
-	
+
 	//
 	// Create the SRV heap.
 	//
 	D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
-	srvHeapDesc.NumDescriptors = static_cast<UINT>(TexDescs.size() + MPRTextures.size() + MPRTerrainTextures.size() + 1 + mAllLights.size() + mGBuffer->NumBuffers + 1 + 1);
+	srvHeapDesc.NumDescriptors = static_cast<UINT>(TexDescs.size() + MPRTextures.size() + MPRTerrainTextures.size() + 1 + mAllLights.size() + mGbuffer->NumBuffers + 1 + 1);
 	srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 	srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	ThrowIfFailed(md3dDevice->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&mSrvDescriptorHeap)));
@@ -2581,7 +3242,7 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 			OutputDebugStringA(("Texture resource is null: " + i.Name + "\n").c_str());
 			continue;
 		}
-		
+
 		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
 		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 		srvDesc.Format = tex->GetDesc().Format;
@@ -2749,7 +3410,7 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 		SRVHeapHeadIndex++;
 	}
 
-	for (int i = 0; i < mGBuffer->NumBuffers; i++) {
+	for (int i = 0; i < mGbuffer->NumBuffers; i++) {
 		md3dDevice->CreateShaderResourceView(nullptr, &srvDesc, hDescriptor);
 		hDescriptor.Offset(1, mCbvSrvUavDescriptorSize);
 		SRVHeapHeadIndex++;
@@ -2773,7 +3434,7 @@ void RenderingSystem::ProcessEmbeddedTexture(const aiTexture* texture, std::stri
 	int width, height, channels;
 	unsigned char* imageData;
 
-	if (texture->mHeight == 0) 
+	if (texture->mHeight == 0)
 	{
 		// Compressed data
 		imageData = stbi_load_from_memory(
@@ -2781,7 +3442,7 @@ void RenderingSystem::ProcessEmbeddedTexture(const aiTexture* texture, std::stri
 			texture->mWidth,
 			&width, &height, &channels, STBI_rgb_alpha);
 	}
-	else 
+	else
 	{
 		// Uncompressed data
 		width = texture->mWidth;
@@ -2798,7 +3459,7 @@ void RenderingSystem::ProcessEmbeddedTexture(const aiTexture* texture, std::stri
 		}
 	}
 
-	if (imageData) 
+	if (imageData)
 	{
 
 		auto* generatedTex = new Texture;
@@ -2864,7 +3525,7 @@ void RenderingSystem::CollectVisibleRenderItems()
 
 	for (auto& leaf : leaves) {
 		if (ViewFrustum.Contains(leaf->bounds) != DirectX::ContainmentType::DISJOINT) {
-			for (RenderItem* ri : leaf->OverlappedRitems) {				
+			for (RenderItem* ri : leaf->OverlappedRitems) {
 				if (ri->renderLayer == RenderLayer::Landscape || alreadyCheckedRitems.find(ri) != alreadyCheckedRitems.end()) continue;
 				alreadyCheckedRitems.insert(ri);
 				ri->IsInViewFrustum = ViewFrustum.Intersects(ri->bounds);
@@ -2931,7 +3592,7 @@ void RenderingSystem::UpdateRenderItems(std::vector<DrawableObject*>& mAllObject
 	if (terrainRenderer) terrainRenderer->SelectLOD(mCamera, mChosenTerrainRitems, 3.0f);
 
 	// Iterate over all OctTree leaves containing the current terrain tile,
-	// and if at least one leaf is inside the frustum Â—> render this tile
+	// and if at least one leaf is inside the frustum ?> render this tile
 	for (auto* terrainTile : mChosenTerrainRitems)
 	{
 		for (auto leaf : terrainTile->occupiedLeaves)
@@ -2943,7 +3604,7 @@ void RenderingSystem::UpdateRenderItems(std::vector<DrawableObject*>& mAllObject
 				break;
 			}
 		}
-		
+
 	}
 
 
@@ -3000,6 +3661,7 @@ void RenderingSystem::BuildShaders(std::vector<ShaderDesc>& ShaderDescs)
 	//for post-processing
 	mShaders["PPVS"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\PostProcessing.hlsl", nullptr, "VS_FSQuad", "vs_5_1");
 	mShaders["PPPS"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\PostProcessing.hlsl", nullptr, "PS", "ps_5_1");
+	mShaders["PPPS_DrawTexture"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\PostProcessing.hlsl", nullptr, "PS_DrawTexture", "ps_5_1");
 }
 
 void RenderingSystem::BuildBasicGeometry()
@@ -3018,7 +3680,7 @@ void RenderingSystem::BuildBasicGeometry()
 	//std::vector<std::string> Names = { "Box", "Grid", "Sphere", "Cylinder", "Cone", "Sphere_LowPoly", "2DCircle", "2DQuad"};
 
 	std::vector<GeometryGenerator::MeshData*> Objects = { &box, &grid, &cylinder, &cone, &sphere_lp, &TwoDCircle, &TwoDQuad };
-	std::vector<std::string> Names = { "Box", "Grid", "Cylinder", "Cone", "Sphere_LowPoly", "2DCircle", "2DQuad"};
+	std::vector<std::string> Names = { "Box", "Grid", "Cylinder", "Cone", "Sphere_LowPoly", "2DCircle", "2DQuad" };
 
 	for (int k = 0; k < Objects.size(); k++)
 	{
@@ -3047,7 +3709,7 @@ void RenderingSystem::BuildBasicGeometry()
 		const UINT vbByteSize = (UINT)vertices.size() * sizeof(Vertex);
 		const UINT ibByteSize = (UINT)indices.size() * sizeof(std::uint16_t);
 
-		auto geo =  new MeshGeometry;
+		auto geo = new MeshGeometry;
 		geo->Name = Names[k];
 
 		ThrowIfFailed(D3DCreateBlob(vbByteSize, &geo->VertexBufferCPU));
@@ -3186,6 +3848,7 @@ void RenderingSystem::UpdateMainPassCB(const GameTimer& gt)
 	mMainPassCB.DeltaTime = gt.DeltaTime();
 	mMainPassCB.AmbientLight = { 0.4f, 0.4f, 0.4f, 1.0f };
 	mMainPassCB.CameraDirection = mCamera.GetLook3f();
+	mMainPassCB.postEffectsExposure = mPostEffectsExposure;
 
 	prevViewProj = viewProj;
 	prevCameraPos = mCamera.GetPosition3f();

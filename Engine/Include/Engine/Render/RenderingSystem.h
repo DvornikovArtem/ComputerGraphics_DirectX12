@@ -1,37 +1,46 @@
+// RenderingSystem.h
+
 #pragma once
 
 #ifndef RENDERINGSYSTEM_H
 #define RENDERINGSYSTEM_H
 
-#include "../RHI/DX12/UploadBuffer.h"
-#include "../Math/GeometryGenerator.h"
-#include "../RHI/DX12/FrameResource.h"
-#include "../Math/MathHelper.h"
-#include "../Scene/Camera.h"
+
+#include <unordered_map>
+#include <string>
+
+#include <d3dcommon.h>
+#include <wrl/client.h> 
+#include <DirectXCollision.h>
+
+#include <Engine/Core/GameTimer.h>
+#include <Engine/Core/OctTree.h>
+
+#include <Engine/Math/MathHelper.h>
+#include <Engine/Math/GeometryGenerator.h>
+
+#include <Engine/Debug/DebugRenderSysImpl.h>
+
+#include <Engine/Render/RenderItem.h>
+#include <Engine/Render/Descriptors.h>
+#include <Engine/Render/Gbuffer.h>
+#include <Engine/Render/IRenderTargetProvider.h>
+#include <Engine/Render/FX/ParticleSystem.h>
+
+#include <Engine/RHI/DX12/ResourceUploadBatch.h>
+#include <Engine/RHI/DX12/FrameResource.h>
+#include <Engine/RHI/DX12/UploadBuffer.h>
+
+#include <Engine/Terrain/TerrainRenderer.h>
+
+#include <Engine/Scene/Camera.h>
+
+#include <Engine/UI/ImGui_Layer.h>
+#include <Engine/UI/DebugOutputHook.h>
+
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
-#include "../Core/GameTimer.h"
-#include <d3dcommon.h>
-#include <wrl/client.h> 
-#include <unordered_map>
-#include <string>
-#include "Gbuffer.h"
-#include "DirectXCollision.h"
-#include "../RHI/DX12/ResourceUploadBatch.h"
-
-//#define STB_IMAGE_IMPLEMENTATION
-//#define STB_IMAGE_STATIC
-
-#include <Engine/Render/RenderItem.h>
-//#include <Engine/RHI/DX12/stb_image.h>
-#include <Engine/Render/IRenderTargetProvider.h>
-#include <Engine/Debug/DebugRenderSysImpl.h>
-#include <Engine/Core/OctTree.h>
-#include <Engine/Render/FX/ParticleSystem.h>
-#include <Engine/Terrain/TerrainRenderer.h>
-#include <Engine/Render/Descriptors.h>
-//#include "../Terrain/TerrainRenderer.h"
 
 #include <ffx_api/ffx_api.h>
 #include <ffx_api/ffx_upscale.h>
@@ -43,66 +52,15 @@
 #pragma comment(lib, "dxgi.lib")
 
 
+
 using Microsoft::WRL::ComPtr;
-using namespace DirectX;
-using namespace DirectX::PackedVector;
 
 
 
-// Already Initialized In RenderItem.h =========
-//const int gNumFrameResources = 3;
-// =============================================
-
-
-
-
-
-class RenderingSystem : public IRenderTargetProvider {
-//class RenderingSystem {
+class RenderingSystem final : public IRenderTargetProvider {
 public:
-    RenderingSystem();
-
-    ~RenderingSystem()
-    {
-        if (mOctTree) delete mOctTree;
-
-        if (terrainRenderer) delete terrainRenderer;
-
-        for (auto& pair : mGeometries)
-            delete pair.second;
-
-        for (auto& pair : mMaterials)
-            delete pair.second;
-
-        for (auto& pair : mTextures)
-            delete pair.second;
-
-        for (auto& light : mAllLights)
-            delete light;
-
-        for (auto& ri : mAllRitems)
-            delete ri;
-
-        for (auto& layer : mRitemLayer)
-        {
-            layer.clear();
-        }
-
-        for (auto& ps : mAllParticleSystems)
-            delete ps;
-
-        mFrameResources.clear();
-
-        if(mDebugDrawer) delete mDebugDrawer;
-
-        for (auto& i : terrainDrawableObjects)
-            delete i;
-
-        for (auto& i : mAllTerrainRitems)
-            delete i;
-
-        if(mFFXContext && mFSREnabled) ffxDestroyContext(&mFFXContext, nullptr);
-    }
+    RenderingSystem() = default;
+    ~RenderingSystem();
 
 
     void Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer* gt);
@@ -161,16 +119,24 @@ public:
     CD3DX12_CPU_DESCRIPTOR_HANDLE RenderingSystem::GetDsv(int index)const;
     CD3DX12_CPU_DESCRIPTOR_HANDLE RenderingSystem::GetRtv(int index)const;
 
-    // For Debug System ===============================================================================
-    D3D12_CPU_DESCRIPTOR_HANDLE GetCurrentRTV() const override { return CurrentBackBufferView(); }
+    // For Debug System ================================================================================
+public:
+    //D3D12_CPU_DESCRIPTOR_HANDLE GetCurrentRTV() const override { return CurrentBackBufferView(); }
+    D3D12_CPU_DESCRIPTOR_HANDLE GetCurrentRTV() const override { return mSceneColorRTV; }
     D3D12_CPU_DESCRIPTOR_HANDLE GetDSV() const override { return DepthStencilView(); }
 
+    gfw::DebugRenderSysImpl* GetDebugDrawer() const { return mDebugDrawer; }
+    void SetDebugDrawer(gfw::DebugRenderSysImpl* newDebugDrawer) { mDebugDrawer = newDebugDrawer; }
+
+protected:
     gfw::DebugRenderSysImpl* mDebugDrawer = nullptr;
     // =================================================================================================
 
+public:
     void DrawSkyBox();
     void DrawShadowMaps();
     void PostProcessingPass();
+    void DrawDebugTexture(CD3DX12_GPU_DESCRIPTOR_HANDLE SRVHandle);
 
     void Render();
 
@@ -183,10 +149,7 @@ public:
     ID3D12Resource* RenderingSystem::CurrentBackBuffer() const;
     D3D12_CPU_DESCRIPTOR_HANDLE RenderingSystem::CurrentBackBufferView() const;
 
-    float AspectRatio()const
-    {
-        return static_cast<float>(mClientWidth) / mClientHeight;
-    }
+    float AspectRatio() const { return static_cast<float>(mClientWidth) / mClientHeight; }
 
     Microsoft::WRL::ComPtr<ID3D12Device> getd3dDevice() { return md3dDevice; };
 
@@ -204,6 +167,26 @@ protected:
     bool      mMaximized = false;  // is the application maximized?
     bool      mResizing = false;   // are the resize bars being dragged?
     bool      mFullscreenState = false;// fullscreen enabled
+
+public:
+    int GetScreenWidth() const { return mClientWidth; }
+    int GetScreenHeight() const { return mClientHeight; }
+
+    bool GetVSync() const { return mVSync; }
+    void SetVSync(bool v) { mVSync = v; }
+
+    bool GetWireframe() const { return mWireframe; }
+    void SetWireframe(bool v) { mWireframe = v; }
+
+    bool GetShowBounds() const { return mShowBounds; }
+    void SetShowBounds(bool v) { mShowBounds = v; }
+
+    bool* GetMSAATogglePtr() { return &m4xMsaaState; }
+
+protected:
+    bool mVSync = true;
+    bool mWireframe = false;
+    bool mShowBounds = false;
 
     bool      m4xMsaaState = false;    // 4X MSAA enabled
     UINT      m4xMsaaQuality = 0;      // quality level of 4X MSAA
@@ -230,7 +213,7 @@ protected:
     Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> mDsvHeap;
 
     D3D12_VIEWPORT mScreenViewport;
-    D3D12_RECT mScreenScissorRect;
+    D3D12_RECT mScissorRect;
 
     UINT mRtvDescriptorSize = 0;
     UINT mDsvDescriptorSize = 0;
@@ -273,10 +256,10 @@ protected:
     XMFLOAT3 mEyePos = { 0.0f, 0.0f, 0.0f };
     XMFLOAT4X4 mView = MathHelper::Identity4x4();
     XMFLOAT4X4 mProj = MathHelper::Identity4x4();
-    
+
     GameTimer* gt = nullptr;
 
-    std::unique_ptr<Gbuffer> mGBuffer;
+    std::unique_ptr<Gbuffer> mGbuffer;
 
     std::unordered_map<std::string, Microsoft::WRL::ComPtr<ID3D12PipelineState>> GlobalPSOs;
     std::unordered_map<std::string, Microsoft::WRL::ComPtr<ID3D12RootSignature>> RootSignatures;
@@ -304,9 +287,78 @@ protected:
     std::vector<RenderItem*> mChosenTerrainRitems;
     std::vector<RenderItem*> mVisibleTerrainRitems;
 
-    int SRVHeapHeadIndex = 0;
+// For Post Effects ================================================================================
+public:
 
-    //FSR sctructures and resources
+
+protected:
+    float mPostEffectsExposure = 0.0f;
+// =================================================================================================
+
+
+// For ImGui =======================================================================================
+public:
+    void CreateOrResizeSceneColor(int width, int height);
+
+    D3D12_GPU_DESCRIPTOR_HANDLE GetSceneColorSRV() const { return mSceneColorSRV; }
+    void SetSceneViewHovered(bool isSceneViewHovered) { mSceneUI.hovered = isSceneViewHovered; }
+    void SetSceneViewFocused(bool isSceneViewFocused) { mSceneUI.focused = isSceneViewFocused; }
+    void SetSceneRMBDown(bool isSceneRMBDown) { mSceneUI.rmbDown = isSceneRMBDown; }
+    Microsoft::WRL::ComPtr<ID3D12CommandQueue> GetCommandQueue() const { return mCommandQueue; }
+    void SetImGuiLayer(Engine::UI::ImGuiLayer* imguiLayer) { mImGui = imguiLayer; }
+
+
+    bool IsSceneInputActive() const { return (mSceneUI.hovered && (mSceneUI.rmbDown || mSceneUI.mouseLookActive)) || mSceneUI.mouseLookActive; }
+    bool IsSceneViewHovered() const { return mSceneUI.hovered; }
+    bool IsSceneViewFocused() const { return mSceneUI.focused; }
+
+    bool IsMouseLookActive() const { return mSceneUI.mouseLookActive; }
+    int GetMouseSkipFrames() const { return mSceneUI.skipFrames; }
+
+    void BeginMouseLook();
+    void UpdateMouseLook();
+    void EndMouseLook();
+
+    void RegisterScenePanels();
+
+protected:
+    // SRV for imgui
+    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> mImGuiSrvHeap = nullptr;
+
+    Engine::UI::ImGuiLayer* mImGui = nullptr;
+    Engine::UI::UIPanelRegistry mPanelRegistry;
+    std::vector<Engine::UI::UILayerKind> mActiveUILayers = { Engine::UI::UILayerKind::Editor };
+
+    Microsoft::WRL::ComPtr<ID3D12Resource> mSceneColor = nullptr;
+    D3D12_CPU_DESCRIPTOR_HANDLE mSceneColorRTV{};
+    D3D12_GPU_DESCRIPTOR_HANDLE mSceneColorSRV{};
+
+    struct SceneViewUIState {
+        bool hovered = false;
+        bool focused = false;
+        bool rmbDown = false;
+
+        ImVec2 imgRectMin{ 0,0 };
+        ImVec2 imgRectMax{ 0,0 };
+        ImGuiViewport* viewportForImg = nullptr;
+
+        bool  mouseLookActive = false;
+        HWND  mouseLookHwnd = nullptr;
+        POINT savedCursorPos{ 0,0 };
+        POINT lockCenterPos{ 0,0 };
+        RECT  lockRect{ 0,0,0,0 };
+        int   skipFrames = 0;
+    } mSceneUI;
+
+    ImVec2 mSceneImgRectMin{ 0,0 };
+    ImVec2 mSceneImgRectMax{ 0,0 };
+    ImGuiViewport* mSceneViewportForImg = nullptr;
+
+    std::vector<D3D12_GPU_DESCRIPTOR_HANDLE> mGbufferImguiSlots;
+// ================================================================================================= 
+
+// For FSR =========================================================================================
+protected:
     ffxContext mFFXContext;
     UINT mRecommendedRenderResolutionX = 0;
     UINT mRecommendedRenderResolutionY = 0;
@@ -315,7 +367,11 @@ protected:
     D3D12_VIEWPORT mDownscaledScreenViewport;
     D3D12_RECT mDownscaledScissorRect;
     int mFSROutputSRVHeapIndex;
-    bool mFSREnabled = false;
+    bool mFSREnabled = true;
+
+    int SRVHeapHeadIndex = 0;
+// =================================================================================================
+    DirectX::XMFLOAT4 ClearValue = { 0.f, 0.f, 0.f, 1.f };
 };
 
 

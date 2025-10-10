@@ -4,6 +4,10 @@
 
 #include <App/d3dApp.h>
 #include <WindowsX.h>
+#include <backends/imgui_impl_win32.h>
+#include <Engine/UI/ImGui_Layer.h>
+
+extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 using Microsoft::WRL::ComPtr;
 using namespace std;
@@ -36,6 +40,7 @@ D3DApp::~D3DApp()
 	if (mRenderingSystem->getd3dDevice() != nullptr) {
 		mRenderingSystem->FlushCommandQueue();
 	}
+	mImGuiLayer->Shutdown();
 }
 
 HINSTANCE D3DApp::AppInst()const
@@ -74,6 +79,8 @@ int D3DApp::Run()
 
 			if( !mAppPaused )
 			{
+				mImGuiLayer->NewFrame();
+
 				CalculateFrameStats();
 				Update(mTimer);	
                 Draw(mTimer);
@@ -90,10 +97,21 @@ int D3DApp::Run()
 
 bool D3DApp::Initialize()
 {
-	if(!InitMainWindow())
-		return false;
-	
+	if (!InitMainWindow()) return false;
+
 	mRenderingSystem->Initialize(mhMainWnd, mhAppInst, &mTimer);
+
+	mImGuiLayer = std::make_unique<Engine::UI::ImGuiLayer>();
+	Engine::UI::ImGuiLayer::Desc uiDesc{};
+	uiDesc.hwnd = mhMainWnd;
+	uiDesc.device = mRenderingSystem->getd3dDevice().Get();
+	uiDesc.cmdQueue = mRenderingSystem->GetCommandQueue().Get();
+	uiDesc.framesInFlight = gNumFrameResources;
+	uiDesc.rtvFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
+	mImGuiLayer->Initialize(uiDesc);
+
+	mRenderingSystem->SetImGuiLayer(mImGuiLayer.get());
+	mRenderingSystem->RegisterScenePanels();
 
 	return true;
 }
@@ -105,6 +123,8 @@ void D3DApp::OnResize() {
  
 LRESULT D3DApp::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
+	if (ImGui_ImplWin32_WndProcHandler(hwnd, msg, wParam, lParam)) return true;
+
 	switch (msg)
 	{
 		// WM_ACTIVATE is sent when the window is activated or deactivated.  
@@ -113,8 +133,22 @@ LRESULT D3DApp::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	case WM_ACTIVATE:
 		if (LOWORD(wParam) == WA_INACTIVE)
 		{
-			mAppPaused = true;
-			mTimer.Stop();
+			/*mAppPaused = true;
+			mTimer.Stop();*/
+			HWND active = GetActiveWindow();
+			DWORD pidActive = 0, pidMain = 0;
+			GetWindowThreadProcessId(active, &pidActive);
+			GetWindowThreadProcessId(mhMainWnd, &pidMain);
+			bool sameProcess = (pidActive != 0 && pidActive == pidMain);
+
+			if (!sameProcess) {
+				mAppPaused = true;
+				mTimer.Stop();
+			}
+			else {
+				mAppPaused = false;
+				mTimer.Start();
+			}
 		}
 		else
 		{
@@ -250,7 +284,29 @@ LRESULT D3DApp::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	case WM_KILLFOCUS:
 		mIsCursorInWindow = false;
 		return 0;
+
+	// Catch DPI change event triggered when:
+	//  1) display scale is changed in Windows settings
+	//  2) the window is moved to another monitor with different DPI
+	case WM_DPICHANGED:
+	{
+		// Apply the recommended window size and position from lParam (RECT from Windows)
+		// (Windows suggests a size that makes the window look correct on the new DPI)
+		const RECT* prcNew = reinterpret_cast<const RECT*>(lParam);
+		SetWindowPos(hwnd, nullptr, prcNew->left, prcNew->top, prcNew->right - prcNew->left, prcNew->bottom - prcNew->top, SWP_NOZORDER | SWP_NOACTIVATE);
+
+		// The new DPI value is reliably received in wParam
+		const UINT dpiX = LOWORD(wParam);
+		// scale = DPI/96
+		const float dpi = static_cast<float>(dpiX) / 96.0f;
+
+		// Pass the scale to the ImGui layer -> fonts will be rebuilt and the style will be rescaled there
+		if (mImGuiLayer) mImGuiLayer->OnDpiChanged(dpi);
+
+		return 0;
 	}
+	}
+
 
 	return DefWindowProc(hwnd, msg, wParam, lParam);
 }
@@ -281,9 +337,19 @@ bool D3DApp::InitMainWindow()
 	int width  = R.right - R.left;
 	int height = R.bottom - R.top;
 
-	mhMainWnd = CreateWindow(L"MainWnd", mMainWndCaption.c_str(), 
-		WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, width, height, 0, 0, mhAppInst, 0); 
-	if( !mhMainWnd )
+	// For ImGui ==================================================================================================================
+	// This function tells Windows: "My process can handle DPI scaling on its own, don't apply virtualization".
+	// When we don't call it, Windows treats our process as DPI - unaware.
+	// Then the OS does the following:
+	//  - Always returns a fake 96 DPI (i.e., scale 1.0).
+	//  - Automatically stretches our window's rendering on screen to "simulate" scaling (bitmap scaling).
+	//  - All calls such as GetDpiForWindow() or ImGui_ImplWin32_GetDpiScaleForHwnd() receive substituted data (DPI virtualization).
+	//  - That means ImGui and DirectX think the display scale is 100% (dpi = 1.0), while Windows visually enlarges the image afterward.
+	SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+	// ============================================================================================================================
+
+	mhMainWnd = CreateWindow(L"MainWnd", mMainWndCaption.c_str(), WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, width, height, 0, 0, mhAppInst, 0);
+	if (!mhMainWnd)
 	{
 		MessageBox(0, L"CreateWindow Failed.", 0, 0);
 		return false;

@@ -5,7 +5,7 @@
 #include <cmath>
 #include <algorithm>
 
-namespace Noise
+namespace Engine::Helpers::NoiseGenerator
 {
     namespace {
         struct Perlin {

@@ -157,7 +157,7 @@ namespace gfw
 
 	public:
 		virtual void SetCamera(Camera* inCamera);
-		virtual void Draw(float dTime, Microsoft::WRL::ComPtr<ID3D12CommandQueue> commandQueue,
+		virtual void Draw(Microsoft::WRL::ComPtr<ID3D12CommandQueue> commandQueue,
 			Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> commandList,
 			const D3D12_VIEWPORT* m_Viewport,
 			const D3D12_RECT* m_ScissorRect,

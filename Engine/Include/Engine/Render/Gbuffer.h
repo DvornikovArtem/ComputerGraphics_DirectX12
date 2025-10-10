@@ -68,8 +68,13 @@ public:
 
     void Dispose();
 
+    ComPtr<ID3D12Resource> getDiffuseTex() { return DiffuseTex; }
     ComPtr<ID3D12Resource> getEmissiveTex() { return EmissiveTex; }
     ComPtr<ID3D12Resource> getNormalTex() { return NormalTex; }
+    ComPtr<ID3D12Resource> getMaterialAlbedoTex() { return MaterialAlbedoTex; }
+    ComPtr<ID3D12Resource> getMaterialFresnelRoughnessTex() { return MaterialFresnelRoughnessTex; }
+    ComPtr<ID3D12Resource> getAccumulationBuf() { return AccumulationBuf; }
+    ComPtr<ID3D12Resource> getBloomTex() { return BloomTex; }
 };
 
 #endif // GBUFFER_H

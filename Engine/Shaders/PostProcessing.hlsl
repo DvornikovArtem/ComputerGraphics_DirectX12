@@ -202,12 +202,32 @@ float4 PS(VertexOut pin) : SV_Target
 
     //Do your cool post-processing here
    
-    //Color = ChromaticAbberation(UV);
-    //Color = DepthOfField(Emissive.w, TexelCoord, Color);
+    float4 effects = 0;
 
-    //Color += GodRays(UV, WorldPosition, Emissive.w);
+    effects = ChromaticAbberation(UV);
+    effects = DepthOfField(Emissive.w, TexelCoord, effects);
+    effects += GodRays(UV, WorldPosition, Emissive.w);
+    // effects += bloom(...);
+    // effects += lensDirt(...);
+
+    effects *= cbMainPass.postEffectsExposure;
+
+    Color += effects;
     
     //gamma 2.2 correction
     Color.xyz = pow(saturate(Color.xyz), 1.0 / 2.2);
     return Color;
+}
+
+float4 PS_DrawTexture(VertexOut pin) : SV_Target
+{
+    uint2 TexelCoord = pin.PosH.xy;
+    float2 quarterSize = cbMainPass.ViewportSize * 0.5f;
+    if (TexelCoord.y >= quarterSize.y && TexelCoord.x < quarterSize.x)
+    {
+        uint2 sourceCoord = uint2(TexelCoord.x, TexelCoord.y - quarterSize.y) * 2;
+        return DiffuseMap.Load(int3(sourceCoord, 0));
+    }
+    discard;
+    return float4(0.0f, 0.0f, 0.0f, 0.1f);
 }
