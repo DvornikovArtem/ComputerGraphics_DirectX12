@@ -402,20 +402,7 @@ void RenderingSystem::Render()
 	PostProcessingPass();
 
 	// Draw debug primitives
-	mDebugDrawer->Draw(
-		0.0f,
-		mCommandQueue,
-		mCommandList,
-		&mScreenViewport,
-		&mScreenScissorRect,
-		this,
-		mCurrFrameResourceIndex
-	);
-
-	//DrawDebugTexture(GetGpuSrv(mGBuffer->Channel0SRVHeapIndex + 5));
-
-
-	// Clear
+	mDebugDrawer->Draw(gt->DeltaTime(), mCommandQueue, mCommandList, &mScreenViewport, &mScreenScissorRect, this, mCurrFrameResourceIndex);
 	mDebugDrawer->Clear();
 
 	mGBuffer->TransitFromShaderResourceToCommon(mCommandList);
@@ -2084,14 +2071,6 @@ void RenderingSystem::BuildGlobalPSOs()
 		mShaders["PPPS"]->GetBufferSize()
 	};
 	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&PPPsoDesc, IID_PPV_ARGS(&GlobalPSOs["PostProcessing"])));
-
-	PPPsoDesc.PS =
-	{
-		reinterpret_cast<BYTE*>(mShaders["PPPS_DrawTexture"]->GetBufferPointer()),
-		mShaders["PPPS_DrawTexture"]->GetBufferSize()
-	};
-	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&PPPsoDesc, IID_PPV_ARGS(&GlobalPSOs["PostProcessing_DrawDebugTexture"])));
-
 }
 
 void RenderingSystem::BuildFrameResources()
@@ -2468,23 +2447,6 @@ void RenderingSystem::PostProcessingPass()
 	mCommandList->DrawInstanced(6, 1, 0, 0);
 	if (mFSREnabled) mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mFSROutput.Get(),
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON));
-}
-
-//Draws given texture in bottom-left corner of the screen
-void RenderingSystem::DrawDebugTexture(CD3DX12_GPU_DESCRIPTOR_HANDLE SRVHandle)
-{
-	mCommandList->SetGraphicsRootSignature(RootSignatures["PostProcessing"].Get());
-	mCommandList->SetPipelineState(GlobalPSOs["PostProcessing_DrawDebugTexture"].Get());
-	UINT passCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(PassConstants));
-	auto passCB = mCurrFrameResource->PassCB->Resource();
-
-	ID3D12DescriptorHeap* descriptorHeaps[] = { mSrvDescriptorHeap.Get() };
-	mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
-
-	mCommandList->SetGraphicsRootConstantBufferView(0, passCB->GetGPUVirtualAddress());
-	mCommandList->SetGraphicsRootDescriptorTable(1, SRVHandle);
-
-	mCommandList->DrawInstanced(6, 1, 0, 0);
 }
 
 void RenderingSystem::UpdateMaterialCBs(const GameTimer& gt)
@@ -3038,7 +3000,6 @@ void RenderingSystem::BuildShaders(std::vector<ShaderDesc>& ShaderDescs)
 	//for post-processing
 	mShaders["PPVS"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\PostProcessing.hlsl", nullptr, "VS_FSQuad", "vs_5_1");
 	mShaders["PPPS"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\PostProcessing.hlsl", nullptr, "PS", "ps_5_1");
-	mShaders["PPPS_DrawTexture"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\PostProcessing.hlsl", nullptr, "PS_DrawTexture", "ps_5_1");
 }
 
 void RenderingSystem::BuildBasicGeometry()

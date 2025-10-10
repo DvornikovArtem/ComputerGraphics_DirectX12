@@ -171,7 +171,6 @@ public:
     void DrawSkyBox();
     void DrawShadowMaps();
     void PostProcessingPass();
-    void DrawDebugTexture(CD3DX12_GPU_DESCRIPTOR_HANDLE SRVHandle);
 
     void Render();
 
