@@ -36,7 +36,7 @@ VS_OUT_PS_IN VS(VS_IN vin)
     float4 posW = mul(float4(vin.PosL, 1.0f), cbObject.World);
 
 	// Always center sky about camera.
-    posW.xyz += cbMainPass.EyePosW;
+    posW.xyz += cbMainPass.CameraPos;
 	// Set z = w so that z/w = 1 (i.e., skydome always on far plane).
     vout.PosH = mul(posW, cbMainPass.ViewProj).xyww;
 	

@@ -188,6 +188,12 @@ void StencilApp::OnKeyboardInput(const GameTimer& gt)
     if (GetAsyncKeyState('D') & 0x8000)
         mRenderingSystem->mCamera.Strafe(mCameraMoveSpeed * dt);
 
+    if (GetAsyncKeyState('Q') & 0x8000)
+        mRenderingSystem->mCamera.VerticalMove(-mCameraMoveSpeed * 0.5f * dt);
+
+    if (GetAsyncKeyState('E') & 0x8000)
+        mRenderingSystem->mCamera.VerticalMove(mCameraMoveSpeed * 0.5f * dt);
+
     mRenderingSystem->mCamera.UpdateViewMatrix();
 }
 
@@ -410,7 +416,7 @@ void StencilApp::MakeDrawableObjects()
     Patrick1->GeometryName = MeshParsingResults["PatrickStar"][0].GeometryName;
     Patrick1->MaterialName = "PatrickMat";
     Patrick1->renderLayer = RenderLayer::Opaque;
-    Patrick1->WorldLocation = XMFLOAT3(-4.0f, 2.0f, 0.0f);
+    Patrick1->WorldLocation = XMFLOAT3(-100.0f, 2.0f, 0.0f);
 
     mAllDrawableObjects[Patrick1->Name] = Patrick1;
 

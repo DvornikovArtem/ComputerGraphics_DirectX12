@@ -76,13 +76,13 @@ float4 ChromaticAbberation(float2 UV)
     float2 uvGreen = clamp(UV - dir * distortion * 0.5, 0.0, 1.0);
     float2 uvBlue = clamp(UV + dir * distortion * 1.0, 0.0, 1.0);
     
-    uint2 texCoordRed = uint2(uvRed * cbMainPass.RenderTargetSize);
-    uint2 texCoordGreen = uint2(uvGreen * cbMainPass.RenderTargetSize);
-    uint2 texCoordBlue = uint2(uvBlue * cbMainPass.RenderTargetSize);
+    uint2 texCoordRed = uint2(uvRed * cbMainPass.ViewportSize);
+    uint2 texCoordGreen = uint2(uvGreen * cbMainPass.ViewportSize);
+    uint2 texCoordBlue = uint2(uvBlue * cbMainPass.ViewportSize);
     
-    int3 coordRed = int3(clamp(texCoordRed, 0, cbMainPass.RenderTargetSize - 1), 0);
-    int3 coordGreen = int3(clamp(texCoordGreen, 0, cbMainPass.RenderTargetSize - 1), 0);
-    int3 coordBlue = int3(clamp(texCoordBlue, 0, cbMainPass.RenderTargetSize - 1), 0);
+    int3 coordRed = int3(clamp(texCoordRed, 0, cbMainPass.ViewportSize - 1), 0);
+    int3 coordGreen = int3(clamp(texCoordGreen, 0, cbMainPass.ViewportSize - 1), 0);
+    int3 coordBlue = int3(clamp(texCoordBlue, 0, cbMainPass.ViewportSize - 1), 0);
     
     float red = DiffuseMap.Load(coordRed).r;
     float green = DiffuseMap.Load(coordGreen).g;
@@ -114,7 +114,7 @@ float4 DepthOfField(float depth, float2 TexelCoord, float4 Color)
 
     if (blurAmount > 0.001f)
     {
-        float2 texelSize = 1.0 / cbMainPass.RenderTargetSize;
+        float2 texelSize = 1.0 / cbMainPass.ViewportSize;
         float radius = blurAmount * gBlurRadius;
     
         float4 blurredColor = float4(0, 0, 0, 0);
@@ -131,7 +131,7 @@ float4 DepthOfField(float depth, float2 TexelCoord, float4 Color)
                 float weight = exp(-distanceSq / (2.0 * radius * radius));
             
                 // Sample with offset
-                int3 sampleCoord = int3(clamp(TexelCoord + int2(x, y), int2(0, 0), int2(cbMainPass.RenderTargetSize) - int2(1, 1)), 0);
+                int3 sampleCoord = int3(clamp(TexelCoord + int2(x, y), int2(0, 0), int2(cbMainPass.ViewportSize) - int2(1, 1)), 0);
                 blurredColor += DiffuseMap.Load(sampleCoord) * weight;
                 weightSum += weight;
             }
@@ -190,7 +190,7 @@ float4 GodRays(float2 UV, float3 worldPos, float depth)
 float4 PS(VertexOut pin) : SV_Target
 {
     uint2 TexelCoord = pin.PosH.xy;
-    float2 UV = TexelCoord / cbMainPass.RenderTargetSize;
+    float2 UV = TexelCoord / cbMainPass.ViewportSize;
     //loading GBuffer channels
     float4 Emissive = EmissiveMap.Load(int3(TexelCoord, 0));
     float4 NormalChannel = NormalMap.Load(int3(TexelCoord, 0));
@@ -210,4 +210,17 @@ float4 PS(VertexOut pin) : SV_Target
     //gamma 2.2 correction
     Color.xyz = pow(saturate(Color.xyz), 1.0 / 2.2);
     return Color;
+}
+
+float4 PS_DrawTexture(VertexOut pin) : SV_Target
+{
+    uint2 TexelCoord = pin.PosH.xy;
+    float2 quarterSize = cbMainPass.ViewportSize * 0.5f;
+    if (TexelCoord.y >= quarterSize.y && TexelCoord.x < quarterSize.x)
+    {
+        uint2 sourceCoord = uint2(TexelCoord.x, TexelCoord.y - quarterSize.y) * 2;
+        return DiffuseMap.Load(int3(sourceCoord, 0));
+    }
+    discard;
+    return float4(0.0f, 0.0f, 0.0f, 0.1f);
 }

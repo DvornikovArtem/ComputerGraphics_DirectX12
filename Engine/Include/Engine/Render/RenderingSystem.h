@@ -34,6 +34,8 @@
 //#include "../Terrain/TerrainRenderer.h"
 
 #include <ffx_api/ffx_api.h>
+#include <ffx_api/ffx_upscale.h>
+#include <ffx_api/dx12/ffx_api_dx12.h>
 
 
 #pragma comment(lib,"d3dcompiler.lib")
@@ -98,6 +100,8 @@ public:
 
         for (auto& i : mAllTerrainRitems)
             delete i;
+
+        if(mFFXContext && mFSREnabled) ffxDestroyContext(&mFFXContext, nullptr);
     }
 
 
@@ -143,6 +147,8 @@ public:
     void BuildTerrain();
     void BuildSceneGrid();
     void DrawSceneGrid();
+    void BuildFSRContext();
+    void FSRUpscale();
 
     void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems, std::string PSOName);
 
@@ -165,6 +171,7 @@ public:
     void DrawSkyBox();
     void DrawShadowMaps();
     void PostProcessingPass();
+    void DrawDebugTexture(CD3DX12_GPU_DESCRIPTOR_HANDLE SRVHandle);
 
     void Render();
 
@@ -224,7 +231,7 @@ protected:
     Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> mDsvHeap;
 
     D3D12_VIEWPORT mScreenViewport;
-    D3D12_RECT mScissorRect;
+    D3D12_RECT mScreenScissorRect;
 
     UINT mRtvDescriptorSize = 0;
     UINT mDsvDescriptorSize = 0;
@@ -270,7 +277,7 @@ protected:
     
     GameTimer* gt = nullptr;
 
-    std::unique_ptr<Gbuffer> mGbuffer;
+    std::unique_ptr<Gbuffer> mGBuffer;
 
     std::unordered_map<std::string, Microsoft::WRL::ComPtr<ID3D12PipelineState>> GlobalPSOs;
     std::unordered_map<std::string, Microsoft::WRL::ComPtr<ID3D12RootSignature>> RootSignatures;
@@ -298,13 +305,18 @@ protected:
     std::vector<RenderItem*> mChosenTerrainRitems;
     std::vector<RenderItem*> mVisibleTerrainRitems;
 
-    ffxContext           mFfxCtx = {};
-    bool                 mFfxInited = false;
+    int SRVHeapHeadIndex = 0;
 
-    // Upscale output (UAV texture of size displaySize)
-    ComPtr<ID3D12Resource> mFfxUpscaledOutput;
-    D3D12_CPU_DESCRIPTOR_HANDLE mFfxUpscaledUavCPU{};
-    D3D12_GPU_DESCRIPTOR_HANDLE mFfxUpscaledUavGPU{};
+    //FSR sctructures and resources
+    ffxContext mFFXContext;
+    UINT mRecommendedRenderResolutionX = 0;
+    UINT mRecommendedRenderResolutionY = 0;
+    FfxApiUpscaleQualityMode mFSRQualityMode = FFX_UPSCALE_QUALITY_MODE_QUALITY;
+    Microsoft::WRL::ComPtr<ID3D12Resource> mFSROutput;
+    D3D12_VIEWPORT mDownscaledScreenViewport;
+    D3D12_RECT mDownscaledScissorRect;
+    int mFSROutputSRVHeapIndex;
+    bool mFSREnabled = false;
 };
 
 

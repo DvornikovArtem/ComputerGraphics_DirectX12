@@ -52,7 +52,7 @@ float3 RayDirFromNDC(float2 ndc)
 {
     float4 farW = mul(float4(ndc, 1.0, 1.0), cbMainPass.InvViewProj);
     farW.xyz /= farW.w;
-    return normalize(farW.xyz - cbMainPass.EyePosW);
+    return normalize(farW.xyz - cbMainPass.CameraPos);
 }
 
 float smstep(float a, float b, float x)
@@ -93,7 +93,7 @@ PSOut SceneGridPS(VSOut i)
     o.color = 0;
     o.depth = 1;
     
-    float3 ro = cbMainPass.EyePosW;
+    float3 ro = cbMainPass.CameraPos;
     float3 rd = RayDirFromNDC(i.ndc);
     if (rd.y >= -1e-6)
         clip(-1);
