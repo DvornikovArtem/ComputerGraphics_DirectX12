@@ -452,3 +452,5 @@ Application/assets/textures/terrain/*/Tiles/
 
 # Application/x64/Debug/<trash_files>
 Application/x64/Debug/*.lib
+
+Application/*.ini
