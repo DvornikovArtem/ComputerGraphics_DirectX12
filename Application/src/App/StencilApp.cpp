@@ -468,18 +468,9 @@ void StencilApp::MakeDrawableObjects()
     Patrick1->GeometryName = MeshParsingResults["PatrickStar"][0].GeometryName;
     Patrick1->MaterialName = "PatrickMat";
     Patrick1->renderLayer = RenderLayer::Opaque;
-    Patrick1->WorldLocation = XMFLOAT3(-100.0f, 2.0f, 0.0f);
+    Patrick1->WorldLocation = XMFLOAT3(-3.0f, 2.0f, -1.0f);
 
     mAllDrawableObjects[Patrick1->Name] = Patrick1;
-
-    DrawableObject* Patrick2 = new DrawableObject();
-    Patrick2->Name = "Patrick2";
-    Patrick2->GeometryName = MeshParsingResults["PatrickStar"][0].GeometryName;
-    Patrick2->MaterialName = "PatrickMat";
-    Patrick2->renderLayer = RenderLayer::Opaque;
-    Patrick2->WorldLocation = XMFLOAT3(-4.0f, 2.0f, -10.0f);
-
-    mAllDrawableObjects[Patrick2->Name] = Patrick2;
 
     const float spacing = 2.0f;
     for (int row = 0; row < 11; ++row) {
