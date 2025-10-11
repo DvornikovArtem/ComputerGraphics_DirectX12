@@ -406,7 +406,7 @@ void StencilApp::MakeDrawableObjects()
     Svidetel->GeometryName = MeshParsingResults["Svidetel"][0].GeometryName;
     Svidetel->MaterialName = MeshParsingResults["Svidetel"][0].GeneratedMaterial.Name;
     Svidetel->renderLayer = RenderLayer::Opaque;
-    Svidetel->WorldLocation = XMFLOAT3(1.5f, 0.f, 0.f);
+    Svidetel->WorldLocation = XMFLOAT3(1.5f, 0.2f, 0.f);
     Svidetel->Scale = XMFLOAT3(2.f, 2.f, 2.f);
 
     mAllDrawableObjects[Svidetel->Name] = Svidetel;

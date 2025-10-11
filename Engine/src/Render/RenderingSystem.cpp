@@ -313,6 +313,9 @@ void RenderingSystem::OnResize() {
 	//ASKING FFX_API FOR RENDER RESOLUTION
 	if (mFSREnabled)
 	{
+		if (mFFXContext) ffxDestroyContext(&mFFXContext, nullptr);
+		BuildFSRContext();
+
 		ffxQueryDescUpscaleGetRenderResolutionFromQualityMode queryDesc = {};
 		queryDesc.header.type = FFX_API_QUERY_DESC_TYPE_UPSCALE_GETRENDERRESOLUTIONFROMQUALITYMODE;
 		queryDesc.displayHeight = mClientHeight;
@@ -320,11 +323,7 @@ void RenderingSystem::OnResize() {
 		queryDesc.qualityMode = mFSRQualityMode;
 		queryDesc.pOutRenderHeight = &mRecommendedRenderResolutionY;
 		queryDesc.pOutRenderWidth = &mRecommendedRenderResolutionX;
-
 		ffxQuery(&mFFXContext, &queryDesc.header);
-
-		ffxDestroyContext(&mFFXContext, nullptr);
-		BuildFSRContext();
 
 		//Resize FSROutput && MotionVector textures
 		D3D12_CLEAR_VALUE clearValue = {};
@@ -432,6 +431,15 @@ void RenderingSystem::CreateOrResizeSceneColor(int width, int height)
 
 void RenderingSystem::Render()
 {
+
+	if (mFSRSwitchFlag)
+	{
+		mFSRSwitchFlag = false;
+		mFSREnabled = mFSREnabledDisplayValue;
+		OnResize();
+	}
+
+
 	auto cmdListAlloc = mCurrFrameResource->CmdListAlloc;
 
 	ThrowIfFailed(cmdListAlloc->Reset());
@@ -769,8 +777,10 @@ void RenderingSystem::RegisterScenePanels() {
 				ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
 				ImGui::Text("Frame: %.3f ms", (ImGui::GetIO().Framerate > 0.f) ? 1000.0f / ImGui::GetIO().Framerate : 0.0f);
 				ImGui::Separator();
-				ImGui::Text("Scene View: %dx%d", (int)(mSceneImgRectMax.x - mSceneImgRectMin.x), (int)(mSceneImgRectMax.y - mSceneImgRectMin.y));
 				ImGui::Text("MSAA 4x: %s", m4xMsaaState ? "On" : "Off");
+				ImGui::Text("Render Resolution: %dx%d", mFSREnabled ? mRecommendedRenderResolutionX : mClientWidth, mFSREnabled ? mRecommendedRenderResolutionY : mClientHeight);
+				ImGui::Text("Viewport Resolution: %dx%d", mClientWidth, mClientHeight);
+				ImGui::Text("UI Clipped Resolution: %dx%d", (int)(mSceneImgRectMax.x - mSceneImgRectMin.x), (int)(mSceneImgRectMax.y - mSceneImgRectMin.y));
 			}
 			ImGui::End();
 			};
@@ -864,6 +874,28 @@ void RenderingSystem::RegisterScenePanels() {
 					Engine::UI::DebugConsole::Get().Info("%s", std::string(("Show Bounds: ") + std::string(showBounds ? "On" : "Off")).c_str());
 				}
 
+				if (ImGui::Checkbox("FSR Enabled", &mFSREnabledDisplayValue)) mFSRSwitchFlag = true;
+
+				const char* modeNames[] = { "Native", "Quality", "Balanced", "Performance", "Ultra Performance"};
+				const int FSRQualityModesCount = 5;
+				
+				if (ImGui::BeginCombo("FSR Quality Mode", modeNames[(int)mFSRQualityMode]))
+				{
+					for (int i = 0; i < FSRQualityModesCount; i++)
+					{
+						bool isSelected = ((int)mFSRQualityMode == i);
+						if (ImGui::Selectable(modeNames[i], isSelected))
+						{
+							mFSRQualityMode = (FfxApiUpscaleQualityMode)i;
+							mFSRSwitchFlag = true;
+						}
+
+						if (isSelected)
+							ImGui::SetItemDefaultFocus();
+					}
+					ImGui::EndCombo();
+				}
+
 				if (ImGui::Button("Print Debug Text")) {
 					Engine::UI::DebugConsole::Get().Info("%s", "It is information");
 					Engine::UI::DebugConsole::Get().Warn("%s", "It is warning");
@@ -873,20 +905,21 @@ void RenderingSystem::RegisterScenePanels() {
 
 
 				// Lights
+				const char* TypeToName[] = { "Directional Light", "Point Light", "Spot Light" };
 				ImGui::SeparatorText("Lights");
 				for (size_t i = 0; i < mAllLights.size(); ++i) {
 					auto* L = mAllLights[i];
 					ImGui::PushID((int)i);
-					ImGui::Text("Light %d", (int)i);
+					ImGui::Text("Light %d: %s", (int)i, TypeToName[(int)*(&L->LightType)]);
 					ImGui::SliderFloat3("Pos", (float*)&L->WorldLocation, -200.f, 200.f);
-					ImGui::SliderFloat3("Dir", (float*)&L->WorldDirection, -1.f, 1.f);
+					ImGui::SliderFloat3("Dir", (float*)&L->WorldDirection, -3.14f, 3.14f);
 					ImGui::ColorEdit3("Color", (float*)&L->Color);
 					ImGui::SliderFloat("Strength", &L->Strength, 0.0f, 50.0f);
 					ImGui::Separator();
 					ImGui::PopID();
 				}
 
-
+				
 				// Resources
 				ImGui::SeparatorText("Resources");
 				if (ImGui::TreeNode("Geometries")) {
@@ -964,6 +997,7 @@ void RenderingSystem::RegisterScenePanels() {
 			textures.push_back({ (ImTextureID)mGbufferImguiSlots[/*Mat Fresnel/Rough*/4].ptr, "Mat Fresnel/Rough" });
 			textures.push_back({ (ImTextureID)mGbufferImguiSlots[/*Accumulation*/5].ptr, "Accumulation" });
 			textures.push_back({ (ImTextureID)mGbufferImguiSlots[/*Bloom*/6].ptr, "Bloom" });
+			textures.push_back({ (ImTextureID)GetGpuSrv(mGbuffer->Channel0SRVHeapIndex + mGbuffer->NumBuffers - 1).ptr, "VelocityBuffer"});
 
 			mImGui->DrawTextureGridFixedSize_ImTexID("G-Buffer Viewer", textures, rows, cols, sceneSize, ImVec2(u0, v0), ImVec2(u1, v1), 0.0f, true);
 		};

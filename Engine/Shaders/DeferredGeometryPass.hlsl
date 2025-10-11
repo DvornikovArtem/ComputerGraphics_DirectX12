@@ -234,6 +234,5 @@ GBufferData PS(DS_VS_OUTPUT_PS_INPUT pin)
     pout.materialAlbedo = cbMaterial.DiffuseAlbedo;
     pout.MaterialFresnelRoughness = float4(cbMaterial.FresnelR0, cbMaterial.Roughness);
     pout.MotionVector = prevNDC - currentNDC;
-    
     return pout;
 }

@@ -367,8 +367,9 @@ protected:
     D3D12_VIEWPORT mDownscaledScreenViewport;
     D3D12_RECT mDownscaledScissorRect;
     int mFSROutputSRVHeapIndex;
-    bool mFSREnabled = true;
-
+    bool mFSREnabled = false;
+    bool mFSRSwitchFlag = false;
+    bool mFSREnabledDisplayValue = mFSREnabled;
     int SRVHeapHeadIndex = 0;
 // =================================================================================================
     DirectX::XMFLOAT4 ClearValue = { 0.f, 0.f, 0.f, 1.f };
