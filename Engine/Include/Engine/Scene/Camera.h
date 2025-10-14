@@ -76,6 +76,7 @@ public:
 
 	// After modifying camera position/orientation, call to rebuild the view matrix.
 	void UpdateViewMatrix();
+	void UpdateProjMatrix();
 
 	void SetMoveSpeed(float newMoveSpeed) { mMoveSpeed = newMoveSpeed; }
 	float GetMoveSpeed() const { return mMoveSpeed; }
@@ -86,6 +87,8 @@ public:
 
 	void SetPitchLimits(float minPitch, float maxPitch) { mMinPitch = minPitch; mMaxPitch = maxPitch; }
 
+	void SetJitter(float jitterX, float jitterY);
+	void ResetJitter();
 private:
 	float mPitch = 0.0f;
 	float mMinPitch = -DirectX::XM_PIDIV2 + 0.01f; // ~ -89.4°
@@ -110,10 +113,14 @@ private:
 	float mFarWindowHeight = 0.0f;
 
 	bool mViewDirty = true;
+	bool mProjDirty = true;
 
 	// Cache View/Proj matrices.
 	DirectX::XMFLOAT4X4 mView = MathHelper::Identity4x4();
 	DirectX::XMFLOAT4X4 mProj = MathHelper::Identity4x4();
+
+	float mJitterX = 0;
+	float mJitterY = 0;
 };
 
 #endif // CAMERA_H

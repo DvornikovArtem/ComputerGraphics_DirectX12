@@ -110,6 +110,7 @@ public:
     void DrawUI();
     void PreRender();
     void SaveFrameAsPrevious();
+    void CalculateJitter();
 
     void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems, std::string PSOName);
 
@@ -380,8 +381,13 @@ protected:
 
 // For TAA =========================================================================================
     bool mTAAEnabled = true;
+    bool mTAAEnabledDisplayValue = mTAAEnabled;
+    bool mTAASwitchFlag = false;
     Microsoft::WRL::ComPtr<ID3D12Resource> mPrevFrameTex; //Traditional Render only frame(no anti-aliasing, upscaling, or post-processing)
     int mPrevFrameSRVHeapIndex = 0;
+    float mJitterX;
+    float mJitterY;
+    int mJitterIndex = 0;
 // =================================================================================================
 };
 

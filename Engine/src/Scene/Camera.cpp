@@ -307,4 +307,38 @@ void Camera::UpdateViewMatrix()
 	}
 }
 
+void Camera::UpdateProjMatrix()
+{
+	if (!mProjDirty) return;
+
+	XMMATRIX P = XMMatrixPerspectiveFovLH(mFovY, mAspect, mNearZ, mFarZ);
+
+	if (mJitterX != 0.0f || mJitterY != 0.0f)
+	{
+		float jitterX_NDC = (2.0f * mJitterX) / (mAspect * mNearWindowHeight);
+		float jitterY_NDC = (2.0f * mJitterY) / mNearWindowHeight;
+
+		XMMATRIX jitterMatrix = XMMatrixTranslation(jitterX_NDC, jitterY_NDC, 0.0f);
+
+		P = XMMatrixMultiply(jitterMatrix, P);
+	}
+
+	XMStoreFloat4x4(&mProj, P);
+	mProjDirty = false;
+}
+
+void Camera::SetJitter(float jitterX, float jitterY)
+{
+	mJitterX = jitterX;
+	mJitterY = jitterY;
+	mProjDirty = true;
+}
+
+void Camera::ResetJitter()
+{
+	mJitterX = 0.0f;
+	mJitterY = 0.0f;
+	mProjDirty = true;
+}
+
 

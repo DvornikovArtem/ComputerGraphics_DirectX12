@@ -106,7 +106,7 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 
 	CreateCommandObjects();
 	CreateSwapChain();
-	if (mFSREnabled) BuildFSRContext();
+	BuildFSRContext();
 
 	mGbuffer = std::make_unique<Gbuffer>(mClientWidth, mClientHeight, md3dDevice);
 
@@ -362,6 +362,7 @@ void RenderingSystem::OnResize() {
 
 	if (mTAAEnabled)
 	{
+		mCamera.ResetJitter();
 		D3D12_CLEAR_VALUE clearValue = {};
 		clearValue.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
 		clearValue.DepthStencil.Depth = 1.0f;
@@ -374,6 +375,8 @@ void RenderingSystem::OnResize() {
 			D3D12_RESOURCE_STATE_COMMON,
 			&clearValue,
 			IID_PPV_ARGS(&mPrevFrameTex));
+
+		mJitterIndex = 0;
 	}
 
 	if (mSrvDescriptorHeap)
@@ -789,16 +792,6 @@ void RenderingSystem::RegisterScenePanels() {
 					Engine::UI::DebugConsole::Get().Info("%s", std::string(("VSync: ") + std::string(vSync ? "On" : "Off")).c_str());
 				}
 
-				ImGui::BeginDisabled(true);
-				bool* msaaPtr = GetMSAATogglePtr();
-				if (ImGui::Checkbox("MSAA 4x", msaaPtr)) {
-					Engine::UI::DebugConsole::Get().Info("%s", std::string(("MSAA 4x: ") + std::string(*msaaPtr ? "On" : "Off")).c_str());
-					OnResize();
-				}
-				if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("Not available");
-				ImGui::EndDisabled();
-
-
 				bool wire = GetWireframe();
 				if (ImGui::Checkbox("Wireframe", &wire)) {
 					SetWireframe(wire);
@@ -811,6 +804,7 @@ void RenderingSystem::RegisterScenePanels() {
 					Engine::UI::DebugConsole::Get().Info("%s", std::string(("Show Bounds: ") + std::string(showBounds ? "On" : "Off")).c_str());
 				}
 
+				if (ImGui::Checkbox("TAA Enabled", &mTAAEnabledDisplayValue)) mTAASwitchFlag = true;
 				if (ImGui::Checkbox("FSR Enabled", &mFSREnabledDisplayValue)) mFSRSwitchFlag = true;
 
 				const char* modeNames[] = { "Native", "Quality", "Balanced", "Performance", "Ultra Performance"};
@@ -1562,8 +1556,9 @@ void RenderingSystem::FSRUpscale()
 	dispatchDesc.cameraNear = mCamera.GetNearZ();
 	dispatchDesc.cameraFar = mCamera.GetFarZ();
 	dispatchDesc.cameraFovAngleVertical = mCamera.GetFovY();
-	// IN CASE TAA IS USED 
-	dispatchDesc.jitterOffset = { 0, 0 };
+
+	dispatchDesc.jitterOffset.x = mTAAEnabled ? -mJitterX : 0;
+	dispatchDesc.jitterOffset.y = mTAAEnabled ? -mJitterY : 0;
 
 	dispatchDesc.enableSharpening = false;
 	dispatchDesc.sharpness = 0.8f; // 0.0 - 1.0
@@ -1637,6 +1632,12 @@ void RenderingSystem::PreRender()
 		mFSREnabled = mFSREnabledDisplayValue;
 		OnResize();
 	}
+	if (mTAASwitchFlag)
+	{
+		mTAASwitchFlag = false;
+		mTAAEnabled = mTAAEnabledDisplayValue;
+		OnResize();
+	}
 }
 
 void RenderingSystem::SaveFrameAsPrevious()
@@ -1662,6 +1663,33 @@ void RenderingSystem::SaveFrameAsPrevious()
 		mGbuffer->AccumulationBuf.Get(),
 		D3D12_RESOURCE_STATE_COPY_SOURCE,
 		D3D12_RESOURCE_STATE_RENDER_TARGET));
+}
+
+void RenderingSystem::CalculateJitter()
+{
+	mJitterIndex++;
+
+	int32_t jitterPhaseCount;
+	ffxQueryDescUpscaleGetJitterPhaseCount getJitterPhaseDesc;
+	getJitterPhaseDesc.header.type = FFX_API_QUERY_DESC_TYPE_UPSCALE_GETJITTERPHASECOUNT;
+	getJitterPhaseDesc.displayWidth = mFSREnabled ? mRecommendedRenderResolutionX : mClientWidth;
+	getJitterPhaseDesc.renderWidth = mClientWidth;
+	getJitterPhaseDesc.pOutPhaseCount = &jitterPhaseCount;
+
+	ffxQuery(&mFFXContext, &getJitterPhaseDesc.header);
+
+	ffxQueryDescUpscaleGetJitterOffset getJitterOffsetDesc{};
+	getJitterOffsetDesc.header.type = FFX_API_QUERY_DESC_TYPE_UPSCALE_GETJITTEROFFSET;
+	getJitterOffsetDesc.index = mJitterIndex;
+	getJitterOffsetDesc.phaseCount = jitterPhaseCount;
+	getJitterOffsetDesc.pOutX = &mJitterX;
+	getJitterOffsetDesc.pOutY = &mJitterY;
+
+	ffxQuery(&mFFXContext, &getJitterOffsetDesc.header);
+
+	float jitterX = -2.f * mJitterX / (mFSREnabled ? mRecommendedRenderResolutionX : mClientWidth);
+	float jitterY = 2.f * mJitterY / (mFSREnabled ? mRecommendedRenderResolutionY : mClientHeight);
+	mCamera.SetJitter(jitterX, jitterY);
 }
 
 void RenderingSystem::LogAdapterOutputs(IDXGIAdapter* adapter)
@@ -1986,6 +2014,7 @@ void RenderingSystem::Update(std::vector<DrawableObject*>& mAllObjectsToUpdate, 
 		CloseHandle(eventHandle);
 	}
 
+	if (mTAAEnabled) CalculateJitter();
 	UpdateCamera(*gt);
 	UpdateRenderItems(mAllObjectsToUpdate);
 	UpdateObjectCBs(*gt);
@@ -3911,6 +3940,7 @@ void RenderingSystem::UpdateMainPassCB(const GameTimer& gt)
 
 void RenderingSystem::UpdateCamera(const GameTimer& gt)
 {
+	mCamera.UpdateProjMatrix();
 	//Update ViewFrustum
 	BoundingFrustum::CreateFromMatrix(ViewFrustum, mCamera.GetProj());
 	XMMATRIX invView = XMMatrixInverse(nullptr, mCamera.GetView());
