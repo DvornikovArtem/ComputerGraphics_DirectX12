@@ -505,7 +505,7 @@ void RenderingSystem::Render()
 
 	ThrowIfFailed(mCommandList->Reset(cmdListAlloc.Get(), nullptr));
 
-	SaveFrameAsPrevious();
+	if (mTAAEnabled) SaveFrameAsPrevious();
 
 	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mSceneColor.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_RENDER_TARGET));
 
@@ -1687,11 +1687,11 @@ void RenderingSystem::SaveFrameAsPrevious()
 		D3D12_RESOURCE_STATE_COPY_DEST));
 	
 	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
-		mGbuffer->AccumulationBuf.Get(),
+		mTAAResolvedAccBuffer.Get(),
 		D3D12_RESOURCE_STATE_COMMON,
 		D3D12_RESOURCE_STATE_COPY_SOURCE));
 
-	mCommandList->CopyResource(mPrevFrameTex.Get(), mGbuffer->AccumulationBuf.Get());
+	mCommandList->CopyResource(mPrevFrameTex.Get(), mTAAResolvedAccBuffer.Get());
 
 	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
 		mPrevFrameTex.Get(),
@@ -1699,7 +1699,7 @@ void RenderingSystem::SaveFrameAsPrevious()
 		D3D12_RESOURCE_STATE_COMMON));
 
 	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
-		mGbuffer->AccumulationBuf.Get(),
+		mTAAResolvedAccBuffer.Get(),
 		D3D12_RESOURCE_STATE_COPY_SOURCE,
 		D3D12_RESOURCE_STATE_COMMON));
 }
