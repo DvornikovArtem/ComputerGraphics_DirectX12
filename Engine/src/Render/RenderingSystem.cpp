@@ -185,6 +185,7 @@ void RenderingSystem::FinishInitialize()
 	}
 	if (mTAAEnabled)
 	{
+		srvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
 		md3dDevice->CreateShaderResourceView(mPrevFrameTex.Get(), &srvDesc,
 			CD3DX12_CPU_DESCRIPTOR_HANDLE(mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), mPrevFrameSRVHeapIndex, mCbvSrvDescriptorSize));
 	}
@@ -362,14 +363,14 @@ void RenderingSystem::OnResize() {
 	if (mTAAEnabled)
 	{
 		D3D12_CLEAR_VALUE clearValue = {};
-		clearValue.Format = mBackBufferFormat;
+		clearValue.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
 		clearValue.DepthStencil.Depth = 1.0f;
 		clearValue.DepthStencil.Stencil = 0;
 
 		md3dDevice->CreateCommittedResource(
 			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
 			D3D12_HEAP_FLAG_NONE,
-			&CD3DX12_RESOURCE_DESC::Tex2D(mBackBufferFormat, mFSREnabled ? mRecommendedRenderResolutionX : mClientWidth, mFSREnabled ? mRecommendedRenderResolutionY : mClientHeight, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
+			&CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R16G16B16A16_FLOAT, mFSREnabled ? mRecommendedRenderResolutionX : mClientWidth, mFSREnabled ? mRecommendedRenderResolutionY : mClientHeight, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
 			D3D12_RESOURCE_STATE_COMMON,
 			&clearValue,
 			IID_PPV_ARGS(&mPrevFrameTex));
@@ -396,6 +397,7 @@ void RenderingSystem::OnResize() {
 		}
 		if (mTAAEnabled)
 		{
+			srvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
 			md3dDevice->CreateShaderResourceView(mPrevFrameTex.Get(), &srvDesc,
 				CD3DX12_CPU_DESCRIPTOR_HANDLE(mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), mPrevFrameSRVHeapIndex, mCbvSrvDescriptorSize));
 		}
@@ -489,7 +491,7 @@ void RenderingSystem::Render()
 
 	DrawParticleSystems();
 
-	//SaveFrameAsPrevious();
+	SaveFrameAsPrevious();
 
 	if (mFSREnabled) FSRUpscale();
 
@@ -2837,8 +2839,6 @@ void RenderingSystem::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const 
 		ri->IsInViewFrustum = false;
 	}
 }
-
-
 
 void RenderingSystem::GBufferGeometryPass()
 {
