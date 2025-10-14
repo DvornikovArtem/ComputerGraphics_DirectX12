@@ -171,17 +171,24 @@ void RenderingSystem::FinishInitialize()
 		k++;
 	}
 
+	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	srvDesc.Format = mBackBufferFormat;
+	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+	srvDesc.Texture2D.MostDetailedMip = 0;
+	srvDesc.Texture2D.MipLevels = 1;
+
 	if (mFSREnabled)
 	{
-		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-		srvDesc.Format = mBackBufferFormat;
-		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-		srvDesc.Texture2D.MostDetailedMip = 0;
-		srvDesc.Texture2D.MipLevels = 1;
 		md3dDevice->CreateShaderResourceView(mFSROutput.Get(), &srvDesc,
 			CD3DX12_CPU_DESCRIPTOR_HANDLE(mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), mFSROutputSRVHeapIndex, mCbvSrvDescriptorSize));
 	}
+	if (mTAAEnabled)
+	{
+		md3dDevice->CreateShaderResourceView(mPrevFrameTex.Get(), &srvDesc,
+			CD3DX12_CPU_DESCRIPTOR_HANDLE(mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), mPrevFrameSRVHeapIndex, mCbvSrvDescriptorSize));
+	}
+
 
 	BuildFrameResources();
 
@@ -310,9 +317,9 @@ void RenderingSystem::OnResize() {
 
 	mCamera.SetLens(0.25f * MathHelper::Pi, AspectRatio(), 1.0f, 100000.0f);
 
-	//ASKING FFX_API FOR RENDER RESOLUTION
 	if (mFSREnabled)
 	{
+		//Ask FFX_API for render resolution
 		if (mFFXContext) ffxDestroyContext(&mFFXContext, nullptr);
 		BuildFSRContext();
 
@@ -348,9 +355,25 @@ void RenderingSystem::OnResize() {
 
 		mDownscaledScissorRect = { 0, 0, (long)mRecommendedRenderResolutionX, (long)mRecommendedRenderResolutionY };
 	}
-	//mGbuffer->Resize(mRecommendedRenderResolutionX, mRecommendedRenderResolutionY, md3dDevice.Get());
+
 	mGbuffer->Resize(mFSREnabled ? mRecommendedRenderResolutionX : mClientWidth,
 		mFSREnabled ? mRecommendedRenderResolutionY : mClientHeight, md3dDevice.Get());
+
+	if (mTAAEnabled)
+	{
+		D3D12_CLEAR_VALUE clearValue = {};
+		clearValue.Format = mBackBufferFormat;
+		clearValue.DepthStencil.Depth = 1.0f;
+		clearValue.DepthStencil.Stencil = 0;
+
+		md3dDevice->CreateCommittedResource(
+			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+			D3D12_HEAP_FLAG_NONE,
+			&CD3DX12_RESOURCE_DESC::Tex2D(mBackBufferFormat, mFSREnabled ? mRecommendedRenderResolutionX : mClientWidth, mFSREnabled ? mRecommendedRenderResolutionY : mClientHeight, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
+			D3D12_RESOURCE_STATE_COMMON,
+			&clearValue,
+			IID_PPV_ARGS(&mPrevFrameTex));
+	}
 
 	if (mSrvDescriptorHeap)
 	{
@@ -358,16 +381,23 @@ void RenderingSystem::OnResize() {
 			mGbuffer->m_SRVDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
 			D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
+
+		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+		srvDesc.Format = mBackBufferFormat;
+		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+		srvDesc.Texture2D.MostDetailedMip = 0;
+		srvDesc.Texture2D.MipLevels = 1;
+
 		if (mFSREnabled)
 		{
-			D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-			srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-			srvDesc.Format = mBackBufferFormat;
-			srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-			srvDesc.Texture2D.MostDetailedMip = 0;
-			srvDesc.Texture2D.MipLevels = 1;
 			md3dDevice->CreateShaderResourceView(mFSROutput.Get(), &srvDesc,
 				CD3DX12_CPU_DESCRIPTOR_HANDLE(mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), mFSROutputSRVHeapIndex, mCbvSrvDescriptorSize));
+		}
+		if (mTAAEnabled)
+		{
+			md3dDevice->CreateShaderResourceView(mPrevFrameTex.Get(), &srvDesc,
+				CD3DX12_CPU_DESCRIPTOR_HANDLE(mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), mPrevFrameSRVHeapIndex, mCbvSrvDescriptorSize));
 		}
 	}
 
@@ -431,14 +461,7 @@ void RenderingSystem::CreateOrResizeSceneColor(int width, int height)
 
 void RenderingSystem::Render()
 {
-
-	if (mFSRSwitchFlag)
-	{
-		mFSRSwitchFlag = false;
-		mFSREnabled = mFSREnabledDisplayValue;
-		OnResize();
-	}
-
+	PreRender();
 
 	auto cmdListAlloc = mCurrFrameResource->CmdListAlloc;
 
@@ -446,16 +469,6 @@ void RenderingSystem::Render()
 
 	ThrowIfFailed(mCommandList->Reset(cmdListAlloc.Get(), nullptr));
 
-	mCommandList->RSSetViewports(1, &mScreenViewport);
-	mCommandList->RSSetScissorRects(1, &mScissorRect);
-
-	// Indicate a state transition on the resource usage.
-	/*mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mSwapChainBuffer[mCurrBackBuffer].Get(),
-		D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));*/
-
-	// Clear the back buffer and depth buffer.
-	/*mCommandList->ClearRenderTargetView(CurrentBackBufferView(), reinterpret_cast<FLOAT*>(&ClearValue), 0, nullptr);
-	mCommandList->ClearDepthStencilView(DepthStencilView(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);*/
 	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mSceneColor.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_RENDER_TARGET));
 
 	mCommandList->ClearRenderTargetView(mSceneColorRTV, reinterpret_cast<FLOAT*>(&ClearValue), 0, nullptr);
@@ -463,128 +476,50 @@ void RenderingSystem::Render()
 
 	mCommandList->OMSetRenderTargets(1, &mSceneColorRTV, FALSE, &DepthStencilView());
 
-	// Create frame shadow maps
 	DrawShadowMaps();
 
-	// Deferred Passes:
-
-	//
-	// 1. Geometry: draw scene into G-buffer.
-	//
 	mGbuffer->TransitToOpaqueRenderingState(mCommandList);
 	mGbuffer->ClearRTVs(mCommandList);
 	GBufferGeometryPass();
 
-	//
-	// 2. Light: calculate light into G-buffer.
-	// 
 	mGbuffer->TransitToLightsRenderingState(mCommandList);
 	GBufferLightPass();
 
-	//
-	//Draw SkyBox
-	//
 	DrawSkyBox();
-
-	//
-	//Draw ParticleSystems
-	//
-
-	for (ParticleSystem* particleSystem : mAllParticleSystems)
-	{
-		particleSystem->CameraPos = mCamera.GetPosition3f();
-		particleSystem->CameraDir = mCamera.GetLook3f();
-		//particleSystem->setEmissiveTex(mGbuffer->getEmissiveTex());
-		particleSystem->Update(gt->DeltaTime(), mCurrFrameResource);
-	}
 
 	DrawParticleSystems();
 
+	//SaveFrameAsPrevious();
 
 	if (mFSREnabled) FSRUpscale();
 
-	//DrawSceneGrid();
-	//
-	// Post-Processing
-	//
 	mGbuffer->TransitToTonemappingState(mCommandList);
 	PostProcessingPass();
 
-	if (mShowBounds && mOctTree)
-	{
-		mOctTree->Draw(mDebugDrawer);
-	}
+	if (mShowBounds && mOctTree) mOctTree->Draw(mDebugDrawer);
 
 	// Draw debug primitives
-	mDebugDrawer->Draw(
-		mCommandQueue,
-		mCommandList,
-		&mScreenViewport,
-		&mScissorRect,
-		this,
-		mCurrFrameResourceIndex
-	);
-
-	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
-		mSceneColor.Get(),
-		D3D12_RESOURCE_STATE_RENDER_TARGET,
-		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE
-	));
-
-	//DrawDebugTexture(GetGpuSrv(mGBuffer->Channel0SRVHeapIndex + 5));
-
-
-	// Clear
+	mDebugDrawer->Draw(mCommandQueue, mCommandList, &mScreenViewport, &mScissorRect, this, mCurrFrameResourceIndex);
 	mDebugDrawer->Clear();
+
+	//DrawSceneGrid();
 
 	mGbuffer->TransitFromShaderResourceToCommon(mCommandList);
 
-	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
-		mSwapChainBuffer[mCurrBackBuffer].Get(),
-		D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
-
-	mCommandList->ClearRenderTargetView(CurrentBackBufferView(), reinterpret_cast<FLOAT*>(&ClearValue), 0, nullptr);
-	mCommandList->OMSetRenderTargets(1, &CurrentBackBufferView(), FALSE, &DepthStencilView());
-
-
-	mCommandList->RSSetViewports(1, &mScreenViewport);
-	mCommandList->RSSetScissorRects(1, &mScissorRect);
-
-
-	for (Engine::UI::UILayerKind activeLayer : mActiveUILayers) mPanelRegistry.draw_layer(activeLayer);
-	mImGui->DrawBuiltins();
-
-	mCommandList->OMSetRenderTargets(1, &CurrentBackBufferView(), FALSE, &DepthStencilView());
-
-
-	mImGui->RenderDrawData(mCommandList.Get());
-
-	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
-		mSceneColor.Get(),
-		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
-		D3D12_RESOURCE_STATE_COMMON));
-
-
-	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
-		D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
+	DrawUI();
 
 	// Done recording commands.
 	ThrowIfFailed(mCommandList->Close());
 
-	// Add the command list to the queue for execution.
 	ID3D12CommandList* cmdsLists[] = { mCommandList.Get() };
 	mCommandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
 
 	// Swap the back and front buffers
-	UINT syncInterval = mVSync ? 1u : 0u;
-	ThrowIfFailed(mSwapChain->Present(syncInterval, 0));
+	ThrowIfFailed(mSwapChain->Present(mVSync ? 1u : 0u, 0));
 	mCurrBackBuffer = (mCurrBackBuffer + 1) % SwapChainBufferCount;
 
-
-	// Advance the fence value to mark commands up to this fence point.
-	mCurrFrameResource->Fence = ++mCurrentFence;
-
 	// Notify the fence when the GPU completes commands up to this fence point.
+	mCurrFrameResource->Fence = ++mCurrentFence;
 	mCommandQueue->Signal(mFence.Get(), mCurrentFence);
 }
 
@@ -1652,6 +1587,79 @@ void RenderingSystem::FSRUpscale()
 		std::string errorMsg = "FSR DISPATCH ERROR: " + std::to_string(dispatchError) + " \n";
 		OutputDebugStringA(errorMsg.c_str());
 	}
+}
+
+void RenderingSystem::DrawUI()
+{
+	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+		mSceneColor.Get(),
+		D3D12_RESOURCE_STATE_RENDER_TARGET,
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
+
+	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+		CurrentBackBuffer(),
+		D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
+
+	mCommandList->ClearRenderTargetView(CurrentBackBufferView(), reinterpret_cast<FLOAT*>(&ClearValue), 0, nullptr);
+	mCommandList->OMSetRenderTargets(1, &CurrentBackBufferView(), FALSE, &DepthStencilView());
+
+
+	mCommandList->RSSetViewports(1, &mScreenViewport);
+	mCommandList->RSSetScissorRects(1, &mScissorRect);
+
+
+	for (Engine::UI::UILayerKind activeLayer : mActiveUILayers) mPanelRegistry.draw_layer(activeLayer);
+	mImGui->DrawBuiltins();
+
+	mCommandList->OMSetRenderTargets(1, &CurrentBackBufferView(), FALSE, &DepthStencilView());
+
+
+	mImGui->RenderDrawData(mCommandList.Get());
+
+	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+		mSceneColor.Get(),
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+		D3D12_RESOURCE_STATE_COMMON));
+
+
+	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
+		D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
+}
+
+void RenderingSystem::PreRender()
+{
+	//If something needs to be done before rendering(), do it here
+	if (mFSRSwitchFlag)
+	{
+		mFSRSwitchFlag = false;
+		mFSREnabled = mFSREnabledDisplayValue;
+		OnResize();
+	}
+}
+
+void RenderingSystem::SaveFrameAsPrevious()
+{
+	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+		mPrevFrameTex.Get(),
+		D3D12_RESOURCE_STATE_COMMON,
+		D3D12_RESOURCE_STATE_COPY_DEST));
+	
+	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+		mGbuffer->AccumulationBuf.Get(),
+		D3D12_RESOURCE_STATE_RENDER_TARGET,
+		D3D12_RESOURCE_STATE_COPY_SOURCE));
+
+	mCommandList->CopyResource(mPrevFrameTex.Get(), mGbuffer->AccumulationBuf.Get());
+
+	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+		mPrevFrameTex.Get(),
+		D3D12_RESOURCE_STATE_COPY_DEST,
+		D3D12_RESOURCE_STATE_COMMON));
+
+	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+		mGbuffer->AccumulationBuf.Get(),
+		D3D12_RESOURCE_STATE_COPY_SOURCE,
+		D3D12_RESOURCE_STATE_RENDER_TARGET));
 }
 
 void RenderingSystem::LogAdapterOutputs(IDXGIAdapter* adapter)
@@ -2968,6 +2976,13 @@ void RenderingSystem::DrawSkyBox()
 
 void RenderingSystem::DrawParticleSystems()
 {
+	for (ParticleSystem* particleSystem : mAllParticleSystems)
+	{
+		particleSystem->CameraPos = mCamera.GetPosition3f();
+		particleSystem->CameraDir = mCamera.GetLook3f();
+		particleSystem->Update(gt->DeltaTime(), mCurrFrameResource);
+	}
+
 	ID3D12DescriptorHeap* descriptorHeaps[] = { mSrvDescriptorHeap.Get() };
 	mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
 
@@ -3456,6 +3471,8 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 		SRVHeapHeadIndex++;
 	}
 	mFSROutputSRVHeapIndex = SRVHeapHeadIndex;
+	SRVHeapHeadIndex++;
+	mPrevFrameSRVHeapIndex = SRVHeapHeadIndex;
 	ThrowIfFailed(mCommandList->Close());
 	ID3D12CommandList* cmdsLists[] = { mCommandList.Get() };
 	mCommandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);

@@ -107,6 +107,9 @@ public:
     void DrawSceneGrid();
     void BuildFSRContext();
     void FSRUpscale();
+    void DrawUI();
+    void PreRender();
+    void SaveFrameAsPrevious();
 
     void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems, std::string PSOName);
 
@@ -287,6 +290,8 @@ protected:
     std::vector<RenderItem*> mChosenTerrainRitems;
     std::vector<RenderItem*> mVisibleTerrainRitems;
 
+    int SRVHeapHeadIndex = 0;
+
 // For Post Effects ================================================================================
 public:
 
@@ -370,9 +375,14 @@ protected:
     bool mFSREnabled = false;
     bool mFSRSwitchFlag = false;
     bool mFSREnabledDisplayValue = mFSREnabled;
-    int SRVHeapHeadIndex = 0;
 // =================================================================================================
     DirectX::XMFLOAT4 ClearValue = { 0.f, 0.f, 0.f, 1.f };
+
+// For TAA =========================================================================================
+    bool mTAAEnabled = true;
+    Microsoft::WRL::ComPtr<ID3D12Resource> mPrevFrameTex; //Traditional Render only frame(no anti-aliasing, upscaling, or post-processing)
+    int mPrevFrameSRVHeapIndex = 0;
+// =================================================================================================
 };
 
 
