@@ -111,6 +111,7 @@ public:
     void PreRender();
     void SaveFrameAsPrevious();
     void CalculateJitter();
+    void TAAResolve();
 
     void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems, std::string PSOName);
 
@@ -140,7 +141,6 @@ public:
     void DrawSkyBox();
     void DrawShadowMaps();
     void PostProcessingPass();
-    void DrawDebugTexture(CD3DX12_GPU_DESCRIPTOR_HANDLE SRVHandle);
 
     void Render();
 
@@ -384,7 +384,10 @@ protected:
     bool mTAAEnabledDisplayValue = mTAAEnabled;
     bool mTAASwitchFlag = false;
     Microsoft::WRL::ComPtr<ID3D12Resource> mPrevFrameTex; //Traditional Render only frame(no anti-aliasing, upscaling, or post-processing)
+    Microsoft::WRL::ComPtr<ID3D12Resource> mTAAResolvedAccBuffer; //Result of resolving mGBuffer->AccumulationBuf + mPrevFrameTex
     int mPrevFrameSRVHeapIndex = 0;
+    int mResolvedAccBufferSRVHeapIndex = 0;
+    int mResolvedAccBufferRTVHeapIndex = SwapChainBufferCount + 1;
     float mJitterX;
     float mJitterY;
     int mJitterIndex = 0;

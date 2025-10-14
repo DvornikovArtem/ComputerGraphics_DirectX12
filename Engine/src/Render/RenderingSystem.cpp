@@ -188,6 +188,16 @@ void RenderingSystem::FinishInitialize()
 		srvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
 		md3dDevice->CreateShaderResourceView(mPrevFrameTex.Get(), &srvDesc,
 			CD3DX12_CPU_DESCRIPTOR_HANDLE(mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), mPrevFrameSRVHeapIndex, mCbvSrvDescriptorSize));
+		md3dDevice->CreateShaderResourceView(mTAAResolvedAccBuffer.Get(), &srvDesc,
+			CD3DX12_CPU_DESCRIPTOR_HANDLE(mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), mResolvedAccBufferSRVHeapIndex, mCbvSrvDescriptorSize));
+
+		D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
+		rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
+		rtvDesc.Texture2D.MipSlice = 0;
+		rtvDesc.Texture2D.PlaneSlice = 0;
+		rtvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+		md3dDevice->CreateRenderTargetView(mTAAResolvedAccBuffer.Get(), &rtvDesc, 
+			CD3DX12_CPU_DESCRIPTOR_HANDLE(mRtvHeap->GetCPUDescriptorHandleForHeapStart(), mResolvedAccBufferRTVHeapIndex, mRtvDescriptorSize));
 	}
 
 
@@ -375,6 +385,25 @@ void RenderingSystem::OnResize() {
 			&clearValue,
 			IID_PPV_ARGS(&mPrevFrameTex));
 
+		md3dDevice->CreateCommittedResource(
+			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+			D3D12_HEAP_FLAG_NONE,
+			&CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R16G16B16A16_FLOAT, mFSREnabled ? mRecommendedRenderResolutionX : mClientWidth, mFSREnabled ? mRecommendedRenderResolutionY : mClientHeight, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
+			D3D12_RESOURCE_STATE_COMMON,
+			&clearValue,
+			IID_PPV_ARGS(&mTAAResolvedAccBuffer));
+
+		if (mRtvHeap)
+		{
+			D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
+			rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
+			rtvDesc.Texture2D.MipSlice = 0;
+			rtvDesc.Texture2D.PlaneSlice = 0;
+			rtvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+			md3dDevice->CreateRenderTargetView(mTAAResolvedAccBuffer.Get(), &rtvDesc, 
+				CD3DX12_CPU_DESCRIPTOR_HANDLE(mRtvHeap->GetCPUDescriptorHandleForHeapStart(), mResolvedAccBufferRTVHeapIndex, mRtvDescriptorSize));
+		}
+
 		mJitterIndex = 0;
 		mCamera.ResetJitter();
 	}
@@ -403,6 +432,8 @@ void RenderingSystem::OnResize() {
 			srvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
 			md3dDevice->CreateShaderResourceView(mPrevFrameTex.Get(), &srvDesc,
 				CD3DX12_CPU_DESCRIPTOR_HANDLE(mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), mPrevFrameSRVHeapIndex, mCbvSrvDescriptorSize));
+			md3dDevice->CreateShaderResourceView(mTAAResolvedAccBuffer.Get(), &srvDesc,
+				CD3DX12_CPU_DESCRIPTOR_HANDLE(mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), mResolvedAccBufferSRVHeapIndex, mCbvSrvDescriptorSize));
 		}
 	}
 
@@ -474,6 +505,8 @@ void RenderingSystem::Render()
 
 	ThrowIfFailed(mCommandList->Reset(cmdListAlloc.Get(), nullptr));
 
+	SaveFrameAsPrevious();
+
 	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mSceneColor.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_RENDER_TARGET));
 
 	mCommandList->ClearRenderTargetView(mSceneColorRTV, reinterpret_cast<FLOAT*>(&ClearValue), 0, nullptr);
@@ -494,7 +527,7 @@ void RenderingSystem::Render()
 
 	DrawParticleSystems();
 
-	SaveFrameAsPrevious();
+	if (mTAAEnabled) TAAResolve();
 
 	if (mFSREnabled) FSRUpscale();
 
@@ -1546,7 +1579,7 @@ void RenderingSystem::FSRUpscale()
 
 	dispatchDesc.header.type = FFX_API_DISPATCH_DESC_TYPE_UPSCALE;
 	dispatchDesc.commandList = mCommandList.Get();
-	dispatchDesc.color = ffxApiGetResourceDX12(mGbuffer->AccumulationBuf.Get(), FFX_API_RESOURCE_STATE_PIXEL_COMPUTE_READ);
+	dispatchDesc.color = ffxApiGetResourceDX12(mTAAEnabled ? mTAAResolvedAccBuffer.Get() : mGbuffer->AccumulationBuf.Get(), FFX_API_RESOURCE_STATE_PIXEL_COMPUTE_READ);
 	dispatchDesc.depth = ffxApiGetResourceDX12(mDepthStencilBuffer.Get(), FFX_API_RESOURCE_STATE_PIXEL_COMPUTE_READ);
 	dispatchDesc.motionVectors = ffxApiGetResourceDX12(mGbuffer->VelocityBufferTex.Get(), FFX_API_RESOURCE_STATE_PIXEL_COMPUTE_READ);
 
@@ -1655,7 +1688,7 @@ void RenderingSystem::SaveFrameAsPrevious()
 	
 	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
 		mGbuffer->AccumulationBuf.Get(),
-		D3D12_RESOURCE_STATE_RENDER_TARGET,
+		D3D12_RESOURCE_STATE_COMMON,
 		D3D12_RESOURCE_STATE_COPY_SOURCE));
 
 	mCommandList->CopyResource(mPrevFrameTex.Get(), mGbuffer->AccumulationBuf.Get());
@@ -1668,7 +1701,7 @@ void RenderingSystem::SaveFrameAsPrevious()
 	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
 		mGbuffer->AccumulationBuf.Get(),
 		D3D12_RESOURCE_STATE_COPY_SOURCE,
-		D3D12_RESOURCE_STATE_RENDER_TARGET));
+		D3D12_RESOURCE_STATE_COMMON));
 }
 
 void RenderingSystem::CalculateJitter()
@@ -1698,9 +1731,56 @@ void RenderingSystem::CalculateJitter()
 	mJitterX = -2.f * mJitterX / (mFSREnabled ? mRecommendedRenderResolutionX : mClientWidth);
 	mJitterY = 2.f * mJitterY / (mFSREnabled ? mRecommendedRenderResolutionY : mClientHeight);
 	mCamera.SetJitter(mJitterX, mJitterY);
+}
 
-	std::string Debug = "JitterX: " + std::to_string(mJitterX) + " JitterY: " + std::to_string(mJitterY) + " \n";
-	OutputDebugStringA(Debug.c_str());
+void RenderingSystem::TAAResolve()
+{
+	CD3DX12_RESOURCE_BARRIER barriers[3];
+	barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
+		mGbuffer->AccumulationBuf.Get(),
+		D3D12_RESOURCE_STATE_RENDER_TARGET,
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+	barriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(mTAAResolvedAccBuffer.Get(),
+		D3D12_RESOURCE_STATE_COMMON, 
+		D3D12_RESOURCE_STATE_RENDER_TARGET);
+	barriers[2] = CD3DX12_RESOURCE_BARRIER::Transition(mPrevFrameTex.Get(),
+		D3D12_RESOURCE_STATE_COMMON,
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+	mCommandList->ResourceBarrier(3, barriers);
+
+	mCommandList->SetGraphicsRootSignature(RootSignatures["PostProcessing"].Get());
+	mCommandList->OMSetRenderTargets(1, &CD3DX12_CPU_DESCRIPTOR_HANDLE(mRtvHeap->GetCPUDescriptorHandleForHeapStart(), mResolvedAccBufferRTVHeapIndex, mRtvDescriptorSize), 
+		FALSE, &DepthStencilView());
+	mCommandList->SetPipelineState(GlobalPSOs["TAAResolve"].Get());
+	mCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+	UINT passCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(PassConstants));
+	auto passCB = mCurrFrameResource->PassCB->Resource();
+
+	ID3D12DescriptorHeap* descriptorHeaps[] = { mSrvDescriptorHeap.Get() };
+	mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
+
+	mCommandList->SetGraphicsRootConstantBufferView(0, passCB->GetGPUVirtualAddress());
+
+	mCommandList->SetGraphicsRootDescriptorTable(1, GetGpuSrv(mGbuffer->Channel0SRVHeapIndex + 5));
+	mCommandList->SetGraphicsRootDescriptorTable(2, GetGpuSrv(mPrevFrameSRVHeapIndex));
+	//mCommandList->SetGraphicsRootDescriptorTable(3, GetGpuSrv(mGbuffer->Channel0SRVHeapIndex + 2));
+
+
+	mCommandList->DrawInstanced(6, 1, 0, 0);
+
+	CD3DX12_RESOURCE_BARRIER antibarriers[3];
+	antibarriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
+		mGbuffer->AccumulationBuf.Get(),
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+		D3D12_RESOURCE_STATE_RENDER_TARGET);
+	antibarriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(mTAAResolvedAccBuffer.Get(),
+		D3D12_RESOURCE_STATE_RENDER_TARGET,
+		D3D12_RESOURCE_STATE_COMMON);
+	antibarriers[2] = CD3DX12_RESOURCE_BARRIER::Transition(mPrevFrameTex.Get(),
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+		D3D12_RESOURCE_STATE_COMMON);
+	mCommandList->ResourceBarrier(3, antibarriers);
 }
 
 void RenderingSystem::LogAdapterOutputs(IDXGIAdapter* adapter)
@@ -1776,7 +1856,7 @@ void RenderingSystem::CreateSwapChain()
 void RenderingSystem::CreateRtvAndDsvDescriptorHeaps()
 {
 	D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc;
-	rtvHeapDesc.NumDescriptors = SwapChainBufferCount + 1;
+	rtvHeapDesc.NumDescriptors = SwapChainBufferCount + 1 + 1;
 	rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
 	rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
 	rtvHeapDesc.NodeMask = 0;
@@ -2788,12 +2868,18 @@ void RenderingSystem::BuildGlobalPSOs()
 	};
 	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&PPPsoDesc, IID_PPV_ARGS(&GlobalPSOs["PostProcessing"])));
 
+	PPPsoDesc.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	PPPsoDesc.VS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["TAAResolveVS"]->GetBufferPointer()),
+		mShaders["TAAResolveVS"]->GetBufferSize()
+	};
 	PPPsoDesc.PS =
 	{
-		reinterpret_cast<BYTE*>(mShaders["PPPS_DrawTexture"]->GetBufferPointer()),
-		mShaders["PPPS_DrawTexture"]->GetBufferSize()
+		reinterpret_cast<BYTE*>(mShaders["TAAResolvePS"]->GetBufferPointer()),
+		mShaders["TAAResolvePS"]->GetBufferSize()
 	};
-	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&PPPsoDesc, IID_PPV_ARGS(&GlobalPSOs["PostProcessing_DrawDebugTexture"])));
+	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&PPPsoDesc, IID_PPV_ARGS(&GlobalPSOs["TAAResolve"])));
 
 }
 
@@ -3172,7 +3258,7 @@ void RenderingSystem::PostProcessingPass()
 
 	mCommandList->SetGraphicsRootConstantBufferView(0, passCB->GetGPUVirtualAddress());
 
-	mCommandList->SetGraphicsRootDescriptorTable(1, GetGpuSrv(mFSREnabled ? mFSROutputSRVHeapIndex : mGbuffer->Channel0SRVHeapIndex + 5));
+	mCommandList->SetGraphicsRootDescriptorTable(1, GetGpuSrv(mFSREnabled ? mFSROutputSRVHeapIndex : (mTAAEnabled ? mResolvedAccBufferSRVHeapIndex :  mGbuffer->Channel0SRVHeapIndex + 5)));
 	mCommandList->SetGraphicsRootDescriptorTable(2, GetGpuSrv(mGbuffer->Channel0SRVHeapIndex + 1));
 	mCommandList->SetGraphicsRootDescriptorTable(3, GetGpuSrv(mGbuffer->Channel0SRVHeapIndex + 2));
 
@@ -3180,23 +3266,6 @@ void RenderingSystem::PostProcessingPass()
 	mCommandList->DrawInstanced(6, 1, 0, 0);
 	if (mFSREnabled) mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mFSROutput.Get(),
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON));
-}
-
-//Draws given texture in bottom-left corner of the screen
-void RenderingSystem::DrawDebugTexture(CD3DX12_GPU_DESCRIPTOR_HANDLE SRVHandle)
-{
-	mCommandList->SetGraphicsRootSignature(RootSignatures["PostProcessing"].Get());
-	mCommandList->SetPipelineState(GlobalPSOs["PostProcessing_DrawDebugTexture"].Get());
-	UINT passCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(PassConstants));
-	auto passCB = mCurrFrameResource->PassCB->Resource();
-
-	ID3D12DescriptorHeap* descriptorHeaps[] = { mSrvDescriptorHeap.Get() };
-	mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
-
-	mCommandList->SetGraphicsRootConstantBufferView(0, passCB->GetGPUVirtualAddress());
-	mCommandList->SetGraphicsRootDescriptorTable(1, SRVHandle);
-
-	mCommandList->DrawInstanced(6, 1, 0, 0);
 }
 
 void RenderingSystem::UpdateMaterialCBs(const GameTimer& gt)
@@ -3297,7 +3366,7 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 	// Create the SRV heap.
 	//
 	D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
-	srvHeapDesc.NumDescriptors = static_cast<UINT>(TexDescs.size() + MPRTextures.size() + MPRTerrainTextures.size() + 1 + mAllLights.size() + mGbuffer->NumBuffers + 1 + 1);
+	srvHeapDesc.NumDescriptors = 100000;
 	srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 	srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	ThrowIfFailed(md3dDevice->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&mSrvDescriptorHeap)));
@@ -3386,14 +3455,12 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 	for (Texture* i : MPRTextures) {
 		auto it = mTextures.find(i->Name);
 		if (it == mTextures.end()) {
-			// ????????? ??????: ???????? ?? ???????
 			OutputDebugStringA(("Texture not found: " + i->Name + "\n").c_str());
 			continue;
 		}
 
 		auto& tex = it->second->Resource;
 		if (!tex) {
-			// ????????? ??????: ?????? ???????? ?? ???????????????
 			OutputDebugStringA(("Texture resource is null: " + i->Name + "\n").c_str());
 			continue;
 		}
@@ -3513,6 +3580,8 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 	mFSROutputSRVHeapIndex = SRVHeapHeadIndex;
 	SRVHeapHeadIndex++;
 	mPrevFrameSRVHeapIndex = SRVHeapHeadIndex;
+	SRVHeapHeadIndex++;
+	mResolvedAccBufferSRVHeapIndex = SRVHeapHeadIndex;
 	ThrowIfFailed(mCommandList->Close());
 	ID3D12CommandList* cmdsLists[] = { mCommandList.Get() };
 	mCommandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
@@ -3752,7 +3821,10 @@ void RenderingSystem::BuildShaders(std::vector<ShaderDesc>& ShaderDescs)
 	//for post-processing
 	mShaders["PPVS"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\PostProcessing.hlsl", nullptr, "VS_FSQuad", "vs_5_1");
 	mShaders["PPPS"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\PostProcessing.hlsl", nullptr, "PS", "ps_5_1");
-	mShaders["PPPS_DrawTexture"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\PostProcessing.hlsl", nullptr, "PS_DrawTexture", "ps_5_1");
+
+	//for TAA Resolving
+	mShaders["TAAResolveVS"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\TAAResolve.hlsl", nullptr, "VS_FSQuad", "vs_5_1");
+	mShaders["TAAResolvePS"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\TAAResolve.hlsl", nullptr, "PS", "ps_5_1");
 }
 
 void RenderingSystem::BuildBasicGeometry()
