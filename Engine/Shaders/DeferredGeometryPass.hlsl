@@ -32,9 +32,13 @@ struct DS_VS_OUTPUT_PS_INPUT
     float2 TexC : TEXCOORD;
     float3 Normal : NORMAL;
     float3 Tangent : TANGENT;
+    //Jittered values
     float4 PrevPosCS : POSITION1;
     //We could just use PosCS but IT DOESN'T FUCKING WORK for some reason, instead of [-1, 1] it stays in [0, some big positive] and idk why
     float4 CurrPosCS : POSITION2;
+    //UnJiterred values
+    float4 PrevPosCSNoJitter : POSITION3;
+    float4 CurrPosCSNoJitter : POSITION4;
 };
 
 DS_VS_OUTPUT_PS_INPUT VS(VS_INPUT vin)
@@ -58,7 +62,9 @@ DS_VS_OUTPUT_PS_INPUT VS(VS_INPUT vin)
     vout.PrevPosCS = mul(prevPosW, cbMainPass.PrevViewProj);
     
     vout.CurrPosCS = vout.PosCS;
-
+    
+    vout.CurrPosCSNoJitter = mul(posW, cbMainPass.ViewProjNoJitter);
+    vout.PrevPosCSNoJitter = mul(prevPosW, cbMainPass.PrevViewProjNoJitter);
     return vout;
 }
 
@@ -109,6 +115,8 @@ struct HS_CONTROL_POINT_OUTPUT
     float3 vTangent : TANGENT;
     float4 vPrevPosCS : POSITION1;
     float4 vCurrPosCS : POSITION2;
+    float4 vPrevPosCSNJ : POSITION3;
+    float4 vCurrPosCSNJ : POSITION4;
 };
 
 [domain("tri")] // indicates a triangle patch (3 verts)
@@ -128,6 +136,8 @@ HS_CONTROL_POINT_OUTPUT HSMain(InputPatch<DS_VS_OUTPUT_PS_INPUT, 3> inputPatch, 
     Out.vTangent = inputPatch[uCPID].Tangent;
     Out.vPrevPosCS = inputPatch[uCPID].PrevPosCS;
     Out.vCurrPosCS = inputPatch[uCPID].CurrPosCS;
+    Out.vPrevPosCSNJ = inputPatch[uCPID].PrevPosCSNoJitter;
+    Out.vCurrPosCSNJ = inputPatch[uCPID].CurrPosCSNoJitter;
     return Out;
 }
 
@@ -167,6 +177,16 @@ DS_VS_OUTPUT_PS_INPUT DSMain(HS_CONSTANT_DATA_OUTPUT input, float3 BarycentricCo
     BarycentricCoordinates.x * TrianglePatch[0].vCurrPosCS +
     BarycentricCoordinates.y * TrianglePatch[1].vCurrPosCS +
     BarycentricCoordinates.z * TrianglePatch[2].vCurrPosCS;
+    
+    Out.PrevPosCSNoJitter =
+    BarycentricCoordinates.x * TrianglePatch[0].vPrevPosCSNJ +
+    BarycentricCoordinates.y * TrianglePatch[1].vPrevPosCSNJ +
+    BarycentricCoordinates.z * TrianglePatch[2].vPrevPosCSNJ;
+    
+    Out.CurrPosCSNoJitter =
+    BarycentricCoordinates.x * TrianglePatch[0].vCurrPosCSNJ +
+    BarycentricCoordinates.y * TrianglePatch[1].vCurrPosCSNJ +
+    BarycentricCoordinates.z * TrianglePatch[2].vCurrPosCSNJ;
 
     // sample the displacement map for the magnitude of displacement
     float fDisplacement = HeightMap.SampleLevel(samAnisotropicWrap, Out.TexC.xy, 0).r;
@@ -223,16 +243,17 @@ GBufferData PS(DS_VS_OUTPUT_PS_INPUT pin)
     
     float4 diffuseAlbedo = DiffuseMap.Sample(samAnisotropicWrap, uv);
     
-    float2 currentNDC = pin.CurrPosCS.xy / pin.CurrPosCS.w;
-    float2 prevNDC = pin.PrevPosCS.xy / pin.PrevPosCS.w;
+    float2 currentNDC = pin.CurrPosCSNoJitter.xy / pin.CurrPosCSNoJitter.w;
+    float2 prevNDC = pin.PrevPosCSNoJitter.xy / pin.PrevPosCSNoJitter.w;
     currentNDC = currentNDC * 0.5f + 0.5f;
     prevNDC = prevNDC * 0.5f + 0.5f;
-
+    
     pout.diffuse = diffuseAlbedo;
     pout.emissive = float4(0.f, 0.f, 0.f, pin.PosCS.z); //xyz is free for now
     pout.normal = float4(WorldNormal, cbMaterial.Metallic);
     pout.materialAlbedo = cbMaterial.DiffuseAlbedo;
     pout.MaterialFresnelRoughness = float4(cbMaterial.FresnelR0, cbMaterial.Roughness);
     pout.MotionVector = prevNDC - currentNDC;
+    pout.MotionVector *= 20000;
     return pout;
 }

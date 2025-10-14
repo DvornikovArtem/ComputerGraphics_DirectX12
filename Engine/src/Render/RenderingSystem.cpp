@@ -362,7 +362,6 @@ void RenderingSystem::OnResize() {
 
 	if (mTAAEnabled)
 	{
-		mCamera.ResetJitter();
 		D3D12_CLEAR_VALUE clearValue = {};
 		clearValue.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
 		clearValue.DepthStencil.Depth = 1.0f;
@@ -377,6 +376,7 @@ void RenderingSystem::OnResize() {
 			IID_PPV_ARGS(&mPrevFrameTex));
 
 		mJitterIndex = 0;
+		mCamera.ResetJitter();
 	}
 
 	if (mSrvDescriptorHeap)
@@ -1637,6 +1637,12 @@ void RenderingSystem::PreRender()
 		mTAASwitchFlag = false;
 		mTAAEnabled = mTAAEnabledDisplayValue;
 		OnResize();
+
+		if (!mTAAEnabledDisplayValue)
+		{
+			mJitterX = mJitterY = 0;
+			mMainPassCB.PrevCameraJitter = { 0, 0 };
+		}
 	}
 }
 
@@ -1667,6 +1673,8 @@ void RenderingSystem::SaveFrameAsPrevious()
 
 void RenderingSystem::CalculateJitter()
 {
+	mMainPassCB.PrevCameraJitter = { mJitterX, mJitterY };
+
 	mJitterIndex++;
 
 	int32_t jitterPhaseCount;
@@ -1687,9 +1695,12 @@ void RenderingSystem::CalculateJitter()
 
 	ffxQuery(&mFFXContext, &getJitterOffsetDesc.header);
 
-	float jitterX = -2.f * mJitterX / (mFSREnabled ? mRecommendedRenderResolutionX : mClientWidth);
-	float jitterY = 2.f * mJitterY / (mFSREnabled ? mRecommendedRenderResolutionY : mClientHeight);
-	mCamera.SetJitter(jitterX, jitterY);
+	mJitterX = -2.f * mJitterX / (mFSREnabled ? mRecommendedRenderResolutionX : mClientWidth);
+	mJitterY = 2.f * mJitterY / (mFSREnabled ? mRecommendedRenderResolutionY : mClientHeight);
+	mCamera.SetJitter(mJitterX, mJitterY);
+
+	std::string Debug = "JitterX: " + std::to_string(mJitterX) + " JitterY: " + std::to_string(mJitterY) + " \n";
+	OutputDebugStringA(Debug.c_str());
 }
 
 void RenderingSystem::LogAdapterOutputs(IDXGIAdapter* adapter)
@@ -3901,13 +3912,16 @@ void RenderingSystem::UpdateMainPassCB(const GameTimer& gt)
 {
 	XMMATRIX view = mCamera.GetView();
 	XMMATRIX proj = mCamera.GetProj();
+	XMMATRIX projNoJitter = mCamera.GetProjNoJitter();
 
 	XMMATRIX viewProj = XMMatrixMultiply(view, proj);
+	XMMATRIX viewProjNoJitter = XMMatrixMultiply(view, projNoJitter);
 	XMMATRIX invView = XMMatrixInverse(nullptr, view);
 	XMMATRIX invProj = XMMatrixInverse(nullptr, proj);
 	XMMATRIX invViewProj = XMMatrixInverse(nullptr, viewProj);
 
 	static XMMATRIX prevViewProj = viewProj;
+	static XMMATRIX prevViewProjNoJitter = viewProjNoJitter;
 	static XMFLOAT3 prevCameraPos = mCamera.GetPosition3f();
 
 	XMStoreFloat4x4(&mMainPassCB.View, XMMatrixTranspose(view));
@@ -3917,6 +3931,8 @@ void RenderingSystem::UpdateMainPassCB(const GameTimer& gt)
 	XMStoreFloat4x4(&mMainPassCB.ViewProj, XMMatrixTranspose(viewProj));
 	XMStoreFloat4x4(&mMainPassCB.InvViewProj, XMMatrixTranspose(invViewProj));
 	XMStoreFloat4x4(&mMainPassCB.PrevViewProj, XMMatrixTranspose(prevViewProj));
+	XMStoreFloat4x4(&mMainPassCB.PrevViewProjNoJitter, XMMatrixTranspose(prevViewProjNoJitter));
+	XMStoreFloat4x4(&mMainPassCB.ViewProjNoJitter, XMMatrixTranspose(viewProjNoJitter));
 	mMainPassCB.PrevCameraPos = prevCameraPos;
 	mMainPassCB.CameraPos = mCamera.GetPosition3f();
 	mMainPassCB.RenderTargetSize = mFSREnabled ? XMFLOAT2((float)mRecommendedRenderResolutionX, (float)mRecommendedRenderResolutionY) : XMFLOAT2((float)mClientWidth, (float)mClientHeight);
@@ -3929,8 +3945,11 @@ void RenderingSystem::UpdateMainPassCB(const GameTimer& gt)
 	mMainPassCB.AmbientLight = { 0.4f, 0.4f, 0.4f, 1.0f };
 	mMainPassCB.CameraDirection = mCamera.GetLook3f();
 	mMainPassCB.postEffectsExposure = mPostEffectsExposure;
+	mMainPassCB.CameraJitter = { mJitterX, mJitterY };
+	//PrevCameraJitter is set in CalculateJitter()
 
 	prevViewProj = viewProj;
+	prevViewProjNoJitter = viewProjNoJitter;
 	prevCameraPos = mCamera.GetPosition3f();
 
 	// Main pass stored in index 2

@@ -124,8 +124,7 @@ void Camera::SetLens(float fovY, float aspect, float zn, float zf)
 	mNearWindowHeight = 2.0f * mNearZ * tanf( 0.5f*mFovY );
 	mFarWindowHeight  = 2.0f * mFarZ * tanf( 0.5f*mFovY );
 
-	XMMATRIX P = XMMatrixPerspectiveFovLH(mFovY, mAspect, mNearZ, mFarZ);
-	XMStoreFloat4x4(&mProj, P);
+	mProjDirty = true;
 }
 
 void Camera::LookAt(FXMVECTOR pos, FXMVECTOR target, FXMVECTOR worldUp)
@@ -164,6 +163,11 @@ XMMATRIX Camera::GetView()const
 XMMATRIX Camera::GetProj()const
 {
 	return XMLoadFloat4x4(&mProj);
+}
+
+DirectX::XMMATRIX Camera::GetProjNoJitter() const
+{
+	return XMLoadFloat4x4(&mProjUnjiterred);
 }
 
 
@@ -312,16 +316,9 @@ void Camera::UpdateProjMatrix()
 	if (!mProjDirty) return;
 
 	XMMATRIX P = XMMatrixPerspectiveFovLH(mFovY, mAspect, mNearZ, mFarZ);
-
-	if (mJitterX != 0.0f || mJitterY != 0.0f)
-	{
-		float jitterX_NDC = (2.0f * mJitterX) / (mAspect * mNearWindowHeight);
-		float jitterY_NDC = (2.0f * mJitterY) / mNearWindowHeight;
-
-		XMMATRIX jitterMatrix = XMMatrixTranslation(jitterX_NDC, jitterY_NDC, 0.0f);
-
-		P = XMMatrixMultiply(jitterMatrix, P);
-	}
+	XMStoreFloat4x4(&mProjUnjiterred, P);
+	XMMATRIX jitterMatrix = XMMatrixTranslation(mJitterX, mJitterY, 0.0f);
+	P = XMMatrixMultiply(jitterMatrix, P);
 
 	XMStoreFloat4x4(&mProj, P);
 	mProjDirty = false;

@@ -57,6 +57,7 @@ public:
 	// Get View/Proj matrices.
 	DirectX::XMMATRIX GetView()const;
 	DirectX::XMMATRIX GetProj()const;
+	DirectX::XMMATRIX GetProjNoJitter()const;
 
 	DirectX::XMFLOAT4X4 GetView4x4f()const;
 	DirectX::XMFLOAT4X4 GetProj4x4f()const;
@@ -118,6 +119,7 @@ private:
 	// Cache View/Proj matrices.
 	DirectX::XMFLOAT4X4 mView = MathHelper::Identity4x4();
 	DirectX::XMFLOAT4X4 mProj = MathHelper::Identity4x4();
+	DirectX::XMFLOAT4X4 mProjUnjiterred = MathHelper::Identity4x4();
 
 	float mJitterX = 0;
 	float mJitterY = 0;

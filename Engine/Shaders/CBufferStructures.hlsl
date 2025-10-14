@@ -25,6 +25,10 @@ struct MainPassCB
     float2 ViewportSize;
     float postEffectsExposure;
     float _pad;
+    float2 CameraJitter;
+    float2 PrevCameraJitter;
+    float4x4 ViewProjNoJitter;
+    float4x4 PrevViewProjNoJitter;
 };
 
 struct ObjectCB
