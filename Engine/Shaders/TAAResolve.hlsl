@@ -65,11 +65,6 @@ float4 PS(VertexOut pin) : SV_Target
     float2 MotionVector = MotionVectors.Load(int3(TexelCoord, 0)).xy;
     float MotionLength = length(MotionVector);
     
-    // filter out tiny movements
-    float MotionThreshold = 0.05;
-    if (MotionLength < MotionThreshold)
-        return CurrFrame.Load(int3(TexelCoord, 0));
-    
     float2 PrevTexelCoord = TexelCoord + MotionVector;
     float4 CurrFrameColor = CurrFrame.Load(int3(TexelCoord, 0));
     float4 PrevFrameColor = CurrFrameColor;

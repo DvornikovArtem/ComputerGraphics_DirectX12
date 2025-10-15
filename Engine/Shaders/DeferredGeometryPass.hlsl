@@ -255,5 +255,10 @@ GBufferData PS(DS_VS_OUTPUT_PS_INPUT pin)
     pout.MaterialFresnelRoughness = float4(cbMaterial.FresnelR0, cbMaterial.Roughness);
     pout.MotionVector = (prevNDC - currentNDC) * cbMainPass.RenderTargetSize;
     pout.MotionVector.y *= -1.f;
+    
+    //filter out MV noise
+    if (length(pout.MotionVector) < 0.05)
+        pout.MotionVector = float2(0.f, 0.f);
+    
     return pout;
 }
