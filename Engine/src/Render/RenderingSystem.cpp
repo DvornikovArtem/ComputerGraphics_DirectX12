@@ -750,7 +750,6 @@ void RenderingSystem::RegisterScenePanels() {
 				ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
 				ImGui::Text("Frame: %.3f ms", (ImGui::GetIO().Framerate > 0.f) ? 1000.0f / ImGui::GetIO().Framerate : 0.0f);
 				ImGui::Separator();
-				ImGui::Text("MSAA 4x: %s", m4xMsaaState ? "On" : "Off");
 				ImGui::Text("Render Resolution: %dx%d", mFSREnabled ? mRecommendedRenderResolutionX : mClientWidth, mFSREnabled ? mRecommendedRenderResolutionY : mClientHeight);
 				ImGui::Text("Viewport Resolution: %dx%d", mClientWidth, mClientHeight);
 				ImGui::Text("UI Clipped Resolution: %dx%d", (int)(mSceneImgRectMax.x - mSceneImgRectMin.x), (int)(mSceneImgRectMax.y - mSceneImgRectMin.y));
@@ -1584,7 +1583,7 @@ void RenderingSystem::FSRUpscale()
 	dispatchDesc.motionVectors = ffxApiGetResourceDX12(mGbuffer->VelocityBufferTex.Get(), FFX_API_RESOURCE_STATE_PIXEL_COMPUTE_READ);
 
 	dispatchDesc.renderSize = { (UINT)mRecommendedRenderResolutionX, (UINT)mRecommendedRenderResolutionY };    // Resolution before upscaling
-	dispatchDesc.motionVectorScale = { (float)mRecommendedRenderResolutionX, (float)mRecommendedRenderResolutionY };
+	dispatchDesc.motionVectorScale = { 1.f, 1.f };
 	dispatchDesc.upscaleSize = { (UINT)mClientWidth, (UINT)mClientHeight };
 	dispatchDesc.cameraNear = mCamera.GetNearZ();
 	dispatchDesc.cameraFar = mCamera.GetFarZ();
@@ -1728,8 +1727,8 @@ void RenderingSystem::CalculateJitter()
 
 	ffxQuery(&mFFXContext, &getJitterOffsetDesc.header);
 
-	mJitterX = -2.f * mJitterX / (mFSREnabled ? mRecommendedRenderResolutionX : mClientWidth);
-	mJitterY = 2.f * mJitterY / (mFSREnabled ? mRecommendedRenderResolutionY : mClientHeight);
+	mJitterX = -2.f * mJitterX / (mFSREnabled ? mRecommendedRenderResolutionX : mClientWidth) * 0.5f;
+	mJitterY = 2.f * mJitterY / (mFSREnabled ? mRecommendedRenderResolutionY : mClientHeight) * 0.5f;
 	mCamera.SetJitter(mJitterX, mJitterY);
 }
 
@@ -1748,7 +1747,7 @@ void RenderingSystem::TAAResolve()
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 	mCommandList->ResourceBarrier(3, barriers);
 
-	mCommandList->SetGraphicsRootSignature(RootSignatures["PostProcessing"].Get());
+	mCommandList->SetGraphicsRootSignature(RootSignatures["TAAResolve"].Get());
 	mCommandList->OMSetRenderTargets(1, &CD3DX12_CPU_DESCRIPTOR_HANDLE(mRtvHeap->GetCPUDescriptorHandleForHeapStart(), mResolvedAccBufferRTVHeapIndex, mRtvDescriptorSize), 
 		FALSE, &DepthStencilView());
 	mCommandList->SetPipelineState(GlobalPSOs["TAAResolve"].Get());
@@ -1764,8 +1763,8 @@ void RenderingSystem::TAAResolve()
 
 	mCommandList->SetGraphicsRootDescriptorTable(1, GetGpuSrv(mGbuffer->Channel0SRVHeapIndex + 5));
 	mCommandList->SetGraphicsRootDescriptorTable(2, GetGpuSrv(mPrevFrameSRVHeapIndex));
-	//mCommandList->SetGraphicsRootDescriptorTable(3, GetGpuSrv(mGbuffer->Channel0SRVHeapIndex + 2));
-
+	mCommandList->SetGraphicsRootDescriptorTable(3, GetGpuSrv(mGbuffer->Channel0SRVHeapIndex + 1));
+	mCommandList->SetGraphicsRootDescriptorTable(4, GetGpuSrv(mGbuffer->Channel0SRVHeapIndex + 7));
 
 	mCommandList->DrawInstanced(6, 1, 0, 0);
 
@@ -2086,6 +2085,35 @@ void RenderingSystem::BuildRootSignatures()
 		serializedPProotSig->GetBufferPointer(),
 		serializedPProotSig->GetBufferSize(),
 		IID_PPV_ARGS(RootSignatures["PostProcessing"].GetAddressOf())));
+
+	CD3DX12_ROOT_PARAMETER TAASlotRootParameter[5];
+
+	TAASlotRootParameter[0].InitAsConstantBufferView(0); //MainPassCB
+	TAASlotRootParameter[1].InitAsDescriptorTable(1, &texTable1, D3D12_SHADER_VISIBILITY_ALL); //CurrFrame
+	TAASlotRootParameter[2].InitAsDescriptorTable(1, &texTable2, D3D12_SHADER_VISIBILITY_ALL); //PrevFrame
+	TAASlotRootParameter[3].InitAsDescriptorTable(1, &texTable3, D3D12_SHADER_VISIBILITY_ALL); //DepthMap
+	TAASlotRootParameter[4].InitAsDescriptorTable(1, &texTable4, D3D12_SHADER_VISIBILITY_ALL); //MotionVectors
+
+	CD3DX12_ROOT_SIGNATURE_DESC TAARootSigDesc(5, TAASlotRootParameter,
+		(UINT)staticSamplers.size(), staticSamplers.data(),
+		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+
+	ComPtr<ID3DBlob> serializedTAArootSig = nullptr;
+	ComPtr<ID3DBlob> TAAErrorBlob = nullptr;
+	HRESULT TAAHr = D3D12SerializeRootSignature(&TAARootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1,
+		serializedTAArootSig.GetAddressOf(), TAAErrorBlob.GetAddressOf());
+
+	if (TAAErrorBlob != nullptr)
+	{
+		OutputDebugStringA((char*)TAAErrorBlob->GetBufferPointer());
+	}
+	ThrowIfFailed(TAAHr);
+
+	ThrowIfFailed(md3dDevice->CreateRootSignature(
+		0,
+		serializedTAArootSig->GetBufferPointer(),
+		serializedTAArootSig->GetBufferSize(),
+		IID_PPV_ARGS(RootSignatures["TAAResolve"].GetAddressOf())));
 
 }
 
@@ -2868,6 +2896,7 @@ void RenderingSystem::BuildGlobalPSOs()
 	};
 	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&PPPsoDesc, IID_PPV_ARGS(&GlobalPSOs["PostProcessing"])));
 
+	PPPsoDesc.pRootSignature = RootSignatures["TAAResolve"].Get();
 	PPPsoDesc.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
 	PPPsoDesc.VS =
 	{

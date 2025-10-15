@@ -253,7 +253,7 @@ GBufferData PS(DS_VS_OUTPUT_PS_INPUT pin)
     pout.normal = float4(WorldNormal, cbMaterial.Metallic);
     pout.materialAlbedo = cbMaterial.DiffuseAlbedo;
     pout.MaterialFresnelRoughness = float4(cbMaterial.FresnelR0, cbMaterial.Roughness);
-    pout.MotionVector = prevNDC - currentNDC;
-    pout.MotionVector *= 20000;
+    pout.MotionVector = (prevNDC - currentNDC) * cbMainPass.RenderTargetSize;
+    pout.MotionVector.y *= -1.f;
     return pout;
 }

@@ -14,7 +14,15 @@ class Gbuffer {
     Microsoft::WRL::ComPtr<ID3D12Device> md3dDevice;
 
 public:
-
+    //INDICES
+    //0 - Diffuse
+    //1 - Emissive
+    //2 - Normal
+    //3 - Mat Albedo
+    //4 - Mat Fresnel Roughness
+    //5 - AccumulationBuf
+    //6 - Bloom
+    //7 - VelocityBuffer
     ComPtr<ID3D12Resource> DiffuseTex       = nullptr;
     ComPtr<ID3D12Resource> EmissiveTex      = nullptr;
     ComPtr<ID3D12Resource> NormalTex        = nullptr;
