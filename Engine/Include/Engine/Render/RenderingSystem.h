@@ -185,15 +185,10 @@ public:
     bool GetShowBounds() const { return mShowBounds; }
     void SetShowBounds(bool v) { mShowBounds = v; }
 
-    bool* GetMSAATogglePtr() { return &m4xMsaaState; }
-
 protected:
     bool mVSync = true;
     bool mWireframe = false;
     bool mShowBounds = false;
-
-    bool      m4xMsaaState = false;    // 4X MSAA enabled
-    UINT      m4xMsaaQuality = 0;      // quality level of 4X MSAA
 
     Microsoft::WRL::ComPtr<IDXGIFactory4> mdxgiFactory;
     Microsoft::WRL::ComPtr<IDXGISwapChain> mSwapChain;
