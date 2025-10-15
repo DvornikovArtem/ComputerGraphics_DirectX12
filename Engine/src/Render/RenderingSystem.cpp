@@ -1710,8 +1710,8 @@ void RenderingSystem::CalculateJitter()
 
 	ffxQuery(&mFFXContext, &getJitterOffsetDesc.header);
 
-	mJitterX = -2.f * mJitterX / (mFSREnabled ? mRecommendedRenderResolutionX : mClientWidth) * 0.5f;
-	mJitterY = 2.f * mJitterY / (mFSREnabled ? mRecommendedRenderResolutionY : mClientHeight) * 0.5f;
+	mJitterX = -2.f * mJitterX / (mFSREnabled ? mRecommendedRenderResolutionX : mClientWidth);
+	mJitterY = 2.f * mJitterY / (mFSREnabled ? mRecommendedRenderResolutionY : mClientHeight);
 	mCamera.SetJitter(mJitterX, mJitterY);
 }
 
