@@ -43,7 +43,7 @@ void Gbuffer::TransitCommonToRTV(ComPtr<ID3D12GraphicsCommandList>& cmdList)
 void Gbuffer::TransitToLightsRenderingState(ComPtr<ID3D12GraphicsCommandList>& cmdList)
 {
     std::vector<GBufferChannel*> ChannelsToTransit =
-    { &Diffuse, &DepthStencils, &Normal, &MatFresnelRoughness, &VelocityBuffer };
+    { &Diffuse, &DepthStencils, &Normal, &MatFresnelRoughness, &VelocityBuffer, &ObjectOutlines };
 
     std::vector<CD3DX12_RESOURCE_BARRIER> Barriers;
 

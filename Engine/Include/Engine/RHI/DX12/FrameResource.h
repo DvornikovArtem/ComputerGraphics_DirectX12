@@ -12,6 +12,8 @@ struct ObjectConstants
     float HeightMapScale = 1.0f;
     DirectX::XMFLOAT2 pad;
     DirectX::XMFLOAT4X4 PrevWorld = MathHelper::Identity4x4();
+    float HasOutline = 0.f;
+    DirectX::XMFLOAT3 OutlineColor = { 0.f, 0.f, 0.f };
 };
 
 struct PassConstants

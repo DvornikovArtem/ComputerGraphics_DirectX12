@@ -943,6 +943,7 @@ void RenderingSystem::RegisterScenePanels() {
 			textures.push_back({ (ImTextureID)mGbufferImguiSlots[/*Mat Fresnel/Rough*/3].ptr, "Mat Fresnel/Rough" });
 			textures.push_back({ (ImTextureID)mGbufferImguiSlots[/*Accumulation*/4].ptr, "Accumulation" });
 			textures.push_back({ (ImTextureID)mGbufferImguiSlots[/*VelocityBuffer*/5].ptr, "VelocityBuffer" });
+			textures.push_back({ (ImTextureID)mGbufferImguiSlots[/*Outlines*/6].ptr, "Object Outlines" });
 
 			mImGui->DrawTextureGridFixedSize_ImTexID("G-Buffer Viewer", textures, rows, cols, sceneSize, ImVec2(u0, v0), ImVec2(u1, v1), 0.0f, true);
 		};
@@ -2039,14 +2040,15 @@ void RenderingSystem::BuildRootSignatures()
 
 	//for post-processing
 
-	CD3DX12_ROOT_PARAMETER PPSlotRootParameter[4];
+	CD3DX12_ROOT_PARAMETER PPSlotRootParameter[5];
 
 	PPSlotRootParameter[0].InitAsConstantBufferView(0); //MainPassCB
 	PPSlotRootParameter[1].InitAsDescriptorTable(1, &texTable1, D3D12_SHADER_VISIBILITY_ALL); //GBufferChannels
 	PPSlotRootParameter[2].InitAsDescriptorTable(1, &texTable2, D3D12_SHADER_VISIBILITY_ALL);
 	PPSlotRootParameter[3].InitAsDescriptorTable(1, &texTable3, D3D12_SHADER_VISIBILITY_ALL);
+	PPSlotRootParameter[4].InitAsDescriptorTable(1, &texTable4, D3D12_SHADER_VISIBILITY_ALL);
 
-	CD3DX12_ROOT_SIGNATURE_DESC PPRootSigDesc(4, PPSlotRootParameter,
+	CD3DX12_ROOT_SIGNATURE_DESC PPRootSigDesc(5, PPSlotRootParameter,
 		(UINT)staticSamplers.size(), staticSamplers.data(),
 		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
@@ -2155,6 +2157,9 @@ void RenderingSystem::UpdateObjectCBs(const GameTimer& gt)
 			objConstants.TesselationFactor = 50 / XMVectorGetX(XMVector3Length(diff));
 
 			if (terrainRenderer) objConstants.HeightMapScale = terrainRenderer->Meta().heightScale;
+
+			objConstants.HasOutline = e->drawableObject->HasOutline ? 1.f : 0.f;
+			objConstants.OutlineColor = e->drawableObject->OutlineColor;
 
 			currObjectCB->CopyData(e->ObjCBIndex, objConstants);
 
@@ -2649,12 +2654,13 @@ void RenderingSystem::BuildPSOs(MaterialDesc& MDesc, std::unordered_map<std::str
 	else
 		descPipelineState.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;*/
 	descPipelineState.SampleMask = UINT_MAX;
-	descPipelineState.NumRenderTargets = 5;
+	descPipelineState.NumRenderTargets = 6;
 	descPipelineState.RTVFormats[0] = mGBuffer->Diffuse.Format;
 	descPipelineState.RTVFormats[1] = mGBuffer->DepthStencils.Format;
 	descPipelineState.RTVFormats[2] = mGBuffer->Normal.Format;
 	descPipelineState.RTVFormats[3] = mGBuffer->MatFresnelRoughness.Format;
 	descPipelineState.RTVFormats[4] = mGBuffer->VelocityBuffer.Format;
+	descPipelineState.RTVFormats[5] = mGBuffer->ObjectOutlines.Format;
 	descPipelineState.DSVFormat = mDepthStencilFormat;
 	descPipelineState.SampleDesc.Count = 1;
 
@@ -2981,15 +2987,16 @@ void RenderingSystem::GBufferGeometryPass()
 	mCommandList->RSSetScissorRects(1, mFSREnabled ? &mDownscaledScissorRect : &mScissorRect);
 	mCommandList->SetGraphicsRootSignature(RootSignatures["Default"].Get());
 
-	D3D12_CPU_DESCRIPTOR_HANDLE rtvs[5] = {
+	D3D12_CPU_DESCRIPTOR_HANDLE rtvs[6] = {
 		mGBuffer->Diffuse.RTV,
 		mGBuffer->DepthStencils.RTV,
 		mGBuffer->Normal.RTV,
 		mGBuffer->MatFresnelRoughness.RTV,
-		mGBuffer->VelocityBuffer.RTV
+		mGBuffer->VelocityBuffer.RTV,
+		mGBuffer->ObjectOutlines.RTV
 	};
 
-	mCommandList->OMSetRenderTargets(5, rtvs, false, &DepthStencilView());
+	mCommandList->OMSetRenderTargets(6, rtvs, false, &DepthStencilView());
 
 	//mCommandList->ClearDepthStencilView(DepthStencilView(), D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 
@@ -3269,6 +3276,7 @@ void RenderingSystem::PostProcessingPass()
 	mCommandList->SetGraphicsRootDescriptorTable(1, GetGpuSrv(mFSREnabled ? mFSROutputSRVHeapIndex : (mTAAEnabled ? mResolvedAccBufferSRVHeapIndex :  mGBuffer->Accumulation.SRVHeapIndex)));
 	mCommandList->SetGraphicsRootDescriptorTable(2, GetGpuSrv(mGBuffer->DepthStencils.SRVHeapIndex));
 	mCommandList->SetGraphicsRootDescriptorTable(3, GetGpuSrv(mGBuffer->Normal.SRVHeapIndex));
+	mCommandList->SetGraphicsRootDescriptorTable(4, GetGpuSrv(mGBuffer->ObjectOutlines.SRVHeapIndex));
 
 
 	mCommandList->DrawInstanced(6, 1, 0, 0);

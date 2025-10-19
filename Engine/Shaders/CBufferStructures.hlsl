@@ -39,6 +39,8 @@ struct ObjectCB
     float HeightMapScale;
     float2 _pad0;
     float4x4 PrevWorld;
+    float HasOutline;
+    float3 OutlineColor;
 };
 
 struct MaterialCB
@@ -70,6 +72,7 @@ struct GBufferData
     float4 Normal : SV_TARGET2;
     float4 MaterialFresnelRoughness : SV_TARGET3;
     float2 MotionVector : SV_TARGET4;
+    float4 ObjectOutline : SV_TARGET5;
 };
 
 struct Particle

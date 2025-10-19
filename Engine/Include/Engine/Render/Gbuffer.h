@@ -41,9 +41,10 @@ public:
     GBufferChannel MatFresnelRoughness = GBufferChannel(DXGI_FORMAT_R8G8B8A8_UNORM);
     GBufferChannel Accumulation = GBufferChannel(DXGI_FORMAT_R16G16B16A16_FLOAT);
     GBufferChannel VelocityBuffer = GBufferChannel(DXGI_FORMAT_R16G16_FLOAT);
+    GBufferChannel ObjectOutlines = GBufferChannel(DXGI_FORMAT_R8G8B8A8_UNORM);
 
     std::vector<GBufferChannel*> ChannelPTRs = { &Diffuse, &DepthStencils, &Normal, &MatFresnelRoughness, 
-        &Accumulation, &VelocityBuffer };
+        &Accumulation, &VelocityBuffer, &ObjectOutlines };
 
     const int NumBuffers = ChannelPTRs.size();
     int Channel0SRVHeapIndex;

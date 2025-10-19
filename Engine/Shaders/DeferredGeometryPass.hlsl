@@ -249,7 +249,7 @@ GBufferData PS(DS_VS_OUTPUT_PS_INPUT pin)
     prevNDC = prevNDC * 0.5f + 0.5f;
     
     pout.Diffuse = diffuseAlbedo;
-    pout.DepthStencils = float4(0.f, 0.f, 0.f, pin.PosCS.z); //xyz is free for now
+    pout.DepthStencils = float4(cbObject.HasOutline  > 0.1f ? pin.PosCS.z : 0.f, 0.f, 0.f, pin.PosCS.z); //xyz is free for now
     pout.Normal = float4(WorldNormal, cbMaterial.Metallic);
     pout.MaterialFresnelRoughness = float4(cbMaterial.FresnelR0, cbMaterial.Roughness);
     pout.MotionVector = (prevNDC - currentNDC) * cbMainPass.RenderTargetSize;
@@ -258,6 +258,8 @@ GBufferData PS(DS_VS_OUTPUT_PS_INPUT pin)
     //filter out MV noise
     if (length(pout.MotionVector) < 0.05)
         pout.MotionVector = float2(0.f, 0.f);
+    
+    pout.ObjectOutline = cbObject.HasOutline > 0.1f ? float4(cbObject.OutlineColor, 1.f) : 0.f.xxxx;
     
     return pout;
 }
