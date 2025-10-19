@@ -38,12 +38,11 @@ public:
     GBufferChannel Diffuse = GBufferChannel(DXGI_FORMAT_R8G8B8A8_UNORM);
     GBufferChannel DepthStencils = GBufferChannel(DXGI_FORMAT_R32G32B32A32_FLOAT);
     GBufferChannel Normal = GBufferChannel(DXGI_FORMAT_R16G16B16A16_SNORM);
-    GBufferChannel MatAlbedo = GBufferChannel(DXGI_FORMAT_R8G8B8A8_UNORM);
     GBufferChannel MatFresnelRoughness = GBufferChannel(DXGI_FORMAT_R8G8B8A8_UNORM);
     GBufferChannel Accumulation = GBufferChannel(DXGI_FORMAT_R16G16B16A16_FLOAT);
     GBufferChannel VelocityBuffer = GBufferChannel(DXGI_FORMAT_R16G16_FLOAT);
 
-    std::vector<GBufferChannel*> ChannelPTRs = { &Diffuse, &DepthStencils, &Normal, &MatAlbedo, &MatFresnelRoughness, 
+    std::vector<GBufferChannel*> ChannelPTRs = { &Diffuse, &DepthStencils, &Normal, &MatFresnelRoughness, 
         &Accumulation, &VelocityBuffer };
 
     const int NumBuffers = ChannelPTRs.size();

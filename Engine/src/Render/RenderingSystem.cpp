@@ -940,10 +940,9 @@ void RenderingSystem::RegisterScenePanels() {
 			textures.push_back({ (ImTextureID)mGbufferImguiSlots[/*Diffuse*/0].ptr, "Diffuse" });
 			textures.push_back({ (ImTextureID)mGbufferImguiSlots[/*Emissive*/1].ptr, "Emissive" });
 			textures.push_back({ (ImTextureID)mGbufferImguiSlots[/*Normal*/2].ptr, "Normal" });
-			textures.push_back({ (ImTextureID)mGbufferImguiSlots[/*Mat Albedo*/3].ptr, "Mat Albedo" });
-			textures.push_back({ (ImTextureID)mGbufferImguiSlots[/*Mat Fresnel/Rough*/4].ptr, "Mat Fresnel/Rough" });
-			textures.push_back({ (ImTextureID)mGbufferImguiSlots[/*Accumulation*/5].ptr, "Accumulation" });
-			textures.push_back({ (ImTextureID)mGbufferImguiSlots[/*VelocityBuffer*/6].ptr, "VelocityBuffer" });
+			textures.push_back({ (ImTextureID)mGbufferImguiSlots[/*Mat Fresnel/Rough*/3].ptr, "Mat Fresnel/Rough" });
+			textures.push_back({ (ImTextureID)mGbufferImguiSlots[/*Accumulation*/4].ptr, "Accumulation" });
+			textures.push_back({ (ImTextureID)mGbufferImguiSlots[/*VelocityBuffer*/5].ptr, "VelocityBuffer" });
 
 			mImGui->DrawTextureGridFixedSize_ImTexID("G-Buffer Viewer", textures, rows, cols, sceneSize, ImVec2(u0, v0), ImVec2(u1, v1), 0.0f, true);
 		};
@@ -1978,7 +1977,7 @@ void RenderingSystem::BuildRootSignatures()
 	CD3DX12_DESCRIPTOR_RANGE texTable9;
 	texTable9.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 8);
 
-	CD3DX12_ROOT_PARAMETER lightPassSlotRootParameter[11];
+	CD3DX12_ROOT_PARAMETER lightPassSlotRootParameter[10];
 
 	lightPassSlotRootParameter[0].InitAsConstantBufferView(0); //MainPassCB
 	lightPassSlotRootParameter[1].InitAsConstantBufferView(1); //LightCB
@@ -1987,13 +1986,12 @@ void RenderingSystem::BuildRootSignatures()
 	lightPassSlotRootParameter[3].InitAsDescriptorTable(1, &texTable2, D3D12_SHADER_VISIBILITY_ALL);
 	lightPassSlotRootParameter[4].InitAsDescriptorTable(1, &texTable3, D3D12_SHADER_VISIBILITY_ALL);
 	lightPassSlotRootParameter[5].InitAsDescriptorTable(1, &texTable4, D3D12_SHADER_VISIBILITY_ALL);
-	lightPassSlotRootParameter[6].InitAsDescriptorTable(1, &texTable5, D3D12_SHADER_VISIBILITY_ALL);
 
-	lightPassSlotRootParameter[7].InitAsDescriptorTable(1, &texTable6, D3D12_SHADER_VISIBILITY_ALL); //ShadowMap
+	lightPassSlotRootParameter[6].InitAsDescriptorTable(1, &texTable5, D3D12_SHADER_VISIBILITY_ALL); //ShadowMap
 
-	lightPassSlotRootParameter[8].InitAsDescriptorTable(1, &texTable7, D3D12_SHADER_VISIBILITY_ALL); //IBL SkyMaps
+	lightPassSlotRootParameter[7].InitAsDescriptorTable(1, &texTable6, D3D12_SHADER_VISIBILITY_ALL); //IBL SkyMaps
+	lightPassSlotRootParameter[8].InitAsDescriptorTable(1, &texTable7, D3D12_SHADER_VISIBILITY_ALL);
 	lightPassSlotRootParameter[9].InitAsDescriptorTable(1, &texTable8, D3D12_SHADER_VISIBILITY_ALL);
-	lightPassSlotRootParameter[10].InitAsDescriptorTable(1, &texTable9, D3D12_SHADER_VISIBILITY_ALL);
 
 	//ShadowMap ComparisonSampler
 	const CD3DX12_STATIC_SAMPLER_DESC StaticSamplers[2] =
@@ -2017,7 +2015,7 @@ void RenderingSystem::BuildRootSignatures()
 		D3D12_TEXTURE_ADDRESS_MODE_CLAMP)
 	};
 
-	CD3DX12_ROOT_SIGNATURE_DESC lightPassRootSigDesc(11, lightPassSlotRootParameter,
+	CD3DX12_ROOT_SIGNATURE_DESC lightPassRootSigDesc(10, lightPassSlotRootParameter,
 		2, StaticSamplers,
 		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
@@ -2651,13 +2649,12 @@ void RenderingSystem::BuildPSOs(MaterialDesc& MDesc, std::unordered_map<std::str
 	else
 		descPipelineState.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;*/
 	descPipelineState.SampleMask = UINT_MAX;
-	descPipelineState.NumRenderTargets = 6;
+	descPipelineState.NumRenderTargets = 5;
 	descPipelineState.RTVFormats[0] = mGBuffer->Diffuse.Format;
 	descPipelineState.RTVFormats[1] = mGBuffer->DepthStencils.Format;
 	descPipelineState.RTVFormats[2] = mGBuffer->Normal.Format;
-	descPipelineState.RTVFormats[3] = mGBuffer->MatAlbedo.Format;
-	descPipelineState.RTVFormats[4] = mGBuffer->MatFresnelRoughness.Format;
-	descPipelineState.RTVFormats[5] = mGBuffer->VelocityBuffer.Format;
+	descPipelineState.RTVFormats[3] = mGBuffer->MatFresnelRoughness.Format;
+	descPipelineState.RTVFormats[4] = mGBuffer->VelocityBuffer.Format;
 	descPipelineState.DSVFormat = mDepthStencilFormat;
 	descPipelineState.SampleDesc.Count = 1;
 
@@ -2984,16 +2981,15 @@ void RenderingSystem::GBufferGeometryPass()
 	mCommandList->RSSetScissorRects(1, mFSREnabled ? &mDownscaledScissorRect : &mScissorRect);
 	mCommandList->SetGraphicsRootSignature(RootSignatures["Default"].Get());
 
-	D3D12_CPU_DESCRIPTOR_HANDLE rtvs[6] = {
+	D3D12_CPU_DESCRIPTOR_HANDLE rtvs[5] = {
 		mGBuffer->Diffuse.RTV,
 		mGBuffer->DepthStencils.RTV,
 		mGBuffer->Normal.RTV,
-		mGBuffer->MatAlbedo.RTV,
 		mGBuffer->MatFresnelRoughness.RTV,
 		mGBuffer->VelocityBuffer.RTV
 	};
 
-	mCommandList->OMSetRenderTargets(6, rtvs, false, &DepthStencilView());
+	mCommandList->OMSetRenderTargets(5, rtvs, false, &DepthStencilView());
 
 	//mCommandList->ClearDepthStencilView(DepthStencilView(), D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 
@@ -3024,12 +3020,12 @@ void RenderingSystem::GBufferLightPass()
 	mCommandList->SetGraphicsRootDescriptorTable(2, GetGpuSrv(mGBuffer->Diffuse.SRVHeapIndex));
 	mCommandList->SetGraphicsRootDescriptorTable(3, GetGpuSrv(mGBuffer->DepthStencils.SRVHeapIndex));
 	mCommandList->SetGraphicsRootDescriptorTable(4, GetGpuSrv(mGBuffer->Normal.SRVHeapIndex));
-	mCommandList->SetGraphicsRootDescriptorTable(5, GetGpuSrv(mGBuffer->MatAlbedo.SRVHeapIndex));
-	mCommandList->SetGraphicsRootDescriptorTable(6, GetGpuSrv(mGBuffer->MatFresnelRoughness.SRVHeapIndex));
+	mCommandList->SetGraphicsRootDescriptorTable(5, GetGpuSrv(mGBuffer->MatFresnelRoughness.SRVHeapIndex));
+	//mCommandList->SetGraphicsRootDescriptorTable(6, GetGpuSrv(mGBuffer->MatFresnelRoughness.SRVHeapIndex));
 
-	mCommandList->SetGraphicsRootDescriptorTable(8, GetGpuSrv(mTextures["SkyIrradiance"]->srvHeapIndex));
-	mCommandList->SetGraphicsRootDescriptorTable(9, GetGpuSrv(mTextures["SkyPref"]->srvHeapIndex));
-	mCommandList->SetGraphicsRootDescriptorTable(10, GetGpuSrv(mTextures["SkyBRDF"]->srvHeapIndex));
+	mCommandList->SetGraphicsRootDescriptorTable(7, GetGpuSrv(mTextures["SkyIrradiance"]->srvHeapIndex));
+	mCommandList->SetGraphicsRootDescriptorTable(8, GetGpuSrv(mTextures["SkyPref"]->srvHeapIndex));
+	mCommandList->SetGraphicsRootDescriptorTable(9, GetGpuSrv(mTextures["SkyBRDF"]->srvHeapIndex));
 
 	mCommandList->SetGraphicsRootConstantBufferView(0, passCB->GetGPUVirtualAddress());
 	mCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -3042,7 +3038,7 @@ void RenderingSystem::GBufferLightPass()
 		D3D12_GPU_VIRTUAL_ADDRESS lightCBAddress = lightCB->GetGPUVirtualAddress() + li->LightCBIndex * lightCBByteSize;
 		mCommandList->SetGraphicsRootConstantBufferView(1, lightCBAddress);
 
-		mCommandList->SetGraphicsRootDescriptorTable(7, GetGpuSrv(li->shadowMap->SRVHeapIndex));
+		mCommandList->SetGraphicsRootDescriptorTable(6, GetGpuSrv(li->shadowMap->SRVHeapIndex));
 
 		if (li->LightType == LightType::Directional)
 		{

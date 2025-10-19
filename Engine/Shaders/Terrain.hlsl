@@ -219,7 +219,6 @@ GBufferData PS(GS_OUT pin)
     pout.diffuse = float4(blended, 1.0);
     pout.emissive = float4(0.f, 0.f, 0.f, pin.PosCS.z);
     pout.normal = float4(NormalMapSample, cbMaterial.Metallic);
-    pout.materialAlbedo = cbMaterial.DiffuseAlbedo;
     pout.MaterialFresnelRoughness = float4(cbMaterial.FresnelR0, cbMaterial.Roughness);
 
     return pout;

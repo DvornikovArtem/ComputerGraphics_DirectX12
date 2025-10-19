@@ -68,9 +68,8 @@ struct GBufferData
     float4 diffuse : SV_TARGET0;
     float4 emissive : SV_TARGET1;
     float4 normal : SV_TARGET2;
-    float4 materialAlbedo : SV_TARGET3;
-    float4 MaterialFresnelRoughness : SV_TARGET4;
-    float2 MotionVector : SV_TARGET5;
+    float4 MaterialFresnelRoughness : SV_TARGET3;
+    float2 MotionVector : SV_TARGET4;
 };
 
 struct Particle

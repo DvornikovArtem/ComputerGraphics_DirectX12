@@ -3,14 +3,13 @@
 Texture2D   DiffuseMap     : register(t0);
 Texture2D   EmissiveMap    : register(t1);
 Texture2D   NormalMap      : register(t2);
-Texture2D   MaterialAlbedoMap : register(t3);
-Texture2D   MaterialFresnelRoughnessMap : register(t4);
+Texture2D   MaterialFresnelRoughnessMap : register(t3);
 
-Texture2DArray ShadowMaps : register(t5);
+Texture2DArray ShadowMaps : register(t4);
 
-TextureCube IrradianceMap   : register(t6);
-TextureCube PrefilterEnvMap : register(t7);
-Texture2D BRDF_LUT          : register(t8);
+TextureCube IrradianceMap   : register(t5);
+TextureCube PrefilterEnvMap : register(t6);
+Texture2D BRDF_LUT          : register(t7);
 
 SamplerComparisonState ShadowSampler : register(s0);
 SamplerState samLinearClamp          : register(s1);
@@ -178,11 +177,10 @@ float4 PS(VertexOut pin) : SV_Target
     float2 UV = pin.PosH.xy / cbMainPass.RenderTargetSize;
     uint2 TexelCoord = pin.PosH.xy;
     //loading GBuffer channels
-    float4 MatAlbedo = MaterialAlbedoMap.Load(int3(TexelCoord, 0));
     float4 MatParams = MaterialFresnelRoughnessMap.Load(int3(TexelCoord, 0));
     float4 Emissive = EmissiveMap.Load(int3(TexelCoord, 0));
     float4 NormalChannel = NormalMap.Load(int3(TexelCoord, 0));
-    float4 Diffuse = DiffuseMap.Load(int3(TexelCoord, 0)) * MatAlbedo;
+    float4 Diffuse = DiffuseMap.Load(int3(TexelCoord, 0));
     float Metallic = NormalChannel.w;
 
     float3 WorldPosition = ReconstructWorldPosition(UV, Emissive.w);
@@ -325,11 +323,10 @@ float4 PS_AddAmbient(VertexOut pin) : SV_Target
 {
     uint2 TexelCoord = pin.PosH.xy;
     
-    float4 MatAlbedo = MaterialAlbedoMap.Load(int3(TexelCoord, 0));
     float4 MatParams = MaterialFresnelRoughnessMap.Load(int3(TexelCoord, 0));
     float4 Emissive = EmissiveMap.Load(int3(TexelCoord, 0));
     float4 NormalChannel = NormalMap.Load(int3(TexelCoord, 0));
-    float4 Diffuse = DiffuseMap.Load(int3(TexelCoord, 0)) * MatAlbedo;
+    float4 Diffuse = DiffuseMap.Load(int3(TexelCoord, 0));
     
     float3 albedo = Diffuse.rgb;
     float roughness = MatParams.w;
