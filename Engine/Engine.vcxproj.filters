@@ -1149,6 +1149,12 @@
     <ClInclude Include="Include\Engine\UI\UIPanel.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Include\Engine\Voxels\Noise.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Include\Engine\Voxels\VoxelWorld.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="Include\Engine\Math\SimpleMath.inl">
@@ -1307,6 +1313,12 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="src\UI\ImGui_Layer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Voxels\Noise.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Voxels\VoxelWorld.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

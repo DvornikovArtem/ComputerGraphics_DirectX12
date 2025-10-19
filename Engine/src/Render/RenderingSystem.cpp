@@ -7,6 +7,10 @@
 
 RenderingSystem::~RenderingSystem()
 {
+	if (mCommandQueue && mFence) {
+		FlushCommandQueue();
+	}
+
 	if (mOctTree) delete mOctTree;
 
 	if (terrainRenderer) delete terrainRenderer;
@@ -45,6 +49,11 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 	ComPtr<ID3D12Debug> debugController;
 	ThrowIfFailed(D3D12GetDebugInterface(IID_PPV_ARGS(&debugController)));
 	debugController->EnableDebugLayer();
+
+	//ComPtr<ID3D12Debug1> debug1;
+	//if (SUCCEEDED(debugController.As(&debug1))) {
+	//	debug1->SetEnableGPUBasedValidation(TRUE);
+	//}
 #endif
 
 	InstallDebugOutputHooks();
@@ -205,6 +214,41 @@ void RenderingSystem::FinishInitialize()
 	{
 		particleSystem->setEmissiveTex(mGbuffer->getEmissiveTex(), mGbuffer->getNormalTex());
 	}
+
+	mVoxelWorld = std::make_unique<VoxelWorld>();
+	mVoxelWorld->Initialize(
+		md3dDevice.Get(),
+		RootSignatures["MarchingCubes"].Get(),
+		GlobalPSOs["MarchingCubesCS"].Get(),
+		RootSignatures["Default"].Get(),
+		GlobalPSOs["GBufferGeometryPass_Voxel"].Get()
+	);
+	ThrowIfFailed(mDirectCmdListAlloc->Reset());
+	ThrowIfFailed(mCommandList->Reset(mDirectCmdListAlloc.Get(), nullptr));
+
+	VoxelSettings vs;
+	vs.dimX = vs.dimZ = 33;
+	vs.dimY = 100;
+	vs.voxelSize = 0.5f;
+	vs.isoLevel = 0.0f;
+
+	//mVoxelWorld->CreateOneChunk({ 0,-16,0 }, vs, mCommandList.Get());
+	for (int x = -2; x <= 2; ++x)
+	{
+		for (int z = -2; z <= 2; ++z)
+		{
+			float originX = float(x) * (vs.dimX - 1) * vs.voxelSize;
+			float originZ = float(z) * (vs.dimZ - 1) * vs.voxelSize;
+			mVoxelWorld->CreateOneChunk({ originX, -16.0f, originZ }, vs, mCommandList.Get());
+		}
+	}
+
+	ThrowIfFailed(mCommandList->Close());
+	ID3D12CommandList* initLists[] = { mCommandList.Get() };
+	mCommandQueue->ExecuteCommandLists(_countof(initLists), initLists);
+
+	FlushCommandQueue();
+
 }
 
 void RenderingSystem::OnResize() {
@@ -406,7 +450,7 @@ void RenderingSystem::CreateOrResizeSceneColor(int width, int height)
 	texDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
 
 	D3D12_CLEAR_VALUE clear = {};
-	clear.Format = texDesc.Format;
+	clear.Format = texDesc.Format;// --- Marching Cubes (Compute) ---
 	clear.Color[0] = ClearValue.x;
 	clear.Color[1] = ClearValue.y;
 	clear.Color[2] = ClearValue.z;
@@ -432,6 +476,11 @@ void RenderingSystem::CreateOrResizeSceneColor(int width, int height)
 
 void RenderingSystem::Render()
 {
+	if (mVoxelWorld) {
+		const UINT64 done = mFence->GetCompletedValue();
+		mVoxelWorld->CollectGarbage(done);
+	}
+
 	auto cmdListAlloc = mCurrFrameResource->CmdListAlloc;
 
 	ThrowIfFailed(cmdListAlloc->Reset());
@@ -465,6 +514,9 @@ void RenderingSystem::Render()
 	//
 	mGbuffer->TransitToOpaqueRenderingState(mCommandList);
 	mGbuffer->ClearRTVs(mCommandList);
+
+	if (mVoxelWorld) mVoxelWorld->UpdateAndDispatch(mCommandList.Get(), mCurrFrameResource->NullUploadBuffer.get());
+
 	GBufferGeometryPass();
 
 	//
@@ -578,6 +630,8 @@ void RenderingSystem::Render()
 
 	// Notify the fence when the GPU completes commands up to this fence point.
 	mCommandQueue->Signal(mFence.Get(), mCurrentFence);
+
+	if (mVoxelWorld) mVoxelWorld->ScheduleUploadsRelease(mCurrentFence);
 }
 
 
@@ -741,6 +795,7 @@ void RenderingSystem::RegisterScenePanels() {
 				mSceneUI.hovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
 				mSceneUI.focused = ImGui::IsWindowFocused();
 				mSceneUI.rmbDown = ImGui::IsMouseDown(ImGuiMouseButton_Right);
+				mSceneUI.lmbDown = ImGui::IsMouseDown(ImGuiMouseButton_Left);
 
 				if (mSceneUI.hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) BeginMouseLook();
 				if (IsMouseLookActive() && ImGui::IsMouseReleased(ImGuiMouseButton_Right)) EndMouseLook();
@@ -974,6 +1029,30 @@ void RenderingSystem::RegisterScenePanels() {
 	mPanelRegistry.register_panel(std::move(p));
 }
 
+
+
+void RenderingSystem::TickVoxelDig(float dt)
+{
+	if (!mVoxelWorld) return;
+
+	const DirectX::XMFLOAT3 camPos = mCamera.GetPosition3f();
+	const DirectX::XMFLOAT3 camDir = mCamera.GetLook3f();
+
+	using namespace DirectX;
+	XMVECTOR P = XMLoadFloat3(&camPos);
+	XMVECTOR D = XMLoadFloat3(&camDir);
+
+	const float distance = 10.0f;
+	XMVECTOR Hit = XMVectorAdd(P, XMVectorScale(D, distance));
+	XMFLOAT3 hitPos;
+	XMStoreFloat3(&hitPos, Hit);
+
+	const float brushRadius = 1.0f;
+	const float brushStrength = 1.0f * dt;
+
+	//mVoxelWorld->DigSphere(hitPos, brushRadius, brushStrength);
+	mVoxelWorld->DigSphere(hitPos, brushRadius);
+}
 
 
 
@@ -1923,7 +2002,6 @@ void RenderingSystem::BuildRootSignatures()
 		serializedPProotSig->GetBufferPointer(),
 		serializedPProotSig->GetBufferSize(),
 		IID_PPV_ARGS(RootSignatures["PostProcessing"].GetAddressOf())));
-
 }
 
 void RenderingSystem::Update(std::vector<DrawableObject*>& mAllObjectsToUpdate, std::vector<LightObject*>& mAllLightObjectsToUpdate)
@@ -2479,7 +2557,7 @@ void RenderingSystem::BuildPSOs(MaterialDesc& MDesc, std::unordered_map<std::str
 	descPipelineState.NumRenderTargets = 6;
 	descPipelineState.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
 	descPipelineState.RTVFormats[1] = DXGI_FORMAT_R32G32B32A32_FLOAT;
-	descPipelineState.RTVFormats[2] = DXGI_FORMAT_R16G16B16A16_SNORM;
+	descPipelineState.RTVFormats[2] = DXGI_FORMAT_R16G16B16A16_FLOAT;
 	descPipelineState.RTVFormats[3] = DXGI_FORMAT_R8G8B8A8_UNORM;
 	descPipelineState.RTVFormats[4] = DXGI_FORMAT_R8G8B8A8_UNORM;
 	descPipelineState.RTVFormats[5] = DXGI_FORMAT_R16G16_FLOAT;
@@ -2711,6 +2789,92 @@ void RenderingSystem::BuildGlobalPSOs()
 	};
 	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&PPPsoDesc, IID_PPV_ARGS(&GlobalPSOs["PostProcessing_DrawDebugTexture"])));
 
+
+
+
+
+	// --- PSO: Marching Cubes (Compute) ---
+	{
+		CD3DX12_DESCRIPTOR_RANGE tSrv; tSrv.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0); // t0
+		//CD3DX12_DESCRIPTOR_RANGE tUav; tUav.Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0); // u0
+		CD3DX12_DESCRIPTOR_RANGE tUav; tUav.Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 2, 0); // u0..u1
+
+		CD3DX12_ROOT_PARAMETER rp[4];
+		rp[0].InitAsConstantBufferView(0);        // b0
+		rp[1].InitAsDescriptorTable(1, &tSrv);    // t0
+		rp[2].InitAsDescriptorTable(1, &tUav);    // u0
+		rp[3].InitAsConstantBufferView(1);        // b1
+
+		auto staticSamplers = GetStaticSamplers();
+		CD3DX12_ROOT_SIGNATURE_DESC desc(_countof(rp), rp,
+			(UINT)staticSamplers.size(), staticSamplers.data(),
+			D3D12_ROOT_SIGNATURE_FLAG_NONE);
+
+		ComPtr<ID3DBlob> sig, err;
+		ThrowIfFailed(D3D12SerializeRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1,
+			sig.GetAddressOf(), err.GetAddressOf()));
+		if (err) OutputDebugStringA((char*)err->GetBufferPointer());
+
+		ThrowIfFailed(md3dDevice->CreateRootSignature(
+			0, sig->GetBufferPointer(), sig->GetBufferSize(),
+			IID_PPV_ARGS(RootSignatures["MarchingCubes"].GetAddressOf())));
+
+		D3D12_COMPUTE_PIPELINE_STATE_DESC csDesc = {};
+		csDesc.pRootSignature = RootSignatures["MarchingCubes"].Get();
+		csDesc.CS = {
+			(BYTE*)mShaders["MarchingCubesCS"]->GetBufferPointer(),
+			mShaders["MarchingCubesCS"]->GetBufferSize()
+		};
+		ThrowIfFailed(md3dDevice->CreateComputePipelineState(
+			&csDesc, IID_PPV_ARGS(&GlobalPSOs["MarchingCubesCS"])));
+	}
+
+	// --- PSO: GBuffer voxel geometry (Graphics) ---
+	{
+		D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+		std::vector<D3D12_INPUT_ELEMENT_DESC> VoxelLayout =
+		{
+			{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0,  0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+			{ "NORMAL",   0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 16, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+			{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,    0, 32, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+			{ "TANGENT",  0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 48, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		};
+		//psoDesc.InputLayout = { mInputLayout.data(), (UINT)mInputLayout.size() };   // POSITION/NORMAL/TEXCOORD/TANGENT
+		psoDesc.InputLayout = { VoxelLayout.data(), (UINT)VoxelLayout.size() };
+		psoDesc.pRootSignature = RootSignatures["Default"].Get();
+		psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+		psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+		psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+		psoDesc.SampleMask = UINT_MAX;
+		psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+
+		psoDesc.NumRenderTargets = 6;
+		//for (UINT i = 0; i < mGbuffer->NumBuffers; i++) psoDesc.RTVFormats[i] = mGbuffer->Format[i];
+		psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+		psoDesc.RTVFormats[1] = DXGI_FORMAT_R32G32B32A32_FLOAT;
+		psoDesc.RTVFormats[2] = DXGI_FORMAT_R16G16B16A16_FLOAT;
+		psoDesc.RTVFormats[3] = DXGI_FORMAT_R8G8B8A8_UNORM;
+		psoDesc.RTVFormats[4] = DXGI_FORMAT_R8G8B8A8_UNORM;
+		psoDesc.RTVFormats[5] = DXGI_FORMAT_R16G16_FLOAT;
+		psoDesc.DSVFormat = mDepthStencilFormat;
+		psoDesc.SampleDesc.Count = 1;
+
+		psoDesc.VS = { (BYTE*)mShaders["VoxelGBufferVS"]->GetBufferPointer(), mShaders["VoxelGBufferVS"]->GetBufferSize() };
+		psoDesc.PS = { (BYTE*)mShaders["VoxelGBufferPS"]->GetBufferPointer(), mShaders["VoxelGBufferPS"]->GetBufferSize() };
+
+		ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&GlobalPSOs["GBufferGeometryPass_Voxel"])));
+
+		// WIREFRAME
+		{
+			D3D12_GRAPHICS_PIPELINE_STATE_DESC wire = psoDesc;
+			wire.RasterizerState.FillMode = D3D12_FILL_MODE_WIREFRAME;
+			// For better grid vision
+			wire.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+
+			ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&wire, IID_PPV_ARGS(&GlobalPSOs["GBufferGeometryPass_Voxel_WireFrame"])));
+		}
+	}
+
 }
 
 void RenderingSystem::BuildFrameResources()
@@ -2718,7 +2882,7 @@ void RenderingSystem::BuildFrameResources()
 	for (int i = 0; i < gNumFrameResources; ++i)
 	{
 		mFrameResources.push_back(std::make_unique<FrameResource>(md3dDevice.Get(),
-			2, (UINT)(mAllRitems.size()), (UINT)mMaterials.size(), (UINT)mAllLights.size(), (UINT)mAllParticleSystems.size()));
+			2, (UINT)(mAllRitems.size() + 1), (UINT)mMaterials.size(), (UINT)mAllLights.size(), (UINT)mAllParticleSystems.size()));
 	}
 }
 
@@ -2824,6 +2988,48 @@ void RenderingSystem::GBufferGeometryPass()
 
 	//DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Landscape], "GBufferGeometryPass");
 	DrawRenderItems(mCommandList.Get(), mVisibleTerrainRitems, psoName);
+
+	if (mVoxelWorld)
+	{
+		ID3D12DescriptorHeap* descriptorHeaps[] = { mSrvDescriptorHeap.Get() };
+		mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
+
+		mCommandList->SetGraphicsRootSignature(RootSignatures["Default"].Get());
+
+		const std::string psoName2 = GetWireframe() ? "GBufferGeometryPass_Voxel_WireFrame" : "GBufferGeometryPass_Voxel";
+		mCommandList->SetPipelineState(GlobalPSOs[psoName2].Get());
+
+		auto passCB = mCurrFrameResource->PassCB->Resource();
+		mCommandList->SetGraphicsRootConstantBufferView(4, passCB->GetGPUVirtualAddress());
+
+		const UINT objCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(ObjectConstants));
+		auto objCB = mCurrFrameResource->ObjectCB->Resource();
+		const UINT voxelObjIndex = (UINT)mAllRitems.size();
+
+		ObjectConstants objConsts = {};
+		XMStoreFloat4x4(&objConsts.World, XMMatrixTranspose(DirectX::XMMatrixIdentity()));
+		XMStoreFloat4x4(&objConsts.PrevWorld, XMMatrixTranspose(DirectX::XMMatrixIdentity()));
+		XMStoreFloat4x4(&objConsts.TexTransform, XMMatrixTranspose(DirectX::XMMatrixIdentity()));
+		objConsts.TesselationFactor = 1.0f;
+		mCurrFrameResource->ObjectCB->CopyData(voxelObjIndex, objConsts);
+		D3D12_GPU_VIRTUAL_ADDRESS objCBAddress = objCB->GetGPUVirtualAddress() + voxelObjIndex * objCBByteSize;
+		mCommandList->SetGraphicsRootConstantBufferView(3, objCBAddress);
+
+		Material* mat = mMaterials["bricks"];
+		if (mat)
+		{
+			mCommandList->SetGraphicsRootDescriptorTable(0, GetGpuSrv(mat->DiffuseSrvHeapIndex));
+			mCommandList->SetGraphicsRootDescriptorTable(1, GetGpuSrv(mat->DiffuseSrvHeapIndex));
+			mCommandList->SetGraphicsRootDescriptorTable(2, GetGpuSrv(mat->DiffuseSrvHeapIndex));
+
+			UINT matCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(MaterialConstants));
+			auto matCB = mCurrFrameResource->MaterialCB->Resource();
+			D3D12_GPU_VIRTUAL_ADDRESS matCBAddress = matCB->GetGPUVirtualAddress() + mat->MatCBIndex * matCBByteSize;
+			mCommandList->SetGraphicsRootConstantBufferView(5, matCBAddress);
+		}
+
+		mVoxelWorld->Draw(mCommandList.Get());
+	}
 }
 
 void RenderingSystem::GBufferLightPass()
@@ -3662,6 +3868,11 @@ void RenderingSystem::BuildShaders(std::vector<ShaderDesc>& ShaderDescs)
 	mShaders["PPVS"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\PostProcessing.hlsl", nullptr, "VS_FSQuad", "vs_5_1");
 	mShaders["PPPS"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\PostProcessing.hlsl", nullptr, "PS", "ps_5_1");
 	mShaders["PPPS_DrawTexture"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\PostProcessing.hlsl", nullptr, "PS_DrawTexture", "ps_5_1");
+
+	mShaders["MarchingCubesCS"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\MarchingCubesCS.hlsl", nullptr, "CS", "cs_5_1");
+	mShaders["VoxelGBufferVS"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\DeferredGeometryPass_Voxel.hlsl", nullptr, "VS", "vs_5_1");
+	mShaders["VoxelGBufferPS"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\DeferredGeometryPass_Voxel.hlsl", nullptr, "PS", "ps_5_1");
+
 }
 
 void RenderingSystem::BuildBasicGeometry()

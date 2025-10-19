@@ -15,10 +15,11 @@ FrameResource::FrameResource(ID3D12Device* device, UINT passCount, UINT objectCo
     if (particleSystemsCount > 0)
     {
         ParticleCB = std::make_unique<UploadBuffer<ParticleConstants>>(device, particleSystemsCount, true);
-        NullUploadBuffer = std::make_unique<UploadBuffer<UINT>>(device, 1, false);
-        UINT zero = 0;
-        NullUploadBuffer->CopyData(0, zero);
     }
+
+    NullUploadBuffer = std::make_unique<UploadBuffer<UINT>>(device, 1, false);
+    UINT zero = 0;
+    NullUploadBuffer->CopyData(0, zero);
 }
 
 FrameResource::~FrameResource()

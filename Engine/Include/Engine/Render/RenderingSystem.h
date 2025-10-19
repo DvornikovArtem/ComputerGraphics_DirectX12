@@ -38,6 +38,8 @@
 #include <Engine/UI/ImGui_Layer.h>
 #include <Engine/UI/DebugOutputHook.h>
 
+#include <Engine/Voxels/VoxelWorld.h>
+
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
@@ -54,7 +56,6 @@
 
 
 using Microsoft::WRL::ComPtr;
-
 
 
 class RenderingSystem final : public IRenderTargetProvider {
@@ -321,6 +322,9 @@ public:
 
     void RegisterScenePanels();
 
+    void TickVoxelDig(float dt);
+    void TryDig(int screenX, int screenY);
+
 protected:
     // SRV for imgui
     Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> mImGuiSrvHeap = nullptr;
@@ -337,6 +341,7 @@ protected:
         bool hovered = false;
         bool focused = false;
         bool rmbDown = false;
+        bool lmbDown = false;
 
         ImVec2 imgRectMin{ 0,0 };
         ImVec2 imgRectMax{ 0,0 };
@@ -367,11 +372,13 @@ protected:
     D3D12_VIEWPORT mDownscaledScreenViewport;
     D3D12_RECT mDownscaledScissorRect;
     int mFSROutputSRVHeapIndex;
-    bool mFSREnabled = true;
+    bool mFSREnabled = false;
 
     int SRVHeapHeadIndex = 0;
 // =================================================================================================
     DirectX::XMFLOAT4 ClearValue = { 0.f, 0.f, 0.f, 1.f };
+
+    std::unique_ptr<VoxelWorld> mVoxelWorld;
 };
 
 

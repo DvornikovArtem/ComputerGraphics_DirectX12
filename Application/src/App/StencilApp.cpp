@@ -125,6 +125,11 @@ void StencilApp::Update(const GameTimer& gt)
                     mRenderingSystem->mCamera.Pitch(dy);
                     mRenderingSystem->mCamera.RotateY(dx);
                     mRenderingSystem->mCamera.UpdateViewMatrix();
+
+                    if (io.MouseDown[0])
+                    {
+                        mRenderingSystem->TickVoxelDig(gt.DeltaTime());
+                    }
                 }
             }
 
@@ -142,8 +147,8 @@ void StencilApp::Update(const GameTimer& gt)
 
     //Set NeedsUpdate for every object that changes its values at runtime
 
-    mAllDrawableObjects["Head"]->WorldRotation.y = gt.TotalTime();
-    DrawableObjectUpdateList.push_back(mAllDrawableObjects["Head"]);
+    //mAllDrawableObjects["Head"]->WorldRotation.y = gt.TotalTime();
+    //DrawableObjectUpdateList.push_back(mAllDrawableObjects["Head"]);
 
     mAllLightObjects["Spot1"]->Color = { 0.5f + 0.5f * cos(gt.TotalTime()) , 0.5f + 0.5f * cos(gt.TotalTime() + 1) , 0.5f + 0.5f * cos(gt.TotalTime() + 4) };
     LightObjectUpdateList.push_back(mAllLightObjects["Spot1"]);
@@ -401,15 +406,15 @@ void StencilApp::MakeDrawableObjects()
 {
     //Has prebuilt geometries: "Box", "Grid", "Sphere", "Cylinder", "Cone"
 
-    DrawableObject* Svidetel = new DrawableObject();
-    Svidetel->Name = "Svidetel";
-    Svidetel->GeometryName = MeshParsingResults["Svidetel"][0].GeometryName;
-    Svidetel->MaterialName = MeshParsingResults["Svidetel"][0].GeneratedMaterial.Name;
-    Svidetel->renderLayer = RenderLayer::Opaque;
-    Svidetel->WorldLocation = XMFLOAT3(1.5f, 0.f, 0.f);
-    Svidetel->Scale = XMFLOAT3(2.f, 2.f, 2.f);
+    //DrawableObject* Svidetel = new DrawableObject();
+    //Svidetel->Name = "Svidetel";
+    //Svidetel->GeometryName = MeshParsingResults["Svidetel"][0].GeometryName;
+    //Svidetel->MaterialName = MeshParsingResults["Svidetel"][0].GeneratedMaterial.Name;
+    //Svidetel->renderLayer = RenderLayer::Opaque;
+    //Svidetel->WorldLocation = XMFLOAT3(1.5f, 0.f, 0.f);
+    //Svidetel->Scale = XMFLOAT3(2.f, 2.f, 2.f);
 
-    mAllDrawableObjects[Svidetel->Name] = Svidetel;
+    ////mAllDrawableObjects[Svidetel->Name] = Svidetel;
 
     DrawableObject* SkyBoxSphere = new DrawableObject();
     SkyBoxSphere->Name = "SkyBoxSphere";
@@ -420,30 +425,30 @@ void StencilApp::MakeDrawableObjects()
 
     mAllDrawableObjects[SkyBoxSphere->Name] = SkyBoxSphere;
 
-    DrawableObject* TesselationTestSphere = new DrawableObject();
-    TesselationTestSphere->Name = "TesselationTestSphere";
-    TesselationTestSphere->GeometryName = "Sphere";
-    TesselationTestSphere->MaterialName = "Semechki";
-    TesselationTestSphere->renderLayer = RenderLayer::Opaque;
-    TesselationTestSphere->WorldLocation = XMFLOAT3(5.f, 3.f, -1.f);
-    TesselationTestSphere->Scale = XMFLOAT3(2.5f, 2.5f, 2.5f);
-    TesselationTestSphere->TexTransform = XMMatrixScaling(5.0f, 5.0f, 1.0f);
+    //DrawableObject* TesselationTestSphere = new DrawableObject();
+    //TesselationTestSphere->Name = "TesselationTestSphere";
+    //TesselationTestSphere->GeometryName = "Sphere";
+    //TesselationTestSphere->MaterialName = "Semechki";
+    //TesselationTestSphere->renderLayer = RenderLayer::Opaque;
+    //TesselationTestSphere->WorldLocation = XMFLOAT3(5.f, 3.f, -1.f);
+    //TesselationTestSphere->Scale = XMFLOAT3(2.5f, 2.5f, 2.5f);
+    //TesselationTestSphere->TexTransform = XMMatrixScaling(5.0f, 5.0f, 1.0f);
 
-    mAllDrawableObjects[TesselationTestSphere->Name] = TesselationTestSphere;
+    ////mAllDrawableObjects[TesselationTestSphere->Name] = TesselationTestSphere;
 
-    DrawableObject* DecalTestCylinder = new DrawableObject();
-    DecalTestCylinder->Name = "DecalTestCylinder";
-    DecalTestCylinder->GeometryName = "Cylinder";
-    DecalTestCylinder->MaterialName = "bricks";
-    DecalTestCylinder->renderLayer = RenderLayer::Opaque;
-    DecalTestCylinder->WorldLocation = XMFLOAT3(10.f, 3.f, 5.f);
-    DecalTestCylinder->Scale = XMFLOAT3(5.0f, 5.0f, 5.0f);
-    DecalTestCylinder->TexTransform = XMMatrixScaling(5.0f, 5.0f, 1.0f);
+    //DrawableObject* DecalTestCylinder = new DrawableObject();
+    //DecalTestCylinder->Name = "DecalTestCylinder";
+    //DecalTestCylinder->GeometryName = "Cylinder";
+    //DecalTestCylinder->MaterialName = "bricks";
+    //DecalTestCylinder->renderLayer = RenderLayer::Opaque;
+    //DecalTestCylinder->WorldLocation = XMFLOAT3(10.f, 3.f, 5.f);
+    //DecalTestCylinder->Scale = XMFLOAT3(5.0f, 5.0f, 5.0f);
+    //DecalTestCylinder->TexTransform = XMMatrixScaling(5.0f, 5.0f, 1.0f);
 
-    mAllDrawableObjects[DecalTestCylinder->Name] = DecalTestCylinder;
+    ////mAllDrawableObjects[DecalTestCylinder->Name] = DecalTestCylinder;
 
 
-    DrawableObject* Floor = new DrawableObject();
+    /*DrawableObject* Floor = new DrawableObject();
     Floor->Name = "Floor";
     Floor->GeometryName = "Grid";
     Floor->MaterialName = "woodCrate";
@@ -451,54 +456,54 @@ void StencilApp::MakeDrawableObjects()
     Floor->Scale = XMFLOAT3(5.0f, 1.0f, 5.0f);
     Floor->WorldLocation = XMFLOAT3(0.f, 0.1f, 0.f);
     Floor->TexTransform = XMMatrixScaling(50.0f, 50.0f, 1.0f);
+    
+    mAllDrawableObjects[Floor->Name] = Floor;*/
 
-    mAllDrawableObjects[Floor->Name] = Floor;
+    //DrawableObject* Head = new DrawableObject();
+    //Head->Name = "Head";
+    //Head->GeometryName = "Head";
+    //Head->MaterialName = "AH";
+    //Head->renderLayer = RenderLayer::Opaque;
+    //Head->WorldLocation = XMFLOAT3(0.f, 2.f, 0.f);
 
-    DrawableObject* Head = new DrawableObject();
-    Head->Name = "Head";
-    Head->GeometryName = "Head";
-    Head->MaterialName = "AH";
-    Head->renderLayer = RenderLayer::Opaque;
-    Head->WorldLocation = XMFLOAT3(0.f, 2.f, 0.f);
+    ////mAllDrawableObjects[Head->Name] = Head;
 
-    mAllDrawableObjects[Head->Name] = Head;
+    //DrawableObject* Patrick1 = new DrawableObject();
+    //Patrick1->Name = "Patrick";
+    //Patrick1->GeometryName = MeshParsingResults["PatrickStar"][0].GeometryName;
+    //Patrick1->MaterialName = "PatrickMat";
+    //Patrick1->renderLayer = RenderLayer::Opaque;
+    //Patrick1->WorldLocation = XMFLOAT3(-100.0f, 2.0f, 0.0f);
 
-    DrawableObject* Patrick1 = new DrawableObject();
-    Patrick1->Name = "Patrick";
-    Patrick1->GeometryName = MeshParsingResults["PatrickStar"][0].GeometryName;
-    Patrick1->MaterialName = "PatrickMat";
-    Patrick1->renderLayer = RenderLayer::Opaque;
-    Patrick1->WorldLocation = XMFLOAT3(-100.0f, 2.0f, 0.0f);
+    ////mAllDrawableObjects[Patrick1->Name] = Patrick1;
 
-    mAllDrawableObjects[Patrick1->Name] = Patrick1;
+    //DrawableObject* Patrick2 = new DrawableObject();
+    //Patrick2->Name = "Patrick2";
+    //Patrick2->GeometryName = MeshParsingResults["PatrickStar"][0].GeometryName;
+    //Patrick2->MaterialName = "PatrickMat";
+    //Patrick2->renderLayer = RenderLayer::Opaque;
+    //Patrick2->WorldLocation = XMFLOAT3(-4.0f, 2.0f, -10.0f);
 
-    DrawableObject* Patrick2 = new DrawableObject();
-    Patrick2->Name = "Patrick2";
-    Patrick2->GeometryName = MeshParsingResults["PatrickStar"][0].GeometryName;
-    Patrick2->MaterialName = "PatrickMat";
-    Patrick2->renderLayer = RenderLayer::Opaque;
-    Patrick2->WorldLocation = XMFLOAT3(-4.0f, 2.0f, -10.0f);
+    ////mAllDrawableObjects[Patrick2->Name] = Patrick2;
 
-    mAllDrawableObjects[Patrick2->Name] = Patrick2;
+    //const float spacing = 2.0f;
+    //for (int row = 0; row < 11; ++row) {
+    //    for (int col = 0; col < 11; ++col) {
+    //        auto sphere = new DrawableObject();
+    //        sphere->Name = "Sphere" + std::to_string(row) + "_" + std::to_string(col);
+    //        sphere->GeometryName = "Sphere";
+    //        sphere->MaterialName = "sphere_mat_" + std::to_string(row) + "_" + std::to_string(col);
+    //        sphere->renderLayer = RenderLayer::Opaque;
+    //        sphere->Scale = XMFLOAT3(1.0f, 1.0f, 1.0f);
+    //        sphere->WorldLocation = XMFLOAT3(
+    //            (col - 5) * spacing,
+    //            1.0f,
+    //            -30.f + (row - 5) * spacing
+    //        );
 
-    const float spacing = 2.0f;
-    for (int row = 0; row < 11; ++row) {
-        for (int col = 0; col < 11; ++col) {
-            auto sphere = new DrawableObject();
-            sphere->Name = "Sphere" + std::to_string(row) + "_" + std::to_string(col);
-            sphere->GeometryName = "Sphere";
-            sphere->MaterialName = "sphere_mat_" + std::to_string(row) + "_" + std::to_string(col);
-            sphere->renderLayer = RenderLayer::Opaque;
-            sphere->Scale = XMFLOAT3(1.0f, 1.0f, 1.0f);
-            sphere->WorldLocation = XMFLOAT3(
-                (col - 5) * spacing,
-                1.0f,
-                -30.f + (row - 5) * spacing
-            );
-
-            mAllDrawableObjects[sphere->Name] = sphere;
-        }
-    }
+    //        //mAllDrawableObjects[sphere->Name] = sphere;
+    //    }
+    //}
 
     mRenderingSystem->BuildRenderItems(mAllDrawableObjects);
 }
@@ -554,7 +559,7 @@ void StencilApp::MakeParticleSystems()
     fireworkParticleSystemDesc.particleGeometryName = MeshParsingResults["Svidetel"][0].GeometryName;
     fireworkParticleSystemDesc.IsBillboard = false;
 
-    mParticleSystemDescriptors[fireworkParticleSystemDesc.name] = fireworkParticleSystemDesc;
+    //mParticleSystemDescriptors[fireworkParticleSystemDesc.name] = fireworkParticleSystemDesc;
 
     
     ParticleSystemDescriptor smokeParticleSystemDesc;
@@ -569,7 +574,7 @@ void StencilApp::MakeParticleSystems()
     smokeParticleSystemDesc.particleGeometryName = "2DCircle";
     smokeParticleSystemDesc.IsBillboard = true;
 
-    mParticleSystemDescriptors[smokeParticleSystemDesc.name] = smokeParticleSystemDesc;
+    //mParticleSystemDescriptors[smokeParticleSystemDesc.name] = smokeParticleSystemDesc;
 
     mRenderingSystem->BuildParticleSystems(mParticleSystemDescriptors);
 }

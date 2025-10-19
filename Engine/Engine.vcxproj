@@ -397,6 +397,8 @@
     <ClInclude Include="Include\Engine\UI\DebugOutputHook.h" />
     <ClInclude Include="Include\Engine\UI\ImGui_Layer.h" />
     <ClInclude Include="Include\Engine\UI\UIPanel.h" />
+    <ClInclude Include="Include\Engine\Voxels\Noise.h" />
+    <ClInclude Include="Include\Engine\Voxels\VoxelWorld.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Extern\DirectXTex\include\DirectXTex\DirectXTex.inl" />
@@ -453,6 +455,8 @@
     <ClCompile Include="src\Terrain\TerrainTile.cpp" />
     <ClCompile Include="src\UI\DebugOutputHook.cpp" />
     <ClCompile Include="src\UI\ImGui_Layer.cpp" />
+    <ClCompile Include="src\Voxels\Noise.cpp" />
+    <ClCompile Include="src\Voxels\VoxelWorld.cpp" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>

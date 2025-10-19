@@ -66,7 +66,7 @@ Gbuffer::Gbuffer(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device> dev
     clearValue2.Color[3] = 1.0f;
 
     D3D12_CLEAR_VALUE clearValue3 = {};
-    clearValue3.Format = DXGI_FORMAT_R16G16B16A16_SNORM;
+    clearValue3.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
     clearValue3.Color[0] = 0.0f;
     clearValue3.Color[1] = 0.0f;
     clearValue3.Color[2] = 0.0f;
@@ -98,7 +98,7 @@ Gbuffer::Gbuffer(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device> dev
     hr = device->CreateCommittedResource(
         &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
         D3D12_HEAP_FLAG_NONE,
-        &CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R16G16B16A16_SNORM, width, height, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET),
+        &CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R16G16B16A16_FLOAT, width, height, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET),
         D3D12_RESOURCE_STATE_COMMON,
         &clearValue3,
         IID_PPV_ARGS(&NormalTex)
@@ -176,7 +176,7 @@ Gbuffer::Gbuffer(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device> dev
     EmissiveRTV = rtvHandle;
     rtvHandle.ptr += rtvDescriptorSize;
 
-    rtvDesc.Format = DXGI_FORMAT_R16G16B16A16_SNORM;
+    rtvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
     device->CreateRenderTargetView(NormalTex.Get(), &rtvDesc, rtvHandle);
     NormalRTV = rtvHandle;
     rtvHandle.ptr += rtvDescriptorSize;
@@ -219,7 +219,7 @@ Gbuffer::Gbuffer(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device> dev
     EmissiveSRV = srvHandle;
     srvHandle.ptr += srvDescriptorSize;
 
-    srvDesc.Format = DXGI_FORMAT_R16G16B16A16_SNORM;
+    srvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
     device->CreateShaderResourceView(NormalTex.Get(), &srvDesc, srvHandle);
     NormalSRV = srvHandle;
     srvHandle.ptr += srvDescriptorSize;
@@ -492,7 +492,7 @@ void Gbuffer::Resize(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device>
     clearValue2.Color[3] = 1.0f;
 
     D3D12_CLEAR_VALUE clearValue3 = {};
-    clearValue3.Format = DXGI_FORMAT_R16G16B16A16_SNORM;
+    clearValue3.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
     clearValue3.Color[0] = 0.0f;
     clearValue3.Color[1] = 0.0f;
     clearValue3.Color[2] = 0.0f;
@@ -523,7 +523,7 @@ void Gbuffer::Resize(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device>
     hr = device->CreateCommittedResource(
         &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
         D3D12_HEAP_FLAG_NONE,
-        &CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R16G16B16A16_SNORM, width, height, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET),
+        &CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R16G16B16A16_FLOAT, width, height, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET),
         D3D12_RESOURCE_STATE_COMMON,
         &clearValue3,
         IID_PPV_ARGS(&NormalTex)
@@ -607,7 +607,7 @@ void Gbuffer::Resize(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device>
     EmissiveRTV = rtvHandle;
     rtvHandle.ptr += rtvDescriptorSize;
 
-    rtvDesc.Format = DXGI_FORMAT_R16G16B16A16_SNORM;
+    rtvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
     device->CreateRenderTargetView(NormalTex.Get(), &rtvDesc, rtvHandle);
     NormalRTV = rtvHandle;
     rtvHandle.ptr += rtvDescriptorSize;
@@ -650,7 +650,7 @@ void Gbuffer::Resize(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device>
     EmissiveSRV = srvHandle;
     srvHandle.ptr += srvDescriptorSize;
 
-    srvDesc.Format = DXGI_FORMAT_R16G16B16A16_SNORM;
+    srvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
     device->CreateShaderResourceView(NormalTex.Get(), &srvDesc, srvHandle);
     NormalSRV = srvHandle;
     srvHandle.ptr += srvDescriptorSize;
