@@ -56,6 +56,7 @@ public:
     void MarkAllChunksDirty();
     void MarkChunkDirty(size_t index);
     void DigSphere(const DirectX::XMFLOAT3& center, float radius);
+    void DigRay(const DirectX::XMFLOAT3& rayOrigin, const DirectX::XMFLOAT3& rayDir, float maxDist, float radius);
 
 private:
     struct GPUResources {

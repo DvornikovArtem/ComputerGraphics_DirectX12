@@ -448,7 +448,7 @@ void StencilApp::MakeDrawableObjects()
     ////mAllDrawableObjects[DecalTestCylinder->Name] = DecalTestCylinder;
 
 
-    /*DrawableObject* Floor = new DrawableObject();
+    DrawableObject* Floor = new DrawableObject();
     Floor->Name = "Floor";
     Floor->GeometryName = "Grid";
     Floor->MaterialName = "woodCrate";
@@ -457,7 +457,7 @@ void StencilApp::MakeDrawableObjects()
     Floor->WorldLocation = XMFLOAT3(0.f, 0.1f, 0.f);
     Floor->TexTransform = XMMatrixScaling(50.0f, 50.0f, 1.0f);
     
-    mAllDrawableObjects[Floor->Name] = Floor;*/
+    mAllDrawableObjects[Floor->Name] = Floor;
 
     //DrawableObject* Head = new DrawableObject();
     //Head->Name = "Head";

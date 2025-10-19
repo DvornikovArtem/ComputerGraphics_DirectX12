@@ -1033,25 +1033,44 @@ void RenderingSystem::RegisterScenePanels() {
 
 void RenderingSystem::TickVoxelDig(float dt)
 {
-	if (!mVoxelWorld) return;
+	if (!mVoxelWorld || !mSceneUI.mouseLookActive || !mSceneUI.lmbDown) return;
 
-	const DirectX::XMFLOAT3 camPos = mCamera.GetPosition3f();
-	const DirectX::XMFLOAT3 camDir = mCamera.GetLook3f();
+	ImVec2 mousePos = ImGui::GetMousePos();
+	ImVec2 sceneMin = mSceneImgRectMin;
+	ImVec2 sceneMax = mSceneImgRectMax;
+	float mouseX = mousePos.x - sceneMin.x;
+	float mouseY = mousePos.y - sceneMin.y;
+	float viewWidth = sceneMax.x - sceneMin.x;
+	float viewHeight = sceneMax.y - sceneMin.y;
+
+	if (mouseX < 0 || mouseY < 0 || mouseX >= viewWidth || mouseY >= viewHeight) return;
+
+	float ndcX = (mouseX / viewWidth) * 2.0f - 1.0f;
+	float ndcY = 1.0f - (mouseY / viewHeight) * 2.0f;
 
 	using namespace DirectX;
-	XMVECTOR P = XMLoadFloat3(&camPos);
-	XMVECTOR D = XMLoadFloat3(&camDir);
+	XMMATRIX view = mCamera.GetView();
+	XMMATRIX proj = mCamera.GetProj();
+	XMMATRIX viewProj = view * proj;
+	XMMATRIX invViewProj = XMMatrixInverse(nullptr, viewProj);
 
-	const float distance = 10.0f;
-	XMVECTOR Hit = XMVectorAdd(P, XMVectorScale(D, distance));
-	XMFLOAT3 hitPos;
-	XMStoreFloat3(&hitPos, Hit);
+	XMVECTOR ndcNear = XMVectorSet(ndcX, ndcY, 0.0f, 1.0f);
 
-	const float brushRadius = 1.0f;
-	const float brushStrength = 1.0f * dt;
+	XMVECTOR worldNear = XMVector4Transform(ndcNear, invViewProj);
+	worldNear = worldNear / XMVectorGetW(worldNear);
 
-	//mVoxelWorld->DigSphere(hitPos, brushRadius, brushStrength);
-	mVoxelWorld->DigSphere(hitPos, brushRadius);
+	XMVECTOR rayOrigin = mCamera.GetPosition();
+
+	XMVECTOR rayDir = XMVector3Normalize(worldNear - rayOrigin);
+
+	XMFLOAT3 origin, direction;
+	XMStoreFloat3(&origin, rayOrigin);
+	XMStoreFloat3(&direction, rayDir);
+
+	const float maxDigDistance = 50.0f;
+	const float brushRadius = 1.5f;
+
+	mVoxelWorld->DigRay(origin, direction, maxDigDistance, brushRadius);
 }
 
 

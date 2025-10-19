@@ -1200,3 +1200,93 @@ void VoxelWorld::DigSphere(const DirectX::XMFLOAT3& center, float radius)
         }
     }
 }
+
+void VoxelWorld::DigRay(const DirectX::XMFLOAT3& rayOrigin, const DirectX::XMFLOAT3& rayDir, float maxDist, float radius)
+{
+    using namespace DirectX;
+
+    if (mChunks.empty()) return;
+
+    // Ray marching parameters
+    float currentDist = 0.0f;
+    // Step size should be smaller than voxel size to avoid skipping thin walls
+    const float stepSize = mChunks[0].cb.voxelSize * 0.5f;
+    // Use isoLevel from the first chunk (assuming it's the same for all)
+    const float isoLevel = mChunks[0].cb.isoLevel;
+
+    XMVECTOR origin = XMLoadFloat3(&rayOrigin);
+    XMVECTOR dir = XMLoadFloat3(&rayDir);
+
+    // March along the ray
+    while (currentDist < maxDist)
+    {
+        // Calculate the current point on the ray
+        XMVECTOR currentPosVec = origin + dir * currentDist;
+        XMFLOAT3 currentPos;
+        XMStoreFloat3(&currentPos, currentPosVec);
+
+        // 1. Find the chunk that contains the current point
+        Chunk* hitChunk = nullptr;
+        size_t hitChunkIndex = (size_t)-1;
+        for (size_t i = 0; i < mChunks.size(); ++i)
+        {
+            auto& c = mChunks[i];
+            float minX = c.cb.worldOrigin.x;
+            float minY = c.cb.worldOrigin.y;
+            float minZ = c.cb.worldOrigin.z;
+            float maxX = minX + (c.cb.dimX - 1) * c.cb.voxelSize;
+            float maxY = minY + (c.cb.dimY - 1) * c.cb.voxelSize;
+            float maxZ = minZ + (c.cb.dimZ - 1) * c.cb.voxelSize;
+
+            if (currentPos.x >= minX && currentPos.x <= maxX &&
+                currentPos.y >= minY && currentPos.y <= maxY &&
+                currentPos.z >= minZ && currentPos.z <= maxZ)
+            {
+                hitChunk = &c;
+                hitChunkIndex = i;
+                break;
+            }
+        }
+
+        // 2. If the chunk is found and it has CPU data
+        if (hitChunk != nullptr && !hitChunk->cpuDensity.data.empty())
+        {
+            // 3. Convert the world position to local voxel coordinates
+            float localX = (currentPos.x - hitChunk->cb.worldOrigin.x) / hitChunk->cb.voxelSize;
+            float localY = (currentPos.y - hitChunk->cb.worldOrigin.y) / hitChunk->cb.voxelSize;
+            float localZ = (currentPos.z - hitChunk->cb.worldOrigin.z) / hitChunk->cb.voxelSize;
+
+            // Round to the nearest voxel index
+            int ix = static_cast<int>(std::round(localX));
+            int iy = static_cast<int>(std::round(localY));
+            int iz = static_cast<int>(std::round(localZ));
+
+            // 4. Check if the index is within the chunk bounds
+            if (ix >= 0 && ix < (int)hitChunk->cb.dimX &&
+                iy >= 0 && iy < (int)hitChunk->cb.dimY &&
+                iz >= 0 && iz < (int)hitChunk->cb.dimZ)
+            {
+                // 5. Compute the index in the one-dimensional data array
+                size_t idx = ix + iy * hitChunk->cb.dimX + iz * hitChunk->cb.dimX * hitChunk->cb.dimY;
+
+                // 6. Get the density value
+                float density = XMConvertHalfToFloat(hitChunk->cpuDensity.data[idx]);
+
+                // 7. Check for intersection with the surface
+                // (Assume: <= isoLevel — inside "ground", > isoLevel — "air")
+                if (density <= isoLevel)
+                {
+                    // Intersection found! Dig at this point and exit
+                    DigSphere(currentPos, radius);
+                    return; // Stop ray marching
+                }
+            }
+        }
+        // If the chunk is not found or the point is outside its bounds, keep stepping
+
+        // Move on to the next point
+        currentDist += stepSize;
+    }
+
+    // If we reach maxDist and haven't found anything, then we simply do nothing
+}
