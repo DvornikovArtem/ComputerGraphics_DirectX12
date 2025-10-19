@@ -216,9 +216,9 @@ GBufferData PS(GS_OUT pin)
     float3 blended = SEA_COLOR * w.x + LAND_COLOR * w.y + ROCK_COLOR * w.z + SNW_COLOR * w.w;
     
 
-    pout.diffuse = float4(blended, 1.0);
-    pout.emissive = float4(0.f, 0.f, 0.f, pin.PosCS.z);
-    pout.normal = float4(NormalMapSample, cbMaterial.Metallic);
+    pout.Diffuse = float4(blended, 1.0);
+    pout.DepthStencils = float4(0.f, 0.f, 0.f, pin.PosCS.z);
+    pout.Normal = float4(NormalMapSample, cbMaterial.Metallic);
     pout.MaterialFresnelRoughness = float4(cbMaterial.FresnelR0, cbMaterial.Roughness);
 
     return pout;

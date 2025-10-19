@@ -1,7 +1,7 @@
 #include "CBufferStructures.hlsl"
 
 Texture2D   DiffuseMap     : register(t0);
-Texture2D   EmissiveMap    : register(t1);
+Texture2D   DepthMaps    : register(t1);
 Texture2D   NormalMap      : register(t2);
 
 SamplerState samPointWrap : register(s0);
@@ -172,10 +172,9 @@ float4 GodRays(float2 UV, float3 worldPos, float depth)
         float2 sampleUV = clamp(UV, 0.0, 1.0);
         
         
-        float4 emissive = EmissiveMap.SampleLevel(samLinearClamp, sampleUV, 0);
-        float sampleDepth = emissive.w;
+        float ScreenDepth = DepthMaps.SampleLevel(samLinearClamp, sampleUV, 0).w;
        
-        if (sampleDepth < depth)
+        if (ScreenDepth < depth)
             break;
         
         float4 sampleColor = DiffuseMap.SampleLevel(samLinearClamp, sampleUV, 0);
@@ -192,12 +191,12 @@ float4 PS(VertexOut pin) : SV_Target
     uint2 TexelCoord = pin.PosH.xy;
     float2 UV = TexelCoord / cbMainPass.ViewportSize;
     //loading GBuffer channels
-    float4 Emissive = EmissiveMap.Load(int3(TexelCoord, 0));
+    float ScreenDepth = DepthMaps.Load(int3(TexelCoord, 0)).w;
     float4 NormalChannel = NormalMap.Load(int3(TexelCoord, 0));
     float4 Color = DiffuseMap.Load(int3(TexelCoord, 0));
     
     
-    float3 WorldPosition = ReconstructWorldPosition(UV, Emissive.w);
+    float3 WorldPosition = ReconstructWorldPosition(UV, ScreenDepth);
     float3 Normal = NormalChannel.rgb;
 
     //Do your cool post-processing here
@@ -205,8 +204,8 @@ float4 PS(VertexOut pin) : SV_Target
     float4 effects = 0;
 
     effects = ChromaticAbberation(UV);
-    effects = DepthOfField(Emissive.w, TexelCoord, effects);
-    effects += GodRays(UV, WorldPosition, Emissive.w);
+    effects = DepthOfField(ScreenDepth, TexelCoord, effects);
+    effects += GodRays(UV, WorldPosition, ScreenDepth);
     // effects += bloom(...);
     // effects += lensDirt(...);
 

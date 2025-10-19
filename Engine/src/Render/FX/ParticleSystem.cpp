@@ -30,13 +30,13 @@ void ParticleSystem::Build(ComPtr<ID3D12Device> device, ComPtr<ID3D12GraphicsCom
     BuildShadersAndPSOs();
 }
 
-void ParticleSystem::setEmissiveTex(ComPtr<ID3D12Resource> emissiveTex, ComPtr<ID3D12Resource> normalTex)
+void ParticleSystem::SetResources(ComPtr<ID3D12Resource> DepthTex, ComPtr<ID3D12Resource> NormalTex)
 {
-    if (mEmissiveTex.Get() == emissiveTex.Get()) return;
-    if (mNormalTex.Get() == normalTex.Get()) return;
+    if (mDepthStencilsTex.Get() == DepthTex.Get()) return;
+    if (mNormalTex.Get() == NormalTex.Get()) return;
 
-    mEmissiveTex = emissiveTex;
-    mNormalTex = normalTex;
+    mDepthStencilsTex = DepthTex;
+    mNormalTex = NormalTex;
 
     UINT descriptorSize = mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
@@ -45,17 +45,17 @@ void ParticleSystem::setEmissiveTex(ComPtr<ID3D12Resource> emissiveTex, ComPtr<I
     srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
     srvDesc.Texture2D.MipLevels = 1;
 
-    srvDesc.Format = mEmissiveTex->GetDesc().Format;
-    CD3DX12_CPU_DESCRIPTOR_HANDLE emissiveHandle(
+    srvDesc.Format = mDepthStencilsTex->GetDesc().Format;
+    CD3DX12_CPU_DESCRIPTOR_HANDLE DepthHeapHandle(
         mUavSrvHeap->GetCPUDescriptorHandleForHeapStart(),
         5,
         descriptorSize);
 
-    mDevice->CreateShaderResourceView(mEmissiveTex.Get(), &srvDesc, emissiveHandle);
+    mDevice->CreateShaderResourceView(mDepthStencilsTex.Get(), &srvDesc, DepthHeapHandle);
 
     srvDesc.Format = mNormalTex->GetDesc().Format;
     CD3DX12_CPU_DESCRIPTOR_HANDLE normalHandle(
-        emissiveHandle,
+        DepthHeapHandle,
         1,
         descriptorSize);
 
@@ -175,16 +175,6 @@ void ParticleSystem::BuildResources()
     uavDesc.Buffer.NumElements = sizeof(D3D12_DRAW_INDEXED_ARGUMENTS) / sizeof(UINT);
     uavDesc.Buffer.CounterOffsetInBytes = 0;
     mDevice->CreateUnorderedAccessView(mDrawArgs.Get(), nullptr, &uavDesc, uavHandle); //uavHandle.Offset(1, uavDescriptorSize);
-
-
-    /*D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-    srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-    srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-    srvDesc.Texture2D.MipLevels = 1;
-
-    mDevice->CreateShaderResourceView(mEmissiveTex.Get(), &srvDesc, uavHandle);
-    CD3DX12_GPU_DESCRIPTOR_HANDLE emissiveTexDescriptorGPU(mUavSrvHeap->GetGPUDescriptorHandleForHeapStart(), 5);*/
 }
 
 void ParticleSystem::BuildRootSignatures()
@@ -383,10 +373,10 @@ void ParticleSystem::Update(float dt, FrameResource* frameResource)
 
     mCommandList->SetComputeRootDescriptorTable(2, mUavSrvHeap->GetGPUDescriptorHandleForHeapStart());
 
-    CD3DX12_GPU_DESCRIPTOR_HANDLE emissiveTexDescriptorGPU(mUavSrvHeap->GetGPUDescriptorHandleForHeapStart());
-    emissiveTexDescriptorGPU.Offset(5, mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
+    CD3DX12_GPU_DESCRIPTOR_HANDLE DepthTexDescriptorGPU(mUavSrvHeap->GetGPUDescriptorHandleForHeapStart());
+    DepthTexDescriptorGPU.Offset(5, mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
 
-    mCommandList->SetComputeRootDescriptorTable(3, emissiveTexDescriptorGPU);
+    mCommandList->SetComputeRootDescriptorTable(3, DepthTexDescriptorGPU);
 
     UINT groups = (mNumParticlesToEmit + 255) / 256;
     if (groups == 0) return;

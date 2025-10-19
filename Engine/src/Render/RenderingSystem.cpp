@@ -205,7 +205,7 @@ void RenderingSystem::FinishInitialize()
 
 	for (ParticleSystem* particleSystem : mAllParticleSystems)
 	{
-		particleSystem->setEmissiveTex(mGBuffer->DepthStencils.Resource, mGBuffer->Normal.Resource);
+		particleSystem->SetResources(mGBuffer->DepthStencils.Resource, mGBuffer->Normal.Resource);
 	}
 }
 
@@ -433,7 +433,7 @@ void RenderingSystem::OnResize() {
 
 	for (ParticleSystem* particleSystem : mAllParticleSystems)
 	{
-		particleSystem->setEmissiveTex(mGBuffer->DepthStencils.Resource, mGBuffer->Normal.Resource);
+		particleSystem->SetResources(mGBuffer->DepthStencils.Resource, mGBuffer->Normal.Resource);
 	}
 }
 
@@ -938,7 +938,7 @@ void RenderingSystem::RegisterScenePanels() {
 			//textures.reserve(mGbuffer->NumBuffers);
 
 			textures.push_back({ (ImTextureID)mGbufferImguiSlots[/*Diffuse*/0].ptr, "Diffuse" });
-			textures.push_back({ (ImTextureID)mGbufferImguiSlots[/*Emissive*/1].ptr, "Emissive" });
+			textures.push_back({ (ImTextureID)mGbufferImguiSlots[/*Depth Stencils*/1].ptr, "Depth Stencils" });
 			textures.push_back({ (ImTextureID)mGbufferImguiSlots[/*Normal*/2].ptr, "Normal" });
 			textures.push_back({ (ImTextureID)mGbufferImguiSlots[/*Mat Fresnel/Rough*/3].ptr, "Mat Fresnel/Rough" });
 			textures.push_back({ (ImTextureID)mGbufferImguiSlots[/*Accumulation*/4].ptr, "Accumulation" });
