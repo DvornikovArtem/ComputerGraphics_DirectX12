@@ -258,7 +258,7 @@ protected:
 
     GameTimer* gt = nullptr;
 
-    std::unique_ptr<Gbuffer> mGbuffer;
+    std::unique_ptr<Gbuffer> mGBuffer;
 
     std::unordered_map<std::string, Microsoft::WRL::ComPtr<ID3D12PipelineState>> GlobalPSOs;
     std::unordered_map<std::string, Microsoft::WRL::ComPtr<ID3D12RootSignature>> RootSignatures;

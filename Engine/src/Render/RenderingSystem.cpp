@@ -91,7 +91,7 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 	CreateSwapChain();
 	BuildFSRContext();
 
-	mGbuffer = std::make_unique<Gbuffer>(mClientWidth, mClientHeight, md3dDevice);
+	mGBuffer = std::make_unique<Gbuffer>(mClientWidth, mClientHeight, md3dDevice);
 
 	// For Debug System =========================================================
 	mDebugDrawer = new gfw::DebugRenderSysImpl(md3dDevice);
@@ -134,11 +134,12 @@ void RenderingSystem::FinishInitialize()
 	CreateRtvAndDsvDescriptorHeaps();
 	CreateOrResizeSceneColor(mClientWidth, mClientHeight);
 
-	mGbuffer->Channel0SRVHeapIndex = static_cast<int>(TexDescsLength + MPRTextures.size() + MPRTerrainTextures.size() + 1);
+	mGBuffer->Channel0SRVHeapIndex = static_cast<int>(TexDescsLength + MPRTextures.size() + MPRTerrainTextures.size() + 1);
+	for (int i = 0; i < mGBuffer->ChannelPTRs.size(); i++) mGBuffer->ChannelPTRs[i]->SRVHeapIndex = mGBuffer->Channel0SRVHeapIndex + i;
 
 	//copy GBuffer SRVs into main SRVHeap
-	md3dDevice->CopyDescriptorsSimple(mGbuffer->NumBuffers, GetCpuSrv(mGbuffer->Channel0SRVHeapIndex),
-		mGbuffer->m_SRVDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
+	md3dDevice->CopyDescriptorsSimple(mGBuffer->NumBuffers, GetCpuSrv(mGBuffer->Channel0SRVHeapIndex),
+		mGBuffer->m_SRVDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
 		D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
 	int k = 0;
@@ -147,7 +148,7 @@ void RenderingSystem::FinishInitialize()
 		+ static_cast<int>(MPRTextures.size())
 		+ static_cast<int>(MPRTerrainTextures.size())
 		+ 1
-		+ mGbuffer->NumBuffers;
+		+ mGBuffer->NumBuffers;
 	for (auto& litem : mAllLights) {
 		litem->shadowMap->BuildDescriptors(GetCpuSrv(shadowBase + k), GetGpuSrv(shadowBase + k), GetDsv(1 + k));
 		litem->shadowMap->SRVHeapIndex = shadowBase + k;
@@ -186,17 +187,17 @@ void RenderingSystem::FinishInitialize()
 
 	BuildFrameResources();
 
-	mGbufferImguiSlots.resize(mGbuffer->NumBuffers);
-	for (int i = 0; i < mGbuffer->NumBuffers; ++i) {
+	mGbufferImguiSlots.resize(mGBuffer->NumBuffers);
+	for (int i = 0; i < mGBuffer->NumBuffers; ++i) {
 		D3D12_CPU_DESCRIPTOR_HANDLE dummyCPU{};
 		D3D12_GPU_DESCRIPTOR_HANDLE slotGPU{};
 		mImGui->AllocSrv(dummyCPU, slotGPU);
 		mGbufferImguiSlots[i] = slotGPU;
 	}
 
-	auto gbCPU = mGbuffer->m_SRVDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
+	auto gbCPU = mGBuffer->m_SRVDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
 	UINT stride = md3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-	for (int i = 0; i < mGbuffer->NumBuffers && i < (int)mGbufferImguiSlots.size(); ++i) {
+	for (int i = 0; i < mGBuffer->NumBuffers && i < (int)mGbufferImguiSlots.size(); ++i) {
 		D3D12_CPU_DESCRIPTOR_HANDLE src = gbCPU;
 		src.ptr += SIZE_T(i) * stride;
 		mImGui->CopySrvIntoSlot(mGbufferImguiSlots[i], src);
@@ -204,7 +205,7 @@ void RenderingSystem::FinishInitialize()
 
 	for (ParticleSystem* particleSystem : mAllParticleSystems)
 	{
-		particleSystem->setEmissiveTex(mGbuffer->getEmissiveTex(), mGbuffer->getNormalTex());
+		particleSystem->setEmissiveTex(mGBuffer->DepthStencils.Resource, mGBuffer->Normal.Resource);
 	}
 }
 
@@ -350,8 +351,8 @@ void RenderingSystem::OnResize() {
 		mDownscaledScissorRect = { 0, 0, (long)mRecommendedRenderResolutionX, (long)mRecommendedRenderResolutionY };
 	}
 
-	mGbuffer->Resize(mFSREnabled ? mRecommendedRenderResolutionX : mClientWidth,
-		mFSREnabled ? mRecommendedRenderResolutionY : mClientHeight, md3dDevice.Get());
+	mGBuffer->Resize(mFSREnabled ? mRecommendedRenderResolutionX : mClientWidth,
+		mFSREnabled ? mRecommendedRenderResolutionY : mClientHeight);
 
 	if (mTAAEnabled)
 	{
@@ -393,8 +394,8 @@ void RenderingSystem::OnResize() {
 
 	if (mSrvDescriptorHeap)
 	{
-		md3dDevice->CopyDescriptorsSimple(mGbuffer->NumBuffers, GetCpuSrv(mGbuffer->Channel0SRVHeapIndex),
-			mGbuffer->m_SRVDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
+		md3dDevice->CopyDescriptorsSimple(mGBuffer->NumBuffers, GetCpuSrv(mGBuffer->Channel0SRVHeapIndex),
+			mGBuffer->m_SRVDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
 			D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
 
@@ -421,9 +422,9 @@ void RenderingSystem::OnResize() {
 	}
 
 	if (!mGbufferImguiSlots.empty()) {
-		auto gbCPU = mGbuffer->m_SRVDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
+		auto gbCPU = mGBuffer->m_SRVDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
 		const UINT stride = md3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-		for (int i = 0; i < mGbuffer->NumBuffers && i < (int)mGbufferImguiSlots.size(); ++i) {
+		for (int i = 0; i < mGBuffer->NumBuffers && i < (int)mGbufferImguiSlots.size(); ++i) {
 			D3D12_CPU_DESCRIPTOR_HANDLE src = gbCPU;
 			src.ptr += SIZE_T(i) * stride;
 			mImGui->CopySrvIntoSlot(mGbufferImguiSlots[i], src);
@@ -432,7 +433,7 @@ void RenderingSystem::OnResize() {
 
 	for (ParticleSystem* particleSystem : mAllParticleSystems)
 	{
-		particleSystem->setEmissiveTex(mGbuffer->getEmissiveTex(), mGbuffer->getNormalTex());
+		particleSystem->setEmissiveTex(mGBuffer->DepthStencils.Resource, mGBuffer->Normal.Resource);
 	}
 }
 
@@ -499,11 +500,11 @@ void RenderingSystem::Render()
 
 	DrawShadowMaps();
 
-	mGbuffer->TransitToOpaqueRenderingState(mCommandList);
-	mGbuffer->ClearRTVs(mCommandList);
+	mGBuffer->TransitCommonToRTV(mCommandList);
+	mGBuffer->Clear(mCommandList);
 	GBufferGeometryPass();
 
-	mGbuffer->TransitToLightsRenderingState(mCommandList);
+	mGBuffer->TransitToLightsRenderingState(mCommandList);
 	GBufferLightPass();
 
 	DrawSkyBox();
@@ -514,7 +515,7 @@ void RenderingSystem::Render()
 
 	if (mFSREnabled) FSRUpscale();
 
-	mGbuffer->TransitToTonemappingState(mCommandList);
+	mGBuffer->TransitToTonemappingState(mCommandList);
 	PostProcessingPass();
 
 	if (mShowBounds && mOctTree) mOctTree->Draw(mDebugDrawer);
@@ -525,7 +526,7 @@ void RenderingSystem::Render()
 
 	//DrawSceneGrid();
 
-	mGbuffer->TransitFromShaderResourceToCommon(mCommandList);
+	mGBuffer->TransitSRVToCommon(mCommandList);
 
 	DrawUI();
 
@@ -899,7 +900,7 @@ void RenderingSystem::RegisterScenePanels() {
 	p.id = "G-Buffer Viewer";
 	p.draw = [this]
 		{
-			if (!mGbuffer) return;
+			if (!mGBuffer) return;
 
 			static int rows = 2;
 			static int cols = 4;
@@ -942,8 +943,7 @@ void RenderingSystem::RegisterScenePanels() {
 			textures.push_back({ (ImTextureID)mGbufferImguiSlots[/*Mat Albedo*/3].ptr, "Mat Albedo" });
 			textures.push_back({ (ImTextureID)mGbufferImguiSlots[/*Mat Fresnel/Rough*/4].ptr, "Mat Fresnel/Rough" });
 			textures.push_back({ (ImTextureID)mGbufferImguiSlots[/*Accumulation*/5].ptr, "Accumulation" });
-			textures.push_back({ (ImTextureID)mGbufferImguiSlots[/*Bloom*/6].ptr, "Bloom" });
-			textures.push_back({ (ImTextureID)GetGpuSrv(mGbuffer->Channel0SRVHeapIndex + mGbuffer->NumBuffers - 1).ptr, "VelocityBuffer"});
+			textures.push_back({ (ImTextureID)mGbufferImguiSlots[/*VelocityBuffer*/6].ptr, "VelocityBuffer" });
 
 			mImGui->DrawTextureGridFixedSize_ImTexID("G-Buffer Viewer", textures, rows, cols, sceneSize, ImVec2(u0, v0), ImVec2(u1, v1), 0.0f, true);
 		};
@@ -1495,7 +1495,7 @@ void RenderingSystem::BuildSceneGrid()
 
 void RenderingSystem::DrawSceneGrid()
 {
-	mCommandList->OMSetRenderTargets(1, &mGbuffer->AccumulationRTV, false, &DepthStencilView());
+	mCommandList->OMSetRenderTargets(1, &mGBuffer->Accumulation.RTV, false, &DepthStencilView());
 
 	mCommandList->SetGraphicsRootSignature(RootSignatures["PostProcessing"].Get());
 
@@ -1561,9 +1561,9 @@ void RenderingSystem::FSRUpscale()
 
 	dispatchDesc.header.type = FFX_API_DISPATCH_DESC_TYPE_UPSCALE;
 	dispatchDesc.commandList = mCommandList.Get();
-	dispatchDesc.color = ffxApiGetResourceDX12(mTAAEnabled ? mTAAResolvedAccBuffer.Get() : mGbuffer->AccumulationBuf.Get(), FFX_API_RESOURCE_STATE_PIXEL_COMPUTE_READ);
+	dispatchDesc.color = ffxApiGetResourceDX12(mTAAEnabled ? mTAAResolvedAccBuffer.Get() : mGBuffer->Accumulation.Resource.Get(), FFX_API_RESOURCE_STATE_PIXEL_COMPUTE_READ);
 	dispatchDesc.depth = ffxApiGetResourceDX12(mDepthStencilBuffer.Get(), FFX_API_RESOURCE_STATE_PIXEL_COMPUTE_READ);
-	dispatchDesc.motionVectors = ffxApiGetResourceDX12(mGbuffer->VelocityBufferTex.Get(), FFX_API_RESOURCE_STATE_PIXEL_COMPUTE_READ);
+	dispatchDesc.motionVectors = ffxApiGetResourceDX12(mGBuffer->VelocityBuffer.Resource.Get(), FFX_API_RESOURCE_STATE_PIXEL_COMPUTE_READ);
 
 	dispatchDesc.renderSize = { (UINT)mRecommendedRenderResolutionX, (UINT)mRecommendedRenderResolutionY };    // Resolution before upscaling
 	dispatchDesc.motionVectorScale = { 1.f, 1.f };
@@ -1719,7 +1719,7 @@ void RenderingSystem::TAAResolve()
 {
 	CD3DX12_RESOURCE_BARRIER barriers[3];
 	barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
-		mGbuffer->AccumulationBuf.Get(),
+		mGBuffer->Accumulation.Resource.Get(),
 		D3D12_RESOURCE_STATE_RENDER_TARGET,
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 	barriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(mTAAResolvedAccBuffer.Get(),
@@ -1744,16 +1744,16 @@ void RenderingSystem::TAAResolve()
 
 	mCommandList->SetGraphicsRootConstantBufferView(0, passCB->GetGPUVirtualAddress());
 
-	mCommandList->SetGraphicsRootDescriptorTable(1, GetGpuSrv(mGbuffer->Channel0SRVHeapIndex + 5));
+	mCommandList->SetGraphicsRootDescriptorTable(1, GetGpuSrv(mGBuffer->Accumulation.SRVHeapIndex));
 	mCommandList->SetGraphicsRootDescriptorTable(2, GetGpuSrv(mPrevFrameSRVHeapIndex));
-	mCommandList->SetGraphicsRootDescriptorTable(3, GetGpuSrv(mGbuffer->Channel0SRVHeapIndex + 1));
-	mCommandList->SetGraphicsRootDescriptorTable(4, GetGpuSrv(mGbuffer->Channel0SRVHeapIndex + 7));
+	mCommandList->SetGraphicsRootDescriptorTable(3, GetGpuSrv(mGBuffer->DepthStencils.SRVHeapIndex));
+	mCommandList->SetGraphicsRootDescriptorTable(4, GetGpuSrv(mGBuffer->VelocityBuffer.SRVHeapIndex));
 
 	mCommandList->DrawInstanced(6, 1, 0, 0);
 
 	CD3DX12_RESOURCE_BARRIER antibarriers[3];
 	antibarriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
-		mGbuffer->AccumulationBuf.Get(),
+		mGBuffer->Accumulation.Resource.Get(),
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
 		D3D12_RESOURCE_STATE_RENDER_TARGET);
 	antibarriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(mTAAResolvedAccBuffer.Get(),
@@ -2652,12 +2652,12 @@ void RenderingSystem::BuildPSOs(MaterialDesc& MDesc, std::unordered_map<std::str
 		descPipelineState.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;*/
 	descPipelineState.SampleMask = UINT_MAX;
 	descPipelineState.NumRenderTargets = 6;
-	descPipelineState.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
-	descPipelineState.RTVFormats[1] = DXGI_FORMAT_R32G32B32A32_FLOAT;
-	descPipelineState.RTVFormats[2] = DXGI_FORMAT_R16G16B16A16_SNORM;
-	descPipelineState.RTVFormats[3] = DXGI_FORMAT_R8G8B8A8_UNORM;
-	descPipelineState.RTVFormats[4] = DXGI_FORMAT_R8G8B8A8_UNORM;
-	descPipelineState.RTVFormats[5] = DXGI_FORMAT_R16G16_FLOAT;
+	descPipelineState.RTVFormats[0] = mGBuffer->Diffuse.Format;
+	descPipelineState.RTVFormats[1] = mGBuffer->DepthStencils.Format;
+	descPipelineState.RTVFormats[2] = mGBuffer->Normal.Format;
+	descPipelineState.RTVFormats[3] = mGBuffer->MatAlbedo.Format;
+	descPipelineState.RTVFormats[4] = mGBuffer->MatFresnelRoughness.Format;
+	descPipelineState.RTVFormats[5] = mGBuffer->VelocityBuffer.Format;
 	descPipelineState.DSVFormat = mDepthStencilFormat;
 	descPipelineState.SampleDesc.Count = 1;
 
@@ -2985,12 +2985,12 @@ void RenderingSystem::GBufferGeometryPass()
 	mCommandList->SetGraphicsRootSignature(RootSignatures["Default"].Get());
 
 	D3D12_CPU_DESCRIPTOR_HANDLE rtvs[6] = {
-		mGbuffer->DiffuseRTV,
-		mGbuffer->EmissiveRTV,
-		mGbuffer->NormalRTV,
-		mGbuffer->MaterialAlbedoRTV,
-		mGbuffer->MaterialFresnelRoughnessRTV,
-		mGbuffer->VelocityBufferRTV
+		mGBuffer->Diffuse.RTV,
+		mGBuffer->DepthStencils.RTV,
+		mGBuffer->Normal.RTV,
+		mGBuffer->MatAlbedo.RTV,
+		mGBuffer->MatFresnelRoughness.RTV,
+		mGBuffer->VelocityBuffer.RTV
 	};
 
 	mCommandList->OMSetRenderTargets(6, rtvs, false, &DepthStencilView());
@@ -3010,7 +3010,7 @@ void RenderingSystem::GBufferLightPass()
 {
 	mCommandList->SetGraphicsRootSignature(RootSignatures["DeferredLightPass"].Get());
 	//mCommandList->OMSetRenderTargets(1, &mGbuffer->BloomRTV, false, &DepthStencilView());
-	mCommandList->OMSetRenderTargets(1, &mGbuffer->AccumulationRTV, false, &DepthStencilView());
+	mCommandList->OMSetRenderTargets(1, &mGBuffer->Accumulation.RTV, false, &DepthStencilView());
 
 	UINT lightCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(Light));
 	UINT passCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(PassConstants));
@@ -3021,11 +3021,11 @@ void RenderingSystem::GBufferLightPass()
 	ID3D12DescriptorHeap* descriptorHeaps[] = { mSrvDescriptorHeap.Get() };
 	mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
 
-	mCommandList->SetGraphicsRootDescriptorTable(2, GetGpuSrv(mGbuffer->Channel0SRVHeapIndex));
-	mCommandList->SetGraphicsRootDescriptorTable(3, GetGpuSrv(mGbuffer->Channel0SRVHeapIndex + 1));
-	mCommandList->SetGraphicsRootDescriptorTable(4, GetGpuSrv(mGbuffer->Channel0SRVHeapIndex + 2));
-	mCommandList->SetGraphicsRootDescriptorTable(5, GetGpuSrv(mGbuffer->Channel0SRVHeapIndex + 3));
-	mCommandList->SetGraphicsRootDescriptorTable(6, GetGpuSrv(mGbuffer->Channel0SRVHeapIndex + 4));
+	mCommandList->SetGraphicsRootDescriptorTable(2, GetGpuSrv(mGBuffer->Diffuse.SRVHeapIndex));
+	mCommandList->SetGraphicsRootDescriptorTable(3, GetGpuSrv(mGBuffer->DepthStencils.SRVHeapIndex));
+	mCommandList->SetGraphicsRootDescriptorTable(4, GetGpuSrv(mGBuffer->Normal.SRVHeapIndex));
+	mCommandList->SetGraphicsRootDescriptorTable(5, GetGpuSrv(mGBuffer->MatAlbedo.SRVHeapIndex));
+	mCommandList->SetGraphicsRootDescriptorTable(6, GetGpuSrv(mGBuffer->MatFresnelRoughness.SRVHeapIndex));
 
 	mCommandList->SetGraphicsRootDescriptorTable(8, GetGpuSrv(mTextures["SkyIrradiance"]->srvHeapIndex));
 	mCommandList->SetGraphicsRootDescriptorTable(9, GetGpuSrv(mTextures["SkyPref"]->srvHeapIndex));
@@ -3270,9 +3270,9 @@ void RenderingSystem::PostProcessingPass()
 
 	mCommandList->SetGraphicsRootConstantBufferView(0, passCB->GetGPUVirtualAddress());
 
-	mCommandList->SetGraphicsRootDescriptorTable(1, GetGpuSrv(mFSREnabled ? mFSROutputSRVHeapIndex : (mTAAEnabled ? mResolvedAccBufferSRVHeapIndex :  mGbuffer->Channel0SRVHeapIndex + 5)));
-	mCommandList->SetGraphicsRootDescriptorTable(2, GetGpuSrv(mGbuffer->Channel0SRVHeapIndex + 1));
-	mCommandList->SetGraphicsRootDescriptorTable(3, GetGpuSrv(mGbuffer->Channel0SRVHeapIndex + 2));
+	mCommandList->SetGraphicsRootDescriptorTable(1, GetGpuSrv(mFSREnabled ? mFSROutputSRVHeapIndex : (mTAAEnabled ? mResolvedAccBufferSRVHeapIndex :  mGBuffer->Accumulation.SRVHeapIndex)));
+	mCommandList->SetGraphicsRootDescriptorTable(2, GetGpuSrv(mGBuffer->DepthStencils.SRVHeapIndex));
+	mCommandList->SetGraphicsRootDescriptorTable(3, GetGpuSrv(mGBuffer->Normal.SRVHeapIndex));
 
 
 	mCommandList->DrawInstanced(6, 1, 0, 0);
@@ -3578,7 +3578,7 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 		SRVHeapHeadIndex++;
 	}
 
-	for (int i = 0; i < mGbuffer->NumBuffers; i++) {
+	for (int i = 0; i < mGBuffer->NumBuffers; i++) {
 		md3dDevice->CreateShaderResourceView(nullptr, &srvDesc, hDescriptor);
 		hDescriptor.Offset(1, mCbvSrvUavDescriptorSize);
 		SRVHeapHeadIndex++;
