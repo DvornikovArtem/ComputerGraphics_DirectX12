@@ -648,42 +648,77 @@ void VoxelWorld::Initialize(ID3D12Device* device,
     InitTablesCB(mDevice, edgeTable, triTable);
 }
 
+inline float saturate(float x)
+{
+    return (std::min)((std::max)(x, 0.0f), 1.0f);
+}
+
+inline float lerp(float a, float b, float t)
+{
+    return a + (b - a) * t;
+}
+
 DensityFieldCPU VoxelWorld::GenerateDensityCPU(const VoxelChunkCB& info)
 {
     DensityFieldCPU df;
-    df.dimX = info.dimX;
-    df.dimY = info.dimY;
-    df.dimZ = info.dimZ;
-    df.data.resize(size_t(info.dimX)*info.dimY*info.dimZ);
+    df.dimX = info.dimX; // Padded dim (e.g., 35)
+    df.dimY = info.dimY; // Padded dim (e.g., 102)
+    df.dimZ = info.dimZ; // Padded dim (e.g., 35)
+    df.data.resize(size_t(info.dimX) * info.dimY * info.dimZ);
 
-    NoiseSettings ns;
-    ns.frequency = 0.05f;
-    ns.octaves = 5;
-    ns.lacunarity = 2.0f;
-    ns.gain = 0.2f;
-    ns.amplitude = 2.0f;
+    NoiseSettings ns_terrain;
+    ns_terrain.frequency = 0.05f;
+    ns_terrain.octaves = 5;
+    ns_terrain.lacunarity = 2.0f;
+    ns_terrain.gain = 0.2f;
+    ns_terrain.amplitude = 2.0f;
+
+    NoiseSettings ns_caves;
+    ns_caves.frequency = 0.08f;
+    ns_caves.octaves = 3;
+    ns_caves.lacunarity = 2.0f;
+    ns_caves.gain = 0.5f;
+    ns_caves.amplitude = 1.0f;
 
     int countAbove = 0, countBelow = 0;
     float minDensity = FLT_MAX, maxDensity = -FLT_MAX;
 
-    for(UINT z=0; z<info.dimZ; ++z){
-        for(UINT y=0; y<info.dimY; ++y){
-            for(UINT x=0; x<info.dimX; ++x){
-                XMFLOAT3 wp = {
-                    info.worldOrigin.x + x * info.voxelSize,
-                    info.worldOrigin.y + y * info.voxelSize,
-                    info.worldOrigin.z + z * info.voxelSize
-                };
-                /*float base = -wp.y;
-                float n = FBM3D(wp, ns) * 10.0f;
-                float d = base + n;
-                df.data[(z*info.dimY + y)*info.dimX + x] = XMConvertFloatToHalf(d);*/
+    const float AIR_DENSITY = 100.0f;
 
-                float noise = FBM3D(wp, ns) * 10.0f;
-                float density = wp.y + noise * ns.amplitude;
+    for (UINT z = 0; z < info.dimZ; ++z) {
+        for (UINT y = 0; y < info.dimY; ++y) {
+            for (UINT x = 0; x < info.dimX; ++x) {
 
                 UINT idx = x + y * df.dimX + z * df.dimX * df.dimY;
-                //df.data[idx] = density;
+                float density;
+
+                if (x == 0 || x == info.dimX - 1 ||
+                    y == 0 || y == info.dimY - 1 ||
+                    z == 0 || z == info.dimZ - 1)
+                {
+                    density = AIR_DENSITY;
+                }
+                else
+                {
+                    XMFLOAT3 wp = {
+                        info.worldOrigin.x + x * info.voxelSize,
+                        info.worldOrigin.y + y * info.voxelSize,
+                        info.worldOrigin.z + z * info.voxelSize
+                    };
+
+                    float terrain_noise = FBM3D(wp, ns_terrain) * 10.0f;
+                    float density_terrain = wp.y + terrain_noise * ns_terrain.amplitude;
+
+                    float cave_fbm = FBM3D(wp, ns_caves);
+                    float cave_threshold = 0.9f;
+                    float density_caves = cave_fbm - cave_threshold;
+
+                    float y_fade = 1.0f - saturate((wp.y + 10.0f) / 20.0f);
+                    density_caves = lerp(-1.0f, density_caves, y_fade);
+
+                    density = max(density_terrain, density_caves);
+                }
+
                 df.data[idx] = DirectX::PackedVector::XMConvertFloatToHalf(density);
 
                 if (density > info.isoLevel) countAbove++;
@@ -894,12 +929,21 @@ void VoxelWorld::CreateVertexUAV(Chunk& c, UINT maxVertices, ID3D12GraphicsComma
 void VoxelWorld::CreateOneChunk(const DirectX::XMFLOAT3& origin, const VoxelSettings& settings, ID3D12GraphicsCommandList* cmd)
 {
     Chunk c = {};
-    c.cb.worldOrigin = origin;
+    c.contentOrigin = origin;
+    c.contentSettings = settings;
+
+    c.cb.dimX = settings.dimX + 2;
+    c.cb.dimY = settings.dimY + 2;
+    c.cb.dimZ = settings.dimZ + 2;
     c.cb.voxelSize = settings.voxelSize;
-    c.cb.dimX = settings.dimX;
-    c.cb.dimY = settings.dimY;
-    c.cb.dimZ = settings.dimZ;
     c.cb.isoLevel = settings.isoLevel;
+
+    c.cb.worldOrigin = {
+        origin.x - settings.voxelSize,
+        origin.y - settings.voxelSize,
+        origin.z - settings.voxelSize
+    };
+
     c.cpuDensity = GenerateDensityCPU(c.cb);
     c.densityReady = false;
     c.descriptorsReady = false;
@@ -920,7 +964,8 @@ void VoxelWorld::CreateOneChunk(const DirectX::XMFLOAT3& origin, const VoxelSett
     memcpy(cpuPtr, &c.cb, sizeof(VoxelChunkCB));
     c.cbAddress = c.cbUpload->GetGPUVirtualAddress();
 
-    UINT cells = (settings.dimX - 1) * (settings.dimY - 1) * (settings.dimZ - 1);
+    //UINT cells = (settings.dimX - 1) * (settings.dimY - 1) * (settings.dimZ - 1);
+    UINT cells = (c.cb.dimX - 1) * (c.cb.dimY - 1) * (c.cb.dimZ - 1);
     UINT maxVerts = cells * 15;
     CreateVertexUAV(c, maxVerts, cmd);
 

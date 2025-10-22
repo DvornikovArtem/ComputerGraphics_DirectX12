@@ -229,7 +229,7 @@ void RenderingSystem::FinishInitialize()
 	VoxelSettings vs;
 	vs.dimX = vs.dimZ = 33;
 	vs.dimY = 100;
-	vs.voxelSize = 0.5f;
+	vs.voxelSize = 1.0f;
 	vs.isoLevel = 0.0f;
 
 	//mVoxelWorld->CreateOneChunk({ 0,-16,0 }, vs, mCommandList.Get());
@@ -239,7 +239,7 @@ void RenderingSystem::FinishInitialize()
 		{
 			float originX = float(x) * (vs.dimX - 1) * vs.voxelSize;
 			float originZ = float(z) * (vs.dimZ - 1) * vs.voxelSize;
-			mVoxelWorld->CreateOneChunk({ originX, -16.0f, originZ }, vs, mCommandList.Get());
+			mVoxelWorld->CreateOneChunk({ originX, 0.0f, originZ }, vs, mCommandList.Get());
 		}
 	}
 
