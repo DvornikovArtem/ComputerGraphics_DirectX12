@@ -3051,16 +3051,17 @@ void RenderingSystem::GBufferGeometryPass()
 		D3D12_GPU_VIRTUAL_ADDRESS objCBAddress = objCB->GetGPUVirtualAddress() + voxelObjIndex * objCBByteSize;
 		mCommandList->SetGraphicsRootConstantBufferView(3, objCBAddress);
 
-		Material* mat = mMaterials["bricks"];
-		if (mat)
+		Material* grassMat = mMaterials["grass"];
+		Material* stoneMat = mMaterials["stone"];
+		if (grassMat && stoneMat)
 		{
-			mCommandList->SetGraphicsRootDescriptorTable(0, GetGpuSrv(mat->DiffuseSrvHeapIndex));
-			mCommandList->SetGraphicsRootDescriptorTable(1, GetGpuSrv(mat->DiffuseSrvHeapIndex));
-			mCommandList->SetGraphicsRootDescriptorTable(2, GetGpuSrv(mat->DiffuseSrvHeapIndex));
+			mCommandList->SetGraphicsRootDescriptorTable(0, GetGpuSrv(grassMat->DiffuseSrvHeapIndex));
+			mCommandList->SetGraphicsRootDescriptorTable(1, GetGpuSrv(stoneMat->DiffuseSrvHeapIndex));
+			mCommandList->SetGraphicsRootDescriptorTable(2, GetGpuSrv(stoneMat->DiffuseSrvHeapIndex));
 
 			UINT matCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(MaterialConstants));
 			auto matCB = mCurrFrameResource->MaterialCB->Resource();
-			D3D12_GPU_VIRTUAL_ADDRESS matCBAddress = matCB->GetGPUVirtualAddress() + mat->MatCBIndex * matCBByteSize;
+			D3D12_GPU_VIRTUAL_ADDRESS matCBAddress = matCB->GetGPUVirtualAddress() + grassMat->MatCBIndex * matCBByteSize;
 			mCommandList->SetGraphicsRootConstantBufferView(5, matCBAddress);
 		}
 

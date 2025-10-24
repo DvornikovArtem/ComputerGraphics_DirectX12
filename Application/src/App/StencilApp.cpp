@@ -322,6 +322,8 @@ void StencilApp::LoadTextures()
     std::vector<TextureDesc> TexDescs = 
     {
         TextureDesc("bricksTex", L"assets/textures/bricks3.dds", TextureDesc::Texture2D, true),
+        TextureDesc("grassTex", L"assets/textures/grass.dds", TextureDesc::Texture2D, true),
+        TextureDesc("stoneTex", L"assets/textures/stone.dds", TextureDesc::Texture2D, true),
         TextureDesc("checkboardTex", L"assets/textures/checkboard.dds", TextureDesc::Texture2D, true),
         TextureDesc("iceTex", L"assets/textures/ice.dds", TextureDesc::Texture2D, true),
         TextureDesc("white1x1Tex", L"assets/textures/white1x1.dds", TextureDesc::Texture2D, true),
@@ -356,6 +358,8 @@ void StencilApp::MakeMaterials()
     std::vector<MaterialDesc> MaterialDescs =
     {
         MaterialDesc("bricks", "standardVS", "standardPS",  "", "", "bricksTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.25f, 0.f, false),
+        MaterialDesc("grass", "standardVS", "standardPS",  "", "", "grassTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.25f, 0.f, false),
+        MaterialDesc("stone", "standardVS", "standardPS",  "", "", "stoneTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.25f, 0.f, false),
         MaterialDesc("Bricks_DecalTesting", "standardVS", "standardPS", "", "", "bricksTex", "ShinyStones_NormalMap", "ShinyStones_HeightMap", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, 0.f, false),
         MaterialDesc("AH", "standardVS", "standardPS", "", "", "AH_Diffuse", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.99f, 0.f, false),
         MaterialDesc("woodCrate", "standardVS", "RotatingTilesPS", "", "", "woodCrateTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.2f, 0.05f, false),
