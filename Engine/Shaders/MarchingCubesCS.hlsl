@@ -227,7 +227,8 @@ float3 TetEdgePoint(int2 e, int4 tet, float3 p8[8], float d8[8], float iso)
 [numthreads(8, 8, 8)]
 void CS(uint3 cellId : SV_DispatchThreadID)
 {
-    if (cellId.x >= gDimX - 1 || cellId.y >= gDimY - 1 || cellId.z >= gDimZ - 1) return;
+    //if (cellId.x >= gDimX - 1 || cellId.y >= gDimY - 1 || cellId.z >= gDimZ - 1) return;
+    if (cellId.x >= gDimX - 2 || cellId.y >= gDimY - 2 || cellId.z >= gDimZ - 2) return;
 
     /*VertexOut V = (VertexOut) 0;
     V.Pos = float3(1, 2, 3);

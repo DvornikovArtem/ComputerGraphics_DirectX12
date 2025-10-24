@@ -661,10 +661,10 @@ inline float lerp(float a, float b, float t)
 DensityFieldCPU VoxelWorld::GenerateDensityCPU(const VoxelChunkCB& info)
 {
     DensityFieldCPU df;
-    df.dimX = info.dimX; // Padded dim (e.g., 35)
-    df.dimY = info.dimY; // Padded dim (e.g., 102)
-    df.dimZ = info.dimZ; // Padded dim (e.g., 35)
-    df.data.resize(size_t(info.dimX) * info.dimY * info.dimZ);
+    df.dimX = info.dimX;
+    df.dimY = info.dimY;
+    df.dimZ = info.dimZ;
+    df.data.resize(size_t(df.dimX) * df.dimY * df.dimZ);
 
     NoiseSettings ns_terrain;
     ns_terrain.frequency = 0.05f;
@@ -680,66 +680,47 @@ DensityFieldCPU VoxelWorld::GenerateDensityCPU(const VoxelChunkCB& info)
     ns_caves.gain = 0.5f;
     ns_caves.amplitude = 1.0f;
 
-    int countAbove = 0, countBelow = 0;
+    int   countAbove = 0, countBelow = 0;
     float minDensity = FLT_MAX, maxDensity = -FLT_MAX;
 
-    const float AIR_DENSITY = 100.0f;
+    for (UINT z = 0; z < df.dimZ; ++z)
+        for (UINT y = 0; y < df.dimY; ++y)
+            for (UINT x = 0; x < df.dimX; ++x)
+            {
+                const UINT idx = x + y * df.dimX + z * df.dimX * df.dimY;
 
-    for (UINT z = 0; z < info.dimZ; ++z) {
-        for (UINT y = 0; y < info.dimY; ++y) {
-            for (UINT x = 0; x < info.dimX; ++x) {
+                DirectX::XMFLOAT3 wp = {
+                    info.worldOrigin.x + x * info.voxelSize,
+                    info.worldOrigin.y + y * info.voxelSize,
+                    info.worldOrigin.z + z * info.voxelSize
+                };
 
-                UINT idx = x + y * df.dimX + z * df.dimX * df.dimY;
-                float density;
+                float terrain_noise = FBM3D(wp, ns_terrain) * 10.0f;
+                float densityTerrain = wp.y + terrain_noise * ns_terrain.amplitude;
 
-                if (x == 0 || x == info.dimX - 1 ||
-                    y == 0 || y == info.dimY - 1 ||
-                    z == 0 || z == info.dimZ - 1)
-                {
-                    density = AIR_DENSITY;
-                }
-                else
-                {
-                    XMFLOAT3 wp = {
-                        info.worldOrigin.x + x * info.voxelSize,
-                        info.worldOrigin.y + y * info.voxelSize,
-                        info.worldOrigin.z + z * info.voxelSize
-                    };
+                float caveFBM = FBM3D(wp, ns_caves);
+                const float caveThr = 0.9f;
+                float densityCaves = caveFBM - caveThr;
 
-                    float terrain_noise = FBM3D(wp, ns_terrain) * 10.0f;
-                    float density_terrain = wp.y + terrain_noise * ns_terrain.amplitude;
+                float yFade = 1.0f - saturate((wp.y + 10.0f) / 20.0f);
+                densityCaves = lerp(-1.0f, densityCaves, yFade);
 
-                    float cave_fbm = FBM3D(wp, ns_caves);
-                    float cave_threshold = 0.9f;
-                    float density_caves = cave_fbm - cave_threshold;
-
-                    float y_fade = 1.0f - saturate((wp.y + 10.0f) / 20.0f);
-                    density_caves = lerp(-1.0f, density_caves, y_fade);
-
-                    density = max(density_terrain, density_caves);
-                }
+                float density = (std::max)(densityTerrain, densityCaves);
 
                 df.data[idx] = DirectX::PackedVector::XMConvertFloatToHalf(density);
 
-                if (density > info.isoLevel) countAbove++;
-                else countBelow++;
-
-                minDensity = min(minDensity, density);
-                maxDensity = max(maxDensity, density);
+                if (density > info.isoLevel) ++countAbove; else ++countBelow;
+                minDensity = (std::min)(minDensity, density);
+                maxDensity = (std::max)(maxDensity, density);
             }
-        }
-    }
 
     char buf[512];
-    sprintf_s(buf,
-        "Density: min=%.2f, max=%.2f, isoLevel=%.2f, above=%d, below=%d\n",
+    sprintf_s(buf, "Density: min=%.2f, max=%.2f, isoLevel=%.2f, above=%d, below=%d\n",
         minDensity, maxDensity, info.isoLevel, countAbove, countBelow);
     OutputDebugStringA(buf);
 
     if (info.isoLevel < minDensity || info.isoLevel > maxDensity)
-    {
         OutputDebugStringA("WARNING: isoLevel outside density range!\n");
-    }
 
     return df;
 }
