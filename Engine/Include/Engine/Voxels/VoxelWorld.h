@@ -89,6 +89,7 @@ private:
         bool densityReady = false;
         bool descriptorsReady = false;
         bool meshDirty = true;
+        bool densityDirty = true;
 
         DirectX::BoundingBox bounds;
 

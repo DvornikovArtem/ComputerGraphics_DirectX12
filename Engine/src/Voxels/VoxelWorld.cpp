@@ -942,6 +942,7 @@ void VoxelWorld::CreateOneChunk(const DirectX::XMFLOAT3& origin, const VoxelSett
     c.densityReady = false;
     c.descriptorsReady = false;
     c.meshDirty = true;
+    c.densityDirty = true;
 
     constexpr UINT kCBAlign = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
     const UINT cbSize = (sizeof(VoxelChunkCB) + (kCBAlign - 1)) & ~(kCBAlign - 1);
@@ -974,9 +975,10 @@ void VoxelWorld::UpdateAndDispatch(ID3D12GraphicsCommandList* cmd, UploadBuffer<
 
     for (auto& c : mChunks)
     {
-        if (!c.densityReady) {
+        if (!c.densityReady || c.densityDirty) {
             UploadDensity3D(cmd, c, c.cpuDensity);
-            c.densityReady = true;
+            c.densityReady = true; 
+            c.densityDirty = false;
             c.meshDirty = true;
         }
 
@@ -1198,13 +1200,15 @@ void VoxelWorld::InitTablesCB(
 
 void VoxelWorld::MarkAllChunksDirty() {
     for (auto& c : mChunks) {
-        c.densityReady = false;
+        //c.densityReady = false;
+        c.densityDirty = true;
         c.meshDirty = true;
     }
 }
 void VoxelWorld::MarkChunkDirty(size_t index) {
     if (index < mChunks.size()) {
-        mChunks[index].densityReady = false;
+        //mChunks[index].densityReady = false;
+        mChunks[index].densityDirty = true;
         mChunks[index].meshDirty = true;
     }
 }
@@ -1213,12 +1217,20 @@ void VoxelWorld::DigSphere(const DirectX::XMFLOAT3& center, float radius)
 {
     if (mChunks.empty()) return;
 
+    using namespace DirectX;
     float r2 = radius * radius;
+
+    BoundingSphere digSphere(center, radius);
 
     for (size_t i = 0; i < mChunks.size(); ++i)
     {
         auto& c = mChunks[i];
         if (c.cpuDensity.data.empty()) continue;
+
+        if (c.bounds.Intersects(digSphere) == false)
+        {
+            continue;
+        }
 
         UINT dimX = c.cb.dimX;
         UINT dimY = c.cb.dimY;
@@ -1226,13 +1238,27 @@ void VoxelWorld::DigSphere(const DirectX::XMFLOAT3& center, float radius)
         float voxelSize = c.cb.voxelSize;
         DirectX::XMFLOAT3 origin = c.cb.worldOrigin;
 
+        float minLocalX = (center.x - radius - origin.x) / voxelSize;
+        float maxLocalX = (center.x + radius - origin.x) / voxelSize;
+        float minLocalY = (center.y - radius - origin.y) / voxelSize;
+        float maxLocalY = (center.y + radius - origin.y) / voxelSize;
+        float minLocalZ = (center.z - radius - origin.z) / voxelSize;
+        float maxLocalZ = (center.z + radius - origin.z) / voxelSize;
+
+        UINT x_start = (UINT)(std::max)(0.0f, std::floor(minLocalX));
+        UINT x_end = (UINT)(std::min)((float)dimX, std::ceil(maxLocalX));
+        UINT y_start = (UINT)(std::max)(0.0f, std::floor(minLocalY));
+        UINT y_end = (UINT)(std::min)((float)dimY, std::ceil(maxLocalY));
+        UINT z_start = (UINT)(std::max)(0.0f, std::floor(minLocalZ));
+        UINT z_end = (UINT)(std::min)((float)dimZ, std::ceil(maxLocalZ));
+
         bool modified = false;
 
-        for (UINT z = 0; z < dimZ; ++z)
+        for (UINT z = z_start; z < z_end; ++z)
         {
-            for (UINT y = 0; y < dimY; ++y)
+            for (UINT y = y_start; y < y_end; ++y)
             {
-                for (UINT x = 0; x < dimX; ++x)
+                for (UINT x = x_start; x < x_end; ++x)
                 {
                     float wx = origin.x + x * voxelSize;
                     float wy = origin.y + y * voxelSize;
@@ -1248,7 +1274,6 @@ void VoxelWorld::DigSphere(const DirectX::XMFLOAT3& center, float radius)
                         size_t idx = x + y * dimX + z * dimX * dimY;
 
                         float newDensity = 1.0f;
-
                         float oldDensity = DirectX::PackedVector::XMConvertHalfToFloat(c.cpuDensity.data[idx]);
 
                         if (oldDensity < newDensity)

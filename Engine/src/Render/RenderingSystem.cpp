@@ -1033,7 +1033,26 @@ void RenderingSystem::RegisterScenePanels() {
 
 void RenderingSystem::TickVoxelDig(float dt)
 {
-	if (!mVoxelWorld || !mSceneUI.mouseLookActive || !mSceneUI.lmbDown) return;
+	if (mVoxelDigTimer > 0.0f)
+	{
+		mVoxelDigTimer -= dt;
+	}
+
+	if (!mVoxelWorld || !mSceneUI.mouseLookActive || !mSceneUI.lmbDown)
+	{
+		if (!mSceneUI.lmbDown)
+		{
+			mVoxelDigTimer = 0.0f;
+		}
+		return;
+	}
+
+	if (mVoxelDigTimer > 0.0f)
+	{
+		return;
+	}
+
+	mVoxelDigTimer = kVoxelDigInterval;
 
 	ImVec2 mousePos = ImGui::GetMousePos();
 	ImVec2 sceneMin = mSceneImgRectMin;

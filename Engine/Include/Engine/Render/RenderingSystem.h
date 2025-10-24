@@ -379,6 +379,9 @@ protected:
     DirectX::XMFLOAT4 ClearValue = { 0.f, 0.f, 0.f, 1.f };
 
     std::unique_ptr<VoxelWorld> mVoxelWorld;
+
+    float mVoxelDigTimer = 0.0f;
+    static constexpr float kVoxelDigInterval = 0.05f;
 };
 
 
