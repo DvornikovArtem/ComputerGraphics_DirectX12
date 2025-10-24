@@ -3,7 +3,8 @@
 #include <d3d12.h>
 #include <vector>
 #include <DirectXMath.h>
-#include "../RHI/DX12/UploadBuffer.h"
+#include <Engine/RHI/DX12/UploadBuffer.h>
+#include <DirectXCollision.h>
 
 struct VoxelChunkCB
 {
@@ -45,6 +46,7 @@ public:
     void CreateOneChunk(const DirectX::XMFLOAT3& origin, const VoxelSettings& settings, ID3D12GraphicsCommandList* cmd);
     void UpdateAndDispatch(ID3D12GraphicsCommandList* cmd, UploadBuffer<UINT>* zeroUploadBuffer);
     void Draw(ID3D12GraphicsCommandList* cmd);
+    void Draw(ID3D12GraphicsCommandList* cmd, const DirectX::BoundingFrustum& frustum);
     void ReleaseUploadsAfterGPU();
     void ScheduleUploadsRelease(UINT64 fenceValue);
     void CollectGarbage(UINT64 completedFence);
@@ -70,7 +72,7 @@ private:
         D3D12_VERTEX_BUFFER_VIEW vbv = {};
         UINT maxVertices = 0;
         //UINT vertexStride = sizeof(float)*(3+3+2+3);
-        UINT vertexStride = 64;
+        UINT vertexStride = 32;
     };
 
     struct Chunk {
@@ -87,6 +89,8 @@ private:
         bool densityReady = false;
         bool descriptorsReady = false;
         bool meshDirty = true;
+
+        DirectX::BoundingBox bounds;
 
         VoxelSettings contentSettings;
         DirectX::XMFLOAT3 contentOrigin;

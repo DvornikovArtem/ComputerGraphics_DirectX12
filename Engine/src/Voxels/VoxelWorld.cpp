@@ -925,6 +925,19 @@ void VoxelWorld::CreateOneChunk(const DirectX::XMFLOAT3& origin, const VoxelSett
         origin.z - settings.voxelSize
     };
 
+    {
+        float sizeX = (settings.dimX - 1) * settings.voxelSize;
+        float sizeY = (settings.dimY - 1) * settings.voxelSize;
+        float sizeZ = (settings.dimZ - 1) * settings.voxelSize;
+        XMFLOAT3 center = {
+            origin.x + sizeX * 0.5f,
+            origin.y + sizeY * 0.5f,
+            origin.z + sizeZ * 0.5f
+        };
+        XMFLOAT3 extents = { sizeX * 0.5f, sizeY * 0.5f, sizeZ * 0.5f };
+        c.bounds = DirectX::BoundingBox(center, extents);
+    }
+
     c.cpuDensity = GenerateDensityCPU(c.cb);
     c.densityReady = false;
     c.descriptorsReady = false;
@@ -1055,6 +1068,22 @@ void VoxelWorld::Draw(ID3D12GraphicsCommandList* cmd)
 {
     for (auto& c : mChunks)
     {
+        cmd->IASetVertexBuffers(0, 1, &c.gpu.vbv);
+        cmd->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+        cmd->ExecuteIndirect(mDrawCmdSig.Get(), 1, c.gpu.drawArgs.Get(), 0, nullptr, 0);
+    }
+}
+
+void VoxelWorld::Draw(ID3D12GraphicsCommandList* cmd, const DirectX::BoundingFrustum& frustum)
+{
+    for (auto& c : mChunks)
+    {
+        if (frustum.Contains(c.bounds) == DirectX::ContainmentType::DISJOINT)
+        {
+            continue;
+        }
+
         cmd->IASetVertexBuffers(0, 1, &c.gpu.vbv);
         cmd->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 

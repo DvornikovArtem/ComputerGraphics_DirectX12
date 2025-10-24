@@ -15,10 +15,6 @@ struct VertexOut
     float _pad0; // 16
     float3 Normal;
     float _pad1; // 16 (32)
-    float2 TexC;
-    float2 _pad2; // 8 + 8 = 16 (48)
-    float3 Tangent;
-    float _pad3; // 16 (64)
 };
 
 Texture3D<float> gDensity : register(t0);
@@ -556,16 +552,10 @@ void CS(uint3 cellId : SV_DispatchThreadID)
 
         A.Pos = wp0;
         A.Normal = n0;
-        A.Tangent = TangentFromNormal(n0);
-        A.TexC = 0;
         B.Pos = wp1;
         B.Normal = n1;
-        B.Tangent = TangentFromNormal(n1);
-        B.TexC = 0;
         C.Pos = wp2;
         C.Normal = n2;
-        C.Tangent = TangentFromNormal(n2);
-        C.TexC = 0;
 
         //gVertices.Append(A);
         //gVertices.Append(B);

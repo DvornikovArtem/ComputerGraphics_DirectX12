@@ -2854,9 +2854,7 @@ void RenderingSystem::BuildGlobalPSOs()
 		std::vector<D3D12_INPUT_ELEMENT_DESC> VoxelLayout =
 		{
 			{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0,  0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-			{ "NORMAL",   0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 16, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-			{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,    0, 32, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-			{ "TANGENT",  0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 48, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+			{ "NORMAL",   0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 16, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
 		};
 		//psoDesc.InputLayout = { mInputLayout.data(), (UINT)mInputLayout.size() };   // POSITION/NORMAL/TEXCOORD/TANGENT
 		psoDesc.InputLayout = { VoxelLayout.data(), (UINT)VoxelLayout.size() };
@@ -3047,7 +3045,8 @@ void RenderingSystem::GBufferGeometryPass()
 			mCommandList->SetGraphicsRootConstantBufferView(5, matCBAddress);
 		}
 
-		mVoxelWorld->Draw(mCommandList.Get());
+		//mVoxelWorld->Draw(mCommandList.Get());
+		mVoxelWorld->Draw(mCommandList.Get(), ViewFrustum);
 	}
 }
 
