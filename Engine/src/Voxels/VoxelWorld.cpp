@@ -928,6 +928,7 @@ void VoxelWorld::CreateOneChunk(const DirectX::XMFLOAT3& origin, const VoxelSett
     c.cpuDensity = GenerateDensityCPU(c.cb);
     c.densityReady = false;
     c.descriptorsReady = false;
+    c.meshDirty = true;
 
     constexpr UINT kCBAlign = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
     const UINT cbSize = (sizeof(VoxelChunkCB) + (kCBAlign - 1)) & ~(kCBAlign - 1);
@@ -955,14 +956,15 @@ void VoxelWorld::CreateOneChunk(const DirectX::XMFLOAT3& origin, const VoxelSett
 
 void VoxelWorld::UpdateAndDispatch(ID3D12GraphicsCommandList* cmd, UploadBuffer<UINT>* zeroUploadBuffer)
 {
+    const int kMaxChunksPerFrame = 2;
+    int rebuiltThisFrame = 0;
+
     for (auto& c : mChunks)
     {
-
         if (!c.densityReady) {
-            //auto df = GenerateDensityCPU(c.cb);
-            //UploadDensity3D(cmd, c, df);
             UploadDensity3D(cmd, c, c.cpuDensity);
             c.densityReady = true;
+            c.meshDirty = true;
         }
 
         if (!c.descriptorsReady) {
@@ -970,17 +972,24 @@ void VoxelWorld::UpdateAndDispatch(ID3D12GraphicsCommandList* cmd, UploadBuffer<
             c.descriptorsReady = true;
         }
 
+        if (!c.meshDirty)
+            continue;
+
+        if (rebuiltThisFrame >= kMaxChunksPerFrame) continue;
 
         cmd->CopyBufferRegion(c.gpu.vertCounter.Get(), 0, zeroUploadBuffer->Resource(), 0, sizeof(UINT));
 
         D3D12_RESOURCE_BARRIER preComputeBarriers[] = {
-             CD3DX12_RESOURCE_BARRIER::Transition(c.gpu.vertCounter.Get(),
-                D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
-             CD3DX12_RESOURCE_BARRIER::Transition(c.gpu.vertices.Get(),
-                D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
+            CD3DX12_RESOURCE_BARRIER::Transition(
+                c.gpu.vertCounter.Get(),
+                D3D12_RESOURCE_STATE_COPY_DEST,
+                D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+            CD3DX12_RESOURCE_BARRIER::Transition(
+                c.gpu.vertices.Get(),
+                D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER,
+                D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
         };
         cmd->ResourceBarrier(_countof(preComputeBarriers), preComputeBarriers);
-
 
         cmd->SetComputeRootSignature(mMCRootSig);
         cmd->SetPipelineState(mMCPSO);
@@ -988,29 +997,25 @@ void VoxelWorld::UpdateAndDispatch(ID3D12GraphicsCommandList* cmd, UploadBuffer<
         ID3D12DescriptorHeap* heaps[] = { c.heap.Get() };
         cmd->SetDescriptorHeaps(1, heaps);
 
-        cmd->SetComputeRootConstantBufferView(0, c.cbAddress); // b0: VoxelChunkCB
-        cmd->SetComputeRootDescriptorTable(1, c.heap->GetGPUDescriptorHandleForHeapStart()); // t0: density 3D SRV
+        cmd->SetComputeRootConstantBufferView(0, c.cbAddress); // b0
+        cmd->SetComputeRootDescriptorTable(1, c.heap->GetGPUDescriptorHandleForHeapStart()); // t0
 
         auto uavStart = c.heap->GetGPUDescriptorHandleForHeapStart();
         uavStart.ptr += mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-        cmd->SetComputeRootDescriptorTable(2, uavStart); // u0: vertices UAV (+counter)
+        cmd->SetComputeRootDescriptorTable(2, uavStart); // u0 (+counter)
 
-        cmd->SetComputeRootConstantBufferView(3, mTablesGPU); // b1: tables Marching Cubes
+        cmd->SetComputeRootConstantBufferView(3, mTablesGPU); // b1 (tables MC)
 
-        // Dispatch
-        UINT gx = (c.cb.dimX - 1 + 7) / 8;
-        UINT gy = (c.cb.dimY - 1 + 7) / 8;
-        UINT gz = (c.cb.dimZ - 1 + 7) / 8;
+        const UINT gx = (c.cb.dimX - 1 + 7) / 8;
+        const UINT gy = (c.cb.dimY - 1 + 7) / 8;
+        const UINT gz = (c.cb.dimZ - 1 + 7) / 8;
         cmd->Dispatch(gx, gy, gz);
-
-
 
         D3D12_RESOURCE_BARRIER uavBarriers[] = {
             CD3DX12_RESOURCE_BARRIER::UAV(c.gpu.vertices.Get()),
             CD3DX12_RESOURCE_BARRIER::UAV(c.gpu.vertCounter.Get())
         };
         cmd->ResourceBarrier(_countof(uavBarriers), uavBarriers);
-
 
         D3D12_RESOURCE_BARRIER preDraw[] = {
             CD3DX12_RESOURCE_BARRIER::Transition(
@@ -1024,11 +1029,9 @@ void VoxelWorld::UpdateAndDispatch(ID3D12GraphicsCommandList* cmd, UploadBuffer<
         };
         cmd->ResourceBarrier(_countof(preDraw), preDraw);
 
-
-
         cmd->CopyBufferRegion(
-            c.gpu.drawArgs.Get(), 0,         // dst: offset 0 (VertexCountPerInstance)
-            c.gpu.vertCounter.Get(), 0,      // src: offset 0 in buffer counter
+            c.gpu.drawArgs.Get(), 0,
+            c.gpu.vertCounter.Get(), 0,
             sizeof(UINT));
 
         D3D12_RESOURCE_BARRIER post[] = {
@@ -1042,7 +1045,10 @@ void VoxelWorld::UpdateAndDispatch(ID3D12GraphicsCommandList* cmd, UploadBuffer<
                 D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER)
         };
         cmd->ResourceBarrier(_countof(post), post);
-        }
+
+        c.meshDirty = false;
+        ++rebuiltThisFrame;
+    }
 }
 
 void VoxelWorld::Draw(ID3D12GraphicsCommandList* cmd)
@@ -1162,10 +1168,16 @@ void VoxelWorld::InitTablesCB(
 }
 
 void VoxelWorld::MarkAllChunksDirty() {
-    for (auto& c : mChunks) c.densityReady = false;
+    for (auto& c : mChunks) {
+        c.densityReady = false;
+        c.meshDirty = true;
+    }
 }
 void VoxelWorld::MarkChunkDirty(size_t index) {
-    if (index < mChunks.size()) mChunks[index].densityReady = false;
+    if (index < mChunks.size()) {
+        mChunks[index].densityReady = false;
+        mChunks[index].meshDirty = true;
+    }
 }
 
 void VoxelWorld::DigSphere(const DirectX::XMFLOAT3& center, float radius)

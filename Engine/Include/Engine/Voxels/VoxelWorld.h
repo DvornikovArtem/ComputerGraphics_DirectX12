@@ -86,6 +86,7 @@ private:
         DensityFieldCPU cpuDensity;
         bool densityReady = false;
         bool descriptorsReady = false;
+        bool meshDirty = true;
 
         VoxelSettings contentSettings;
         DirectX::XMFLOAT3 contentOrigin;
