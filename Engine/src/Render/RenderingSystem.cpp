@@ -3055,8 +3055,8 @@ void RenderingSystem::GBufferGeometryPass()
 		Material* stoneMat = mMaterials["stone"];
 		if (grassMat && stoneMat)
 		{
-			mCommandList->SetGraphicsRootDescriptorTable(0, GetGpuSrv(grassMat->DiffuseSrvHeapIndex));
-			mCommandList->SetGraphicsRootDescriptorTable(1, GetGpuSrv(stoneMat->DiffuseSrvHeapIndex));
+			mCommandList->SetGraphicsRootDescriptorTable(0, GetGpuSrv(stoneMat->DiffuseSrvHeapIndex));
+			mCommandList->SetGraphicsRootDescriptorTable(1, GetGpuSrv(grassMat->DiffuseSrvHeapIndex));
 			mCommandList->SetGraphicsRootDescriptorTable(2, GetGpuSrv(stoneMat->DiffuseSrvHeapIndex));
 
 			UINT matCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(MaterialConstants));
