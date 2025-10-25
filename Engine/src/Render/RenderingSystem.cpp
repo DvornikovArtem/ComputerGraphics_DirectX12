@@ -239,7 +239,21 @@ void RenderingSystem::FinishInitialize()
 		{
 			float originX = float(x) * (vs.dimX - 1) * vs.voxelSize;
 			float originZ = float(z) * (vs.dimZ - 1) * vs.voxelSize;
-			mVoxelWorld->CreateOneChunk({ originX, 0.0f, originZ }, vs, mCommandList.Get());
+
+			const int ix = x + 2;
+			const int iz = z + 2;
+
+			const bool bExtNegX = (ix == 0);
+			const bool bExtPosX = (ix == 4);
+			const bool bExtNegZ = (iz == 0);
+			const bool bExtPosZ = (iz == 4);
+
+			mVoxelWorld->CreateOneChunk(
+				{ originX, 0.0f, originZ },
+				vs,
+				mCommandList.Get(),
+				bExtNegX, bExtPosX, bExtNegZ, bExtPosZ
+			);
 		}
 	}
 

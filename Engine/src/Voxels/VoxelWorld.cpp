@@ -664,8 +664,11 @@ inline float smoothstep(float a, float b, float x)
     return t * t * (3.0f - 2.0f * t);
 }
 
-DensityFieldCPU VoxelWorld::GenerateDensityCPU(const VoxelChunkCB& info)
+
+DensityFieldCPU VoxelWorld::GenerateDensityCPU(const Chunk& c)
 {
+    const VoxelChunkCB& info = c.cb;
+
     DensityFieldCPU df;
     df.dimX = info.dimX; df.dimY = info.dimY; df.dimZ = info.dimZ;
     df.data.resize(size_t(df.dimX) * df.dimY * df.dimZ);
@@ -725,6 +728,18 @@ DensityFieldCPU VoxelWorld::GenerateDensityCPU(const VoxelChunkCB& info)
                 }
 
                 float density = (std::max)(densityTerrain, densityCaves);
+
+                bool isExtXNeg = c.isExternalBoundary[0] && (x == 0);
+                bool isExtXPos = c.isExternalBoundary[1] && (x == df.dimX - 1);
+                bool isExtZNeg = c.isExternalBoundary[2] && (z == 0);
+                bool isExtZPos = c.isExternalBoundary[3] && (z == df.dimZ - 1);
+                bool isBottom = (y == 0);
+
+                if (isExtXNeg || isExtXPos || isExtZNeg || isExtZPos || isBottom)
+                {
+                    density = (std::max)(density, 1.0f);
+                }
+
 
                 df.data[idx] = DirectX::PackedVector::XMConvertFloatToHalf(density);
 
@@ -926,7 +941,8 @@ void VoxelWorld::CreateVertexUAV(Chunk& c, UINT maxVertices, ID3D12GraphicsComma
         D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT));
 }
 
-void VoxelWorld::CreateOneChunk(const DirectX::XMFLOAT3& origin, const VoxelSettings& settings, ID3D12GraphicsCommandList* cmd)
+void VoxelWorld::CreateOneChunk(const DirectX::XMFLOAT3& origin, const VoxelSettings& settings, ID3D12GraphicsCommandList* cmd,
+    bool bExtNegX, bool bExtPosX, bool bExtNegZ, bool bExtPosZ)
 {
     Chunk c = {};
     c.contentOrigin = origin;
@@ -957,7 +973,12 @@ void VoxelWorld::CreateOneChunk(const DirectX::XMFLOAT3& origin, const VoxelSett
         c.bounds = DirectX::BoundingBox(center, extents);
     }
 
-    c.cpuDensity = GenerateDensityCPU(c.cb);
+    c.isExternalBoundary[0] = bExtNegX;
+    c.isExternalBoundary[1] = bExtPosX;
+    c.isExternalBoundary[2] = bExtNegZ;
+    c.isExternalBoundary[3] = bExtPosZ;
+
+    c.cpuDensity = GenerateDensityCPU(c);
     c.densityReady = false;
     c.descriptorsReady = false;
     c.meshDirty = true;

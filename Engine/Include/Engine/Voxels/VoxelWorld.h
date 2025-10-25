@@ -43,7 +43,8 @@ public:
                     ID3D12RootSignature* gbufferRootSig,
                     ID3D12PipelineState*  gbufferVoxelPSO);
 
-    void CreateOneChunk(const DirectX::XMFLOAT3& origin, const VoxelSettings& settings, ID3D12GraphicsCommandList* cmd);
+    void CreateOneChunk(const DirectX::XMFLOAT3& origin, const VoxelSettings& settings, ID3D12GraphicsCommandList* cmd,
+        bool bExtNegX = false, bool bExtPosX = false, bool bExtNegZ = false, bool bExtPosZ = false);
     void UpdateAndDispatch(ID3D12GraphicsCommandList* cmd, UploadBuffer<UINT>* zeroUploadBuffer);
     void Draw(ID3D12GraphicsCommandList* cmd);
     void Draw(ID3D12GraphicsCommandList* cmd, const DirectX::BoundingFrustum& frustum);
@@ -95,6 +96,8 @@ private:
 
         VoxelSettings contentSettings;
         DirectX::XMFLOAT3 contentOrigin;
+
+        bool isExternalBoundary[4] = { false, false, false, false };
     };
 
 private:
@@ -115,7 +118,7 @@ private:
     std::vector<PendingUploads> mPending;
 
 private:
-    DensityFieldCPU GenerateDensityCPU(const VoxelChunkCB& info);
+    DensityFieldCPU GenerateDensityCPU(const Chunk& c);
     void UploadDensity3D(ID3D12GraphicsCommandList* cmd, Chunk& c, const DensityFieldCPU& df);
     void CreateDescriptors(Chunk& c);
     void CreateVertexUAV(Chunk& c, UINT maxVertices, ID3D12GraphicsCommandList* cmd);
