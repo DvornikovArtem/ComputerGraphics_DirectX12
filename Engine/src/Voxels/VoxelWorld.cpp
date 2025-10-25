@@ -1267,10 +1267,7 @@ void VoxelWorld::DigSphere(const DirectX::XMFLOAT3& center, float radius)
         auto& c = mChunks[i];
         if (c.cpuDensity.data.empty()) continue;
 
-        if (c.bounds.Intersects(digSphere) == false)
-        {
-            continue;
-        }
+        if (c.bounds.Intersects(digSphere) == false)  continue;
 
         UINT dimX = c.cb.dimX;
         UINT dimY = c.cb.dimY;
