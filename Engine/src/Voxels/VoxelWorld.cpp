@@ -658,20 +658,24 @@ inline float lerp(float a, float b, float t)
     return a + (b - a) * t;
 }
 
+inline float smoothstep(float a, float b, float x)
+{
+    float t = saturate((x - a) / (b - a + 1e-6f));
+    return t * t * (3.0f - 2.0f * t);
+}
+
 DensityFieldCPU VoxelWorld::GenerateDensityCPU(const VoxelChunkCB& info)
 {
     DensityFieldCPU df;
-    df.dimX = info.dimX;
-    df.dimY = info.dimY;
-    df.dimZ = info.dimZ;
+    df.dimX = info.dimX; df.dimY = info.dimY; df.dimZ = info.dimZ;
     df.data.resize(size_t(df.dimX) * df.dimY * df.dimZ);
 
-    NoiseSettings ns_terrain;
-    ns_terrain.frequency = 0.05f;
-    ns_terrain.octaves = 5;
-    ns_terrain.lacunarity = 2.0f;
-    ns_terrain.gain = 0.2f;
-    ns_terrain.amplitude = 2.0f;
+    NoiseSettings ns_height;
+    ns_height.frequency = 0.015f;
+    ns_height.octaves = 5;
+    ns_height.lacunarity = 2.0f;
+    ns_height.gain = 0.5f;
+    ns_height.amplitude = 1.0f;
 
     NoiseSettings ns_caves;
     ns_caves.frequency = 0.08f;
@@ -679,6 +683,11 @@ DensityFieldCPU VoxelWorld::GenerateDensityCPU(const VoxelChunkCB& info)
     ns_caves.lacunarity = 2.0f;
     ns_caves.gain = 0.5f;
     ns_caves.amplitude = 1.0f;
+
+    const float seaLevelY = 0.0f;
+    const float heightScale = 50.0f;
+    const float bedrockY = 0.0f;
+    const float bedrockFade = 12.0f;
 
     int   countAbove = 0, countBelow = 0;
     float minDensity = FLT_MAX, maxDensity = -FLT_MAX;
@@ -695,15 +704,25 @@ DensityFieldCPU VoxelWorld::GenerateDensityCPU(const VoxelChunkCB& info)
                     info.worldOrigin.z + z * info.voxelSize
                 };
 
-                float terrain_noise = FBM3D(wp, ns_terrain) * 10.0f;
-                float densityTerrain = wp.y + terrain_noise * ns_terrain.amplitude;
+                float h = FBM3D({ wp.x, 0.0f, wp.z }, ns_height);
+                float surfaceY = seaLevelY + h * heightScale;
+
+                float densityTerrain = (wp.y - surfaceY);
 
                 float caveFBM = FBM3D(wp, ns_caves);
-                const float caveThr = 0.9f;
+                const float caveThr = 0.82f;
                 float densityCaves = caveFBM - caveThr;
+                float cavesFadeTopStart = surfaceY - 6.0f;
+                float cavesFadeT = saturate((wp.y - bedrockY) / (cavesFadeTopStart - bedrockY + 1e-4f));
+                densityCaves = lerp(-1.0f, densityCaves, cavesFadeT);
 
-                float yFade = 1.0f - saturate((wp.y + 10.0f) / 20.0f);
-                densityCaves = lerp(-1.0f, densityCaves, yFade);
+                if (wp.y < bedrockY) {
+                    densityTerrain = (std::min)(densityTerrain, -5.0f);
+                }
+                else if (wp.y < bedrockY + bedrockFade) {
+                    float t = saturate((wp.y - bedrockY) / bedrockFade);
+                    densityTerrain = lerp(-5.0f, densityTerrain, t);
+                }
 
                 float density = (std::max)(densityTerrain, densityCaves);
 
@@ -714,8 +733,8 @@ DensityFieldCPU VoxelWorld::GenerateDensityCPU(const VoxelChunkCB& info)
                 maxDensity = (std::max)(maxDensity, density);
             }
 
-    char buf[512];
-    sprintf_s(buf, "Density: min=%.2f, max=%.2f, isoLevel=%.2f, above=%d, below=%d\n",
+    char buf[256];
+    sprintf_s(buf, "Density: min=%.2f, max=%.2f, iso=%.2f, above=%d, below=%d\n",
         minDensity, maxDensity, info.isoLevel, countAbove, countBelow);
     OutputDebugStringA(buf);
 
