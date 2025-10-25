@@ -25,6 +25,10 @@ struct MainPassCB
     float2 ViewportSize;
     float postEffectsExposure;
     float _pad;
+    float2 CameraJitter;
+    float2 PrevCameraJitter;
+    float4x4 ViewProjNoJitter;
+    float4x4 PrevViewProjNoJitter;
 };
 
 struct ObjectCB
@@ -35,6 +39,8 @@ struct ObjectCB
     float HeightMapScale;
     float2 _pad0;
     float4x4 PrevWorld;
+    float HasOutline;
+    float3 OutlineColor;
 };
 
 struct MaterialCB
@@ -61,12 +67,12 @@ struct LightCB
 
 struct GBufferData
 {
-    float4 diffuse : SV_TARGET0;
-    float4 emissive : SV_TARGET1;
-    float4 normal : SV_TARGET2;
-    float4 materialAlbedo : SV_TARGET3;
-    float4 MaterialFresnelRoughness : SV_TARGET4;
-    float2 MotionVector : SV_TARGET5;
+    float4 Diffuse : SV_TARGET0;
+    float4 DepthStencils : SV_TARGET1;
+    float4 Normal : SV_TARGET2;
+    float4 MaterialFresnelRoughness : SV_TARGET3;
+    float2 MotionVector : SV_TARGET4;
+    float4 ObjectOutline : SV_TARGET5;
 };
 
 struct Particle

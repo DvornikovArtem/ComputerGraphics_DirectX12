@@ -408,6 +408,8 @@ void StencilApp::MakeDrawableObjects()
     Svidetel->renderLayer = RenderLayer::Opaque;
     Svidetel->WorldLocation = XMFLOAT3(1.5f, 0.2f, 0.f);
     Svidetel->Scale = XMFLOAT3(2.f, 2.f, 2.f);
+    Svidetel->HasOutline = true;
+    Svidetel->OutlineColor = { 1.f, 0.53f, 0.f };
 
     mAllDrawableObjects[Svidetel->Name] = Svidetel;
 
@@ -460,6 +462,8 @@ void StencilApp::MakeDrawableObjects()
     Head->MaterialName = "AH";
     Head->renderLayer = RenderLayer::Opaque;
     Head->WorldLocation = XMFLOAT3(0.f, 2.f, 0.f);
+    Head->HasOutline = true;
+    Head->OutlineColor = { 0.f, 0.65f, 1.f };
 
     mAllDrawableObjects[Head->Name] = Head;
 
@@ -469,6 +473,8 @@ void StencilApp::MakeDrawableObjects()
     Patrick1->MaterialName = "PatrickMat";
     Patrick1->renderLayer = RenderLayer::Opaque;
     Patrick1->WorldLocation = XMFLOAT3(-3.0f, 2.0f, -1.0f);
+    Patrick1->HasOutline = true;
+    Patrick1->OutlineColor = { 1.f, 0.f, 0.93f };
 
     mAllDrawableObjects[Patrick1->Name] = Patrick1;
 

@@ -12,6 +12,8 @@ struct ObjectConstants
     float HeightMapScale = 1.0f;
     DirectX::XMFLOAT2 pad;
     DirectX::XMFLOAT4X4 PrevWorld = MathHelper::Identity4x4();
+    float HasOutline = 0.f;
+    DirectX::XMFLOAT3 OutlineColor = { 0.f, 0.f, 0.f };
 };
 
 struct PassConstants
@@ -39,10 +41,12 @@ struct PassConstants
     float Pad2;
     DirectX::XMFLOAT3 CameraDirection = { 0.f, 0.f, 0.f };
     DirectX::XMFLOAT2 ViewportSize = { 0.0f, 0.0f };
-
     float postEffectsExposure = 1.0f;
-    
     float pad;
+    DirectX::XMFLOAT2 CameraJitter = { 0.f, 0.f };
+    DirectX::XMFLOAT2 PrevCameraJitter = { 0.f, 0.f };
+    DirectX::XMFLOAT4X4 ViewProjNoJitter = MathHelper::Identity4x4();
+    DirectX::XMFLOAT4X4 PrevViewProjNoJitter = MathHelper::Identity4x4();
 };
 
 struct Vertex

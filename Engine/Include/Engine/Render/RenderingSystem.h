@@ -107,6 +107,11 @@ public:
     void DrawSceneGrid();
     void BuildFSRContext();
     void FSRUpscale();
+    void DrawUI();
+    void PreRender();
+    void SaveFrameAsPrevious();
+    void CalculateJitter();
+    void TAAResolve();
 
     void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems, std::string PSOName);
 
@@ -136,7 +141,6 @@ public:
     void DrawSkyBox();
     void DrawShadowMaps();
     void PostProcessingPass();
-    void DrawDebugTexture(CD3DX12_GPU_DESCRIPTOR_HANDLE SRVHandle);
 
     void Render();
 
@@ -181,15 +185,10 @@ public:
     bool GetShowBounds() const { return mShowBounds; }
     void SetShowBounds(bool v) { mShowBounds = v; }
 
-    bool* GetMSAATogglePtr() { return &m4xMsaaState; }
-
 protected:
     bool mVSync = true;
     bool mWireframe = false;
     bool mShowBounds = false;
-
-    bool      m4xMsaaState = false;    // 4X MSAA enabled
-    UINT      m4xMsaaQuality = 0;      // quality level of 4X MSAA
 
     Microsoft::WRL::ComPtr<IDXGIFactory4> mdxgiFactory;
     Microsoft::WRL::ComPtr<IDXGISwapChain> mSwapChain;
@@ -259,7 +258,7 @@ protected:
 
     GameTimer* gt = nullptr;
 
-    std::unique_ptr<Gbuffer> mGbuffer;
+    std::unique_ptr<Gbuffer> mGBuffer;
 
     std::unordered_map<std::string, Microsoft::WRL::ComPtr<ID3D12PipelineState>> GlobalPSOs;
     std::unordered_map<std::string, Microsoft::WRL::ComPtr<ID3D12RootSignature>> RootSignatures;
@@ -286,6 +285,8 @@ protected:
 
     std::vector<RenderItem*> mChosenTerrainRitems;
     std::vector<RenderItem*> mVisibleTerrainRitems;
+
+    int SRVHeapHeadIndex = 0;
 
 // For Post Effects ================================================================================
 public:
@@ -370,9 +371,22 @@ protected:
     bool mFSREnabled = false;
     bool mFSRSwitchFlag = false;
     bool mFSREnabledDisplayValue = mFSREnabled;
-    int SRVHeapHeadIndex = 0;
 // =================================================================================================
     DirectX::XMFLOAT4 ClearValue = { 0.f, 0.f, 0.f, 1.f };
+
+// For TAA =========================================================================================
+    bool mTAAEnabled = true;
+    bool mTAAEnabledDisplayValue = mTAAEnabled;
+    bool mTAASwitchFlag = false;
+    Microsoft::WRL::ComPtr<ID3D12Resource> mPrevFrameTex; //Traditional Render only frame(no anti-aliasing, upscaling, or post-processing)
+    Microsoft::WRL::ComPtr<ID3D12Resource> mTAAResolvedAccBuffer; //Result of resolving mGBuffer->AccumulationBuf + mPrevFrameTex
+    int mPrevFrameSRVHeapIndex = 0;
+    int mResolvedAccBufferSRVHeapIndex = 0;
+    int mResolvedAccBufferRTVHeapIndex = SwapChainBufferCount + 1;
+    float mJitterX;
+    float mJitterY;
+    int mJitterIndex = 0;
+// =================================================================================================
 };
 
 

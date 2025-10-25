@@ -64,7 +64,7 @@ public:
     UINT getMaxParticles() const { return mMaxParticles; }
     UINT getNumParticlesToEmit() const { return mNumParticlesToEmit; }
 
-    void setEmissiveTex(ComPtr<ID3D12Resource> emissiveTex, ComPtr<ID3D12Resource> normalTex);
+    void SetResources(ComPtr<ID3D12Resource> DepthTex, ComPtr<ID3D12Resource> NormalTex);
     void SetGeometry(MeshGeometry* NewGeometry);
 
 private:
@@ -115,7 +115,7 @@ private:
     float mTime = 0.0f;
     static UINT sGlobalFrame;
 
-    ComPtr<ID3D12Resource> mEmissiveTex = nullptr;
+    ComPtr<ID3D12Resource> mDepthStencilsTex = nullptr;
     ComPtr<ID3D12Resource> mNormalTex = nullptr;
 
     bool IsBillboard = false;

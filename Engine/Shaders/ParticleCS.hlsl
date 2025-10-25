@@ -12,7 +12,7 @@ AppendStructuredBuffer<uint> DeadListsAppend[2] : register(u1); // u1, u2
 AppendStructuredBuffer<uint> AliveListAppend : register(u3);
 RWByteAddressBuffer DrawArgs : register(u4);
 
-Texture2D EmissiveMap : register(t0);
+Texture2D DepthMaps : register(t0);
 Texture2D NormalTex : register(t1);
 
 float rand_float(uint seed)
@@ -60,7 +60,7 @@ void EmitCS(uint3 dispatchThreadID : SV_DispatchThreadID)
 
         uint2 screenPos = texCoord * cbMainPass.RenderTargetSize;
         
-        if (EmissiveMap.Load(int3(screenPos, 0)).w == 0)
+        if (DepthMaps.Load(int3(screenPos, 0)).w == 0)
             ParticlePool[deadIndex].Color = float4(0.0f, 0.0f, 0.0f, 1.0f);
     }
 }
@@ -117,7 +117,7 @@ float LinearizeDepth(float ndcDepth)
 
 float GetSceneViewDepth(int2 pix)
 {
-    float ndc = EmissiveMap.Load(int3(pix, 0)).w;
+    float ndc = DepthMaps.Load(int3(pix, 0)).w;
     return LinearizeDepth(ndc);
 }
 
@@ -151,7 +151,7 @@ float3 FetchNormal(int2 pix)
 
 float3 SceneWorld(int2 pix)
 {
-    float ndcDepth = EmissiveMap.Load(int3(pix, 0)).w;
+    float ndcDepth = DepthMaps.Load(int3(pix, 0)).w;
     float2 uv = (float2(pix) + 0.5f) / cbMainPass.RenderTargetSize;
     float4 clip = float4(uv * 2.0f - 1.0f, ndcDepth, 1.0f);
     float4 ws = mul(clip, cbMainPass.InvViewProj);
@@ -270,7 +270,7 @@ void SimulateCS(uint3 tid : SV_DispatchThreadID)
                 int2 pix = int2(uv * cbMainPass.RenderTargetSize + 0.5f);
 
             // Глубина сцены (переводим в линейную!)
-                float ndcScene = EmissiveMap.Load(int3(pix, 0)).w;
+                float ndcScene = DepthMaps.Load(int3(pix, 0)).w;
                 float sceneDepth = LinearizeDepth(ndcScene);
 
             // Глубина частицы

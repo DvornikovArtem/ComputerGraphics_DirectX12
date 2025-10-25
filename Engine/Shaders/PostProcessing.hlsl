@@ -1,8 +1,9 @@
 #include "CBufferStructures.hlsl"
 
 Texture2D   DiffuseMap     : register(t0);
-Texture2D   EmissiveMap    : register(t1);
+Texture2D   DepthMaps    : register(t1);
 Texture2D   NormalMap      : register(t2);
+Texture2D   ObjectOutlines : register(t3);
 
 SamplerState samPointWrap : register(s0);
 SamplerState samPointClamp : register(s1);
@@ -172,10 +173,9 @@ float4 GodRays(float2 UV, float3 worldPos, float depth)
         float2 sampleUV = clamp(UV, 0.0, 1.0);
         
         
-        float4 emissive = EmissiveMap.SampleLevel(samLinearClamp, sampleUV, 0);
-        float sampleDepth = emissive.w;
+        float ScreenDepth = DepthMaps.SampleLevel(samLinearClamp, sampleUV, 0).w;
        
-        if (sampleDepth < depth)
+        if (ScreenDepth < depth)
             break;
         
         float4 sampleColor = DiffuseMap.SampleLevel(samLinearClamp, sampleUV, 0);
@@ -187,26 +187,57 @@ float4 GodRays(float2 UV, float3 worldPos, float depth)
     return saturate(color);
 }
 
+float4 DrawOutlines(uint2 TexelCoord, float2 UV)
+{
+    float4 depthMaps = DepthMaps.Load(int3(TexelCoord, 0));
+    //if outlined depth stencil != overall depth stencil
+    if (depthMaps.x != depthMaps.w)
+    {
+        //blur outline texture and return it
+        static const float Kernel[11] =
+        { 0.000003, 0.000229, 0.005977, 0.060598, 0.24173, 0.382925, 0.24173, 0.060598, 0.005977, 0.000229, 0.000003 };
+    
+        float4 result = 0;
+        float blurStrength = 5;
+  
+        [unroll]
+        for (int x = -5; x <= 5; x++)
+        {
+            [unroll]
+            for (int y = -5; y <= 5; y++)
+            {
+                float2 offset = float2(x, y) / cbMainPass.ViewportSize * blurStrength;
+                float kernelValue = Kernel[x + 5] * Kernel[y + 5];
+                result += ObjectOutlines.Sample(samLinearClamp, UV + offset) * kernelValue;
+            }
+        }
+        return result;
+    }
+    return 0.f.xxxx;
+}
+
 float4 PS(VertexOut pin) : SV_Target
 {
     uint2 TexelCoord = pin.PosH.xy;
     float2 UV = TexelCoord / cbMainPass.ViewportSize;
     //loading GBuffer channels
-    float4 Emissive = EmissiveMap.Load(int3(TexelCoord, 0));
+    float ScreenDepth = DepthMaps.Load(int3(TexelCoord, 0)).w;
     float4 NormalChannel = NormalMap.Load(int3(TexelCoord, 0));
     float4 Color = DiffuseMap.Load(int3(TexelCoord, 0));
     
     
-    float3 WorldPosition = ReconstructWorldPosition(UV, Emissive.w);
+    float3 WorldPosition = ReconstructWorldPosition(UV, ScreenDepth);
     float3 Normal = NormalChannel.rgb;
 
     //Do your cool post-processing here
+    
+    Color += DrawOutlines(TexelCoord, UV);
    
     float4 effects = 0;
 
     effects = ChromaticAbberation(UV);
-    effects = DepthOfField(Emissive.w, TexelCoord, effects);
-    effects += GodRays(UV, WorldPosition, Emissive.w);
+    effects = DepthOfField(ScreenDepth, TexelCoord, effects);
+    effects += GodRays(UV, WorldPosition, ScreenDepth);
     // effects += bloom(...);
     // effects += lensDirt(...);
 
@@ -217,17 +248,4 @@ float4 PS(VertexOut pin) : SV_Target
     //gamma 2.2 correction
     Color.xyz = pow(saturate(Color.xyz), 1.0 / 2.2);
     return Color;
-}
-
-float4 PS_DrawTexture(VertexOut pin) : SV_Target
-{
-    uint2 TexelCoord = pin.PosH.xy;
-    float2 quarterSize = cbMainPass.ViewportSize * 0.5f;
-    if (TexelCoord.y >= quarterSize.y && TexelCoord.x < quarterSize.x)
-    {
-        uint2 sourceCoord = uint2(TexelCoord.x, TexelCoord.y - quarterSize.y) * 2;
-        return DiffuseMap.Load(int3(sourceCoord, 0));
-    }
-    discard;
-    return float4(0.0f, 0.0f, 0.0f, 0.1f);
 }
