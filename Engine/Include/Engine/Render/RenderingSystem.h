@@ -192,7 +192,7 @@ protected:
 
     Microsoft::WRL::ComPtr<IDXGIFactory4> mdxgiFactory;
     Microsoft::WRL::ComPtr<IDXGISwapChain> mSwapChain;
-    Microsoft::WRL::ComPtr<ID3D12Device> md3dDevice;
+    Microsoft::WRL::ComPtr<ID3D12Device5> md3dDevice;
 
     D3D12_CPU_DESCRIPTOR_HANDLE mDepthBufferSRV;
 
@@ -201,7 +201,7 @@ protected:
 
     Microsoft::WRL::ComPtr<ID3D12CommandQueue> mCommandQueue;
     Microsoft::WRL::ComPtr<ID3D12CommandAllocator> mDirectCmdListAlloc;
-    Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> mCommandList;
+    Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList4> mCommandList;
 
     static const int SwapChainBufferCount = 2;
     int mCurrBackBuffer = 0;
@@ -387,6 +387,10 @@ protected:
     float mJitterY;
     int mJitterIndex = 0;
 // =================================================================================================
+
+// For RT =========================================================================================
+    bool RTSupport = false;
+// For RT =========================================================================================
 };
 
 

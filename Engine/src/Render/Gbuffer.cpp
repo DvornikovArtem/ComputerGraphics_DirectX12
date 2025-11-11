@@ -27,7 +27,7 @@ Gbuffer::Gbuffer(int width, int height, Microsoft::WRL::ComPtr<ID3D12Device> dev
     SRVDescSize = mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 }
 
-void Gbuffer::TransitCommonToRTV(ComPtr<ID3D12GraphicsCommandList>& cmdList)
+void Gbuffer::TransitCommonToRTV(ComPtr<ID3D12GraphicsCommandList4>& cmdList)
 {
     std::vector<CD3DX12_RESOURCE_BARRIER> Barriers;
     for (GBufferChannel* i : ChannelPTRs)
@@ -40,7 +40,7 @@ void Gbuffer::TransitCommonToRTV(ComPtr<ID3D12GraphicsCommandList>& cmdList)
     cmdList->ResourceBarrier(NumBuffers, Barriers.data());
 }
 
-void Gbuffer::TransitToLightsRenderingState(ComPtr<ID3D12GraphicsCommandList>& cmdList)
+void Gbuffer::TransitToLightsRenderingState(ComPtr<ID3D12GraphicsCommandList4>& cmdList)
 {
     std::vector<GBufferChannel*> ChannelsToTransit =
     { &Diffuse, &DepthStencils, &Normal, &MatFresnelRoughness, &VelocityBuffer, &ObjectOutlines };
@@ -57,7 +57,7 @@ void Gbuffer::TransitToLightsRenderingState(ComPtr<ID3D12GraphicsCommandList>& c
     cmdList->ResourceBarrier(ChannelsToTransit.size(), Barriers.data());
 }
 
-void Gbuffer::TransitToTonemappingState(ComPtr<ID3D12GraphicsCommandList>& cmdList)
+void Gbuffer::TransitToTonemappingState(ComPtr<ID3D12GraphicsCommandList4>& cmdList)
 {
     std::vector<GBufferChannel*> ChannelsToTransit =
     { &Accumulation };
@@ -74,7 +74,7 @@ void Gbuffer::TransitToTonemappingState(ComPtr<ID3D12GraphicsCommandList>& cmdLi
     cmdList->ResourceBarrier(ChannelsToTransit.size(), Barriers.data());
 }
 
-void Gbuffer::TransitSRVToCommon(ComPtr<ID3D12GraphicsCommandList>& cmdList)
+void Gbuffer::TransitSRVToCommon(ComPtr<ID3D12GraphicsCommandList4>& cmdList)
 {
     std::vector<CD3DX12_RESOURCE_BARRIER> Barriers;
     for (GBufferChannel* i : ChannelPTRs)
@@ -87,7 +87,7 @@ void Gbuffer::TransitSRVToCommon(ComPtr<ID3D12GraphicsCommandList>& cmdList)
     cmdList->ResourceBarrier(NumBuffers, Barriers.data());
 }
 
-void Gbuffer::Clear(ComPtr<ID3D12GraphicsCommandList>& cmdList)
+void Gbuffer::Clear(ComPtr<ID3D12GraphicsCommandList4>& cmdList)
 {
     for (GBufferChannel* i : ChannelPTRs) cmdList->ClearRenderTargetView(i->RTV, i->ClearValue.Color, 0, nullptr);
 }

@@ -76,6 +76,15 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 	OutputDebugStringW(adapterDesc.Description);
 	OutputDebugStringA("\n\n");
 
+	//check RT support
+	D3D12_FEATURE_DATA_D3D12_OPTIONS5 options5 = {};
+	HRESULT hr = md3dDevice->CheckFeatureSupport(
+		D3D12_FEATURE_D3D12_OPTIONS5,
+		&options5,
+		sizeof(options5));
+
+	if (SUCCEEDED(hr) && options5.RaytracingTier != D3D12_RAYTRACING_TIER_NOT_SUPPORTED) RTSupport = true;
+	else RTSupport = false;
 
 	ThrowIfFailed(md3dDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&mFence)));
 
@@ -737,6 +746,7 @@ void RenderingSystem::RegisterScenePanels() {
 				ImGui::Text("Render Resolution: %dx%d", mFSREnabled ? mRecommendedRenderResolutionX : mClientWidth, mFSREnabled ? mRecommendedRenderResolutionY : mClientHeight);
 				ImGui::Text("Viewport Resolution: %dx%d", mClientWidth, mClientHeight);
 				ImGui::Text("UI Clipped Resolution: %dx%d", (int)(mSceneImgRectMax.x - mSceneImgRectMin.x), (int)(mSceneImgRectMax.y - mSceneImgRectMin.y));
+				ImGui::Text("RayTracing Support: %s", RTSupport ? "ACTIVE" : "INACTIVE");
 			}
 			ImGui::End();
 			};
