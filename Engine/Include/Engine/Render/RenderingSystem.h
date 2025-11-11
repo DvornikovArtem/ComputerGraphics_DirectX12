@@ -112,6 +112,8 @@ public:
     void SaveFrameAsPrevious();
     void CalculateJitter();
     void TAAResolve();
+    void BuildBLASForGeometries();
+    void BuildTLAS();
 
     void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems, std::string PSOName);
 
@@ -155,7 +157,7 @@ public:
 
     float AspectRatio() const { return static_cast<float>(mClientWidth) / mClientHeight; }
 
-    Microsoft::WRL::ComPtr<ID3D12Device> getd3dDevice() { return md3dDevice; };
+    Microsoft::WRL::ComPtr<ID3D12Device5> getd3dDevice() { return md3dDevice; };
 
     void setScreenParams(int NewWidth, int NewHeight) { mClientWidth = NewWidth; mClientHeight = NewHeight; }
 
@@ -390,7 +392,9 @@ protected:
 
 // For RT =========================================================================================
     bool RTSupport = false;
-// For RT =========================================================================================
+    Microsoft::WRL::ComPtr<ID3D12Resource> mTLASResource;
+    Microsoft::WRL::ComPtr<ID3D12Resource> mTLASScratchResource;
+// =========================================================================================
 };
 
 

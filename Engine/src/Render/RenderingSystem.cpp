@@ -195,6 +195,8 @@ void RenderingSystem::FinishInitialize()
 
 
 	BuildFrameResources();
+	BuildBLASForGeometries();
+	BuildTLAS();
 
 	mGbufferImguiSlots.resize(mGBuffer->NumBuffers);
 	for (int i = 0; i < mGBuffer->NumBuffers; ++i) {
@@ -1773,6 +1775,147 @@ void RenderingSystem::TAAResolve()
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
 		D3D12_RESOURCE_STATE_COMMON);
 	mCommandList->ResourceBarrier(3, antibarriers);
+}
+
+void RenderingSystem::BuildBLASForGeometries()
+{
+	if (!RTSupport) return;
+
+	ThrowIfFailed(mCommandList->Reset(mDirectCmdListAlloc.Get(), nullptr));
+
+	for (auto& geoPair : mGeometries) 
+	{
+		geoPair.second->BuildBLAS(md3dDevice.Get(), mCommandList, true);
+	}
+
+}
+
+void RenderingSystem::BuildTLAS()
+{
+	std::vector<std::pair<Microsoft::WRL::ComPtr<ID3D12Resource>, DirectX::XMMATRIX>> instances;
+
+	for (RenderItem* ri : mAllRitems) {
+		if (ri->Geo && ri->Geo->BLASResource) {
+			DirectX::XMMATRIX worldMatrix = DirectX::XMLoadFloat4x4(&ri->World);
+			instances.emplace_back(ri->Geo->BLASResource, worldMatrix);
+		}
+	}
+
+	UINT InstanceCount = static_cast<UINT>(instances.size());
+
+	if (InstanceCount == 0) {
+		OutputDebugStringA("BuildTLAS: No instances found\n");
+		return;
+	}
+
+	std::vector<D3D12_RAYTRACING_INSTANCE_DESC> instanceDescs(InstanceCount);
+
+	for (UINT i = 0; i < InstanceCount; ++i) {
+		D3D12_RAYTRACING_INSTANCE_DESC& desc = instanceDescs[i];
+		desc.InstanceID = i;
+		desc.InstanceContributionToHitGroupIndex = 0;
+		desc.Flags = D3D12_RAYTRACING_INSTANCE_FLAG_NONE;
+		desc.AccelerationStructure = instances[i].first->GetGPUVirtualAddress();
+
+		DirectX::XMMATRIX transposed = DirectX::XMMatrixTranspose(instances[i].second);
+		DirectX::XMStoreFloat3x4(reinterpret_cast<DirectX::XMFLOAT3X4*>(desc.Transform), transposed);
+
+		desc.InstanceMask = 0xFF;
+	}
+
+	UINT instanceDescsSize = InstanceCount * sizeof(D3D12_RAYTRACING_INSTANCE_DESC);
+
+	Microsoft::WRL::ComPtr<ID3D12Resource> InstanceDescsResource;
+	Microsoft::WRL::ComPtr<ID3D12Resource> InstanceDescsUploadResource;
+
+	ThrowIfFailed(md3dDevice->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Buffer(instanceDescsSize),
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(InstanceDescsUploadResource.GetAddressOf())));
+
+	ThrowIfFailed(md3dDevice->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Buffer(instanceDescsSize),
+		D3D12_RESOURCE_STATE_COMMON,
+		nullptr,
+		IID_PPV_ARGS(InstanceDescsResource.GetAddressOf())));
+
+	void* pData;
+	ThrowIfFailed(InstanceDescsUploadResource->Map(0, nullptr, &pData));
+	memcpy(pData, instanceDescs.data(), instanceDescsSize);
+	InstanceDescsUploadResource->Unmap(0, nullptr);
+
+	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+		InstanceDescsResource.Get(),
+		D3D12_RESOURCE_STATE_COMMON,
+		D3D12_RESOURCE_STATE_COPY_DEST));
+
+	mCommandList->CopyResource(InstanceDescsResource.Get(), InstanceDescsUploadResource.Get());
+
+	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+		InstanceDescsResource.Get(),
+		D3D12_RESOURCE_STATE_COPY_DEST,
+		D3D12_RESOURCE_STATE_GENERIC_READ));
+
+	D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS inputs = {};
+	inputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
+	inputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
+	inputs.InstanceDescs = InstanceDescsResource->GetGPUVirtualAddress();
+	inputs.NumDescs = InstanceCount;
+	inputs.Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE;
+
+	D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO prebuildInfo;
+	md3dDevice->GetRaytracingAccelerationStructurePrebuildInfo(&inputs, &prebuildInfo);
+
+	auto tlasDesc = CD3DX12_RESOURCE_DESC::Buffer(
+		prebuildInfo.ResultDataMaxSizeInBytes,
+		D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
+	);
+
+	ThrowIfFailed(md3dDevice->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+		D3D12_HEAP_FLAG_NONE,
+		&tlasDesc,
+		D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE,
+		nullptr,
+		IID_PPV_ARGS(&mTLASResource)
+	));
+	mTLASResource->SetName(L"TLAS_Resource");
+
+	auto scratchDesc = CD3DX12_RESOURCE_DESC::Buffer(
+		prebuildInfo.ScratchDataSizeInBytes,
+		D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
+	);
+
+	ThrowIfFailed(md3dDevice->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+		D3D12_HEAP_FLAG_NONE,
+		&scratchDesc,
+		D3D12_RESOURCE_STATE_COMMON,
+		nullptr,
+		IID_PPV_ARGS(&mTLASScratchResource)
+	));
+	mTLASScratchResource->SetName(L"TLAS_Scratch");
+
+	D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC buildDesc = {};
+	buildDesc.Inputs = inputs;
+	buildDesc.ScratchAccelerationStructureData = mTLASScratchResource->GetGPUVirtualAddress();
+	buildDesc.DestAccelerationStructureData = mTLASResource->GetGPUVirtualAddress();
+	buildDesc.SourceAccelerationStructureData = 0;
+
+	mCommandList->BuildRaytracingAccelerationStructure(&buildDesc, 0, nullptr);
+
+	auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(mTLASResource.Get());
+	mCommandList->ResourceBarrier(1, &barrier);
+
+	ThrowIfFailed(mCommandList->Close());
+	ID3D12CommandList* cmdsLists[] = { mCommandList.Get() };
+	mCommandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
+	FlushCommandQueue();
 }
 
 void RenderingSystem::LogAdapterOutputs(IDXGIAdapter* adapter)
