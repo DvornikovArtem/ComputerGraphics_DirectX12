@@ -97,11 +97,7 @@ float CalculateShadowRT(float3 posW, Light light)
 {
     float3 lightDir = normalize(light.Direction);
     float3 rayOrigin = posW + lightDir * 0.5f; // Смещение от self-intersection
-        
-    if (TraceShadowRay(rayOrigin, float3(0, 1, 0), 100.0f))
-        return 0.5f;
-    else
-        return 1.f;
+
     if (TraceShadowRay(rayOrigin, -lightDir, 1000.0f))
     {
         return 1.0f;

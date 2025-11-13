@@ -1818,8 +1818,10 @@ void RenderingSystem::BuildTLAS()
 		desc.Flags = D3D12_RAYTRACING_INSTANCE_FLAG_NONE;
 		desc.AccelerationStructure = instances[i].first->GetGPUVirtualAddress();
 
-		DirectX::XMMATRIX transposed = DirectX::XMMatrixTranspose(instances[i].second);
-		DirectX::XMStoreFloat3x4(reinterpret_cast<DirectX::XMFLOAT3X4*>(desc.Transform), transposed);
+		DirectX::XMMATRIX worldMatrix = instances[i].second;
+		DirectX::XMFLOAT3X4 transform3x4;
+		DirectX::XMStoreFloat3x4(&transform3x4, worldMatrix);
+		memcpy(desc.Transform, &transform3x4, sizeof(desc.Transform));
 
 		desc.InstanceMask = 0xFF;
 	}
