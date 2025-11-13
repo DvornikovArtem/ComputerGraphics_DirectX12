@@ -1917,6 +1917,20 @@ void RenderingSystem::BuildTLAS()
 	ID3D12CommandList* cmdsLists[] = { mCommandList.Get() };
 	mCommandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
 	FlushCommandQueue();
+
+
+	//building TLAS SRV
+	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_RAYTRACING_ACCELERATION_STRUCTURE;
+	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	srvDesc.RaytracingAccelerationStructure.Location = mTLASResource->GetGPUVirtualAddress();
+
+	CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle(
+		mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
+		mTLASSRVHeapIndex,
+		mCbvSrvUavDescriptorSize);
+
+	md3dDevice->CreateShaderResourceView(nullptr, &srvDesc, srvHandle);
 }
 
 void RenderingSystem::InitializeDXC()
@@ -2238,7 +2252,7 @@ void RenderingSystem::BuildRootSignatures()
 	CD3DX12_DESCRIPTOR_RANGE texTable9;
 	texTable9.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 8);
 
-	CD3DX12_ROOT_PARAMETER lightPassSlotRootParameter[10];
+	CD3DX12_ROOT_PARAMETER lightPassSlotRootParameter[11];
 
 	lightPassSlotRootParameter[0].InitAsConstantBufferView(0); //MainPassCB
 	lightPassSlotRootParameter[1].InitAsConstantBufferView(1); //LightCB
@@ -2253,6 +2267,8 @@ void RenderingSystem::BuildRootSignatures()
 	lightPassSlotRootParameter[7].InitAsDescriptorTable(1, &texTable6, D3D12_SHADER_VISIBILITY_ALL); //IBL SkyMaps
 	lightPassSlotRootParameter[8].InitAsDescriptorTable(1, &texTable7, D3D12_SHADER_VISIBILITY_ALL);
 	lightPassSlotRootParameter[9].InitAsDescriptorTable(1, &texTable8, D3D12_SHADER_VISIBILITY_ALL);
+
+	lightPassSlotRootParameter[10].InitAsShaderResourceView(8, 0, D3D12_SHADER_VISIBILITY_ALL); //TLAS
 
 	//ShadowMap ComparisonSampler
 	const CD3DX12_STATIC_SAMPLER_DESC StaticSamplers[2] =
@@ -2276,7 +2292,7 @@ void RenderingSystem::BuildRootSignatures()
 		D3D12_TEXTURE_ADDRESS_MODE_CLAMP)
 	};
 
-	CD3DX12_ROOT_SIGNATURE_DESC lightPassRootSigDesc(10, lightPassSlotRootParameter,
+	CD3DX12_ROOT_SIGNATURE_DESC lightPassRootSigDesc(11, lightPassSlotRootParameter,
 		2, StaticSamplers,
 		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
@@ -3293,6 +3309,7 @@ void RenderingSystem::GBufferLightPass()
 	mCommandList->SetGraphicsRootDescriptorTable(7, GetGpuSrv(mTextures["SkyIrradiance"]->srvHeapIndex));
 	mCommandList->SetGraphicsRootDescriptorTable(8, GetGpuSrv(mTextures["SkyPref"]->srvHeapIndex));
 	mCommandList->SetGraphicsRootDescriptorTable(9, GetGpuSrv(mTextures["SkyBRDF"]->srvHeapIndex));
+	mCommandList->SetGraphicsRootShaderResourceView(10, mTLASResource->GetGPUVirtualAddress());
 
 	mCommandList->SetGraphicsRootConstantBufferView(0, passCB->GetGPUVirtualAddress());
 	mCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -3858,6 +3875,8 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 	mPrevFrameSRVHeapIndex = SRVHeapHeadIndex;
 	SRVHeapHeadIndex++;
 	mResolvedAccBufferSRVHeapIndex = SRVHeapHeadIndex;
+	SRVHeapHeadIndex++;
+	mTLASSRVHeapIndex = SRVHeapHeadIndex;
 	ThrowIfFailed(mCommandList->Close());
 	ID3D12CommandList* cmdsLists[] = { mCommandList.Get() };
 	mCommandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);

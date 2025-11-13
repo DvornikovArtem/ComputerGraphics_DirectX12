@@ -11,6 +11,8 @@ TextureCube IrradianceMap   : register(t5);
 TextureCube PrefilterEnvMap : register(t6);
 Texture2D BRDF_LUT          : register(t7);
 
+RaytracingAccelerationStructure TLAS : register(t8);
+
 SamplerComparisonState ShadowSampler : register(s0);
 SamplerState samLinearClamp          : register(s1);
 
@@ -70,6 +72,36 @@ float3 ReconstructWorldPosition(float2 UV, float depth)
     viewPos.xyz /= viewPos.w;
 
     return viewPos.xyz;
+}
+
+bool TraceShadowRay(float3 origin, float3 direction, float maxDistance)
+{
+    RayQuery < RAY_FLAG_CULL_BACK_FACING_TRIANGLES |
+             RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH > rayQuery;
+    
+    RayDesc ray;
+    ray.Origin = origin;
+    ray.Direction = normalize(direction);
+    ray.TMin = 0.1f;
+    ray.TMax = maxDistance;
+    
+    rayQuery.TraceRayInline(TLAS, 0xFF, 0, ray);
+    
+    rayQuery.Proceed();
+    
+    return rayQuery.CommittedStatus() != COMMITTED_NOTHING;
+}
+
+float CalculateShadowRT(float3 posW, Light light)
+{
+    float3 lightDir = normalize(light.Direction);
+    float3 rayOrigin = posW + lightDir * 0.5f; // Смещение от self-intersection
+        
+    if (TraceShadowRay(rayOrigin, -lightDir, 1000.0f))
+    {
+        return 1.0f; // В тени
+    }
+    return 0.0f;
 }
 
 float CalcShadowFactor(float3 WorldPosition, float3 Normal, uint ShadowMapIndex)
@@ -209,15 +241,16 @@ float4 PS(VertexOut pin) : SV_Target
         float shadowFactor = 1.f;
         float distanceFromEye = length(WorldPosition - cbMainPass.CameraPos);
         
-        for (uint cascade = 0; cascade < 5; cascade++)
-        {
-            float factor = CalcShadowFactor(WorldPosition, Normal, cascade);
-            if (factor < 0.3f)
-            {
-                shadowFactor = factor;
-                break;
-            }
-        }
+        //for (uint cascade = 0; cascade < 5; cascade++)
+        //{
+        //    float factor = CalcShadowFactor(WorldPosition, Normal, cascade);
+        //    if (factor < 0.3f)
+        //    {
+        //        shadowFactor = factor;
+        //        break;
+        //    }
+        //}
+        shadowFactor = CalculateShadowRT(WorldPosition, cbLight.lightData);
         
         float3 lightDir = normalize(-cbLight.lightData.Direction);
         float3 halfVec = normalize(toEyeW + lightDir);
