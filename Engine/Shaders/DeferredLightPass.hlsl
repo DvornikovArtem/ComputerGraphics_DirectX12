@@ -76,8 +76,8 @@ float3 ReconstructWorldPosition(float2 UV, float depth)
 
 bool TraceShadowRay(float3 origin, float3 direction, float maxDistance)
 {
-    RayQuery < RAY_FLAG_CULL_BACK_FACING_TRIANGLES |
-             RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH > rayQuery;
+    RayQuery <RAY_FLAG_CULL_BACK_FACING_TRIANGLES |
+             RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> rayQuery;
     
     RayDesc ray;
     ray.Origin = origin;
@@ -85,12 +85,10 @@ bool TraceShadowRay(float3 origin, float3 direction, float maxDistance)
     ray.TMin = 0.1f;
     ray.TMax = maxDistance;
     
-    rayQuery.TraceRayInline(TLAS, 0xFF, 0, ray);
-    
+    rayQuery.TraceRayInline(TLAS, 0x01, 0x01, ray);
     rayQuery.Proceed();
     
-    //return true if ray is blocked
-    return rayQuery.CommittedStatus() != COMMITTED_NOTHING;
+    return rayQuery.CommittedStatus() == COMMITTED_NOTHING;
 }
 
 float CalculateShadowRT(float3 posW, Light light)
@@ -242,16 +240,15 @@ float4 PS(VertexOut pin) : SV_Target
         float shadowFactor = 1.f;
         float distanceFromEye = length(WorldPosition - cbMainPass.CameraPos);
         
-        //for (uint cascade = 0; cascade < 5; cascade++)
-        //{
-        //    float factor = CalcShadowFactor(WorldPosition, Normal, cascade);
-        //    if (factor < 0.3f)
-        //    {
-        //        shadowFactor = factor;
-        //        break;
-        //    }
-        //}
-        shadowFactor = CalculateShadowRT(WorldPosition, cbLight.lightData);
+        for (uint cascade = 0; cascade < 5; cascade++)
+        {
+            float factor = CalcShadowFactor(WorldPosition, Normal, cascade);
+            if (factor < 0.3f)
+            {
+                shadowFactor = factor;
+                break;
+            }
+        }
         
         float3 lightDir = normalize(-cbLight.lightData.Direction);
         float3 halfVec = normalize(toEyeW + lightDir);
@@ -325,11 +322,18 @@ float4 PS(VertexOut pin) : SV_Target
             float3 diffuse = Diffuse.rgb * NdotL;
             float3 specular = MatFresnelR0 * specTerm;
 
+
             Lighting = CalcShadowFactor(WorldPosition, Normal, faceIndex) * (diffuse + specular) * radiance;
         }
         else
         {
-            Lighting = CalcShadowFactor(WorldPosition, Normal, faceIndex)
+            float ShadowFactor = 0.f;
+            if (TraceShadowRay(WorldPosition, L, length(cbLight.lightData.Position - WorldPosition)))
+            {
+                ShadowFactor = 1.f;
+            }
+            
+            Lighting = ShadowFactor
                  * ComputePointLight(cbLight.lightData, mat, WorldPosition, Normal, toEyeW) * cbLight.lightData.Color;
         }
     }
