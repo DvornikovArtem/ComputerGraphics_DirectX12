@@ -69,7 +69,7 @@ float4 PS(VertexOut pin) : SV_Target
     float4 CurrFrameColor = CurrFrame.Load(int3(TexelCoord, 0));
     float4 PrevFrameColor = CurrFrameColor;
     
-    bool IsPrevUVValid = all(PrevTexelCoord >= 0 && PrevTexelCoord < cbMainPass.RenderTargetSize);
+    bool IsPrevUVValid = all(PrevTexelCoord >= 0) && all(PrevTexelCoord < cbMainPass.RenderTargetSize);
     if (IsPrevUVValid)
     {
         PrevFrameColor = PrevFrame.Load(int3(PrevTexelCoord, 0));
@@ -83,7 +83,7 @@ float4 PS(VertexOut pin) : SV_Target
             for (int y = -1; y <= 1; y++)
             {
                 uint2 neighborCoord = TexelCoord + uint2(x, y);
-                if (all(neighborCoord >= 0 && neighborCoord < cbMainPass.RenderTargetSize))
+                if (all(neighborCoord >= 0) && all(neighborCoord < cbMainPass.RenderTargetSize))
                 {
                     float4 neighborColor = CurrFrame.Load(int3(neighborCoord, 0));
                     minColor = min(minColor, neighborColor);

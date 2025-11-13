@@ -552,7 +552,7 @@
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>$(ProjectDir)Extern\assimp\include;$(ProjectDir)Include;$(ProjectDir)Extern\DirectXTex\include;$(ProjectDir)Extern\FideltyFX\ffx-api\include;$(ProjectDir)Extern\FideltyFX\sdk\include;$(ProjectDir)Extern\imgui;$(ProjectDir)Extern\imgui\backends;$(ProjectDir)Extern\minhook\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)Extern\assimp\include;$(ProjectDir)Include;$(ProjectDir)Extern\DirectXTex\include;$(ProjectDir)Extern\FideltyFX\ffx-api\include;$(ProjectDir)Extern\FideltyFX\sdk\include;$(ProjectDir)Extern\imgui;$(ProjectDir)Extern\imgui\backends;$(ProjectDir)Extern\minhook\include;$(ProjectDir)Extern\Dxil\inc;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <UndefinePreprocessorDefinitions>%(UndefinePreprocessorDefinitions)</UndefinePreprocessorDefinitions>
     </ClCompile>
     <Link>

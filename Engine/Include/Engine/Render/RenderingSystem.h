@@ -46,6 +46,8 @@
 #include <ffx_api/ffx_upscale.h>
 #include <ffx_api/dx12/ffx_api_dx12.h>
 
+#include <dxil/dxcapi.h>
+#include <dxil/d3d12shader.h>
 
 #pragma comment(lib,"d3dcompiler.lib")
 #pragma comment(lib, "D3D12.lib")
@@ -114,6 +116,8 @@ public:
     void TAAResolve();
     void BuildBLASForGeometries();
     void BuildTLAS();
+    void InitializeDXC();
+    ComPtr<ID3DBlob> DXCCompileShader(const std::wstring& filename, const D3D_SHADER_MACRO* defines, const std::string& entrypoint, const std::wstring& target);
 
     void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems, std::string PSOName);
 
@@ -390,11 +394,17 @@ protected:
     int mJitterIndex = 0;
 // =================================================================================================
 
-// For RT =========================================================================================
+// For RT ==========================================================================================
     bool RTSupport = false;
     Microsoft::WRL::ComPtr<ID3D12Resource> mTLASResource;
     Microsoft::WRL::ComPtr<ID3D12Resource> mTLASScratchResource;
-// =========================================================================================
+// =================================================================================================
+
+// For DXC Shader compilation ======================================================================
+	ComPtr<IDxcCompiler3> mDxcCompiler;
+	ComPtr<IDxcUtils> mDxcUtils;
+	ComPtr<IDxcIncludeHandler> mDxcIncludeHandler;
+// =================================================================================================
 };
 
 

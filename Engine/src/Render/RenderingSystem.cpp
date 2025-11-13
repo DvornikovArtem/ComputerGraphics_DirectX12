@@ -99,6 +99,7 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 	CreateCommandObjects();
 	CreateSwapChain();
 	BuildFSRContext();
+	InitializeDXC();
 
 	mGBuffer = std::make_unique<Gbuffer>(mClientWidth, mClientHeight, md3dDevice);
 
@@ -1916,6 +1917,121 @@ void RenderingSystem::BuildTLAS()
 	ID3D12CommandList* cmdsLists[] = { mCommandList.Get() };
 	mCommandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
 	FlushCommandQueue();
+}
+
+void RenderingSystem::InitializeDXC()
+{
+	ThrowIfFailed(DxcCreateInstance(CLSID_DxcUtils, IID_PPV_ARGS(&mDxcUtils)));
+	ThrowIfFailed(DxcCreateInstance(CLSID_DxcCompiler, IID_PPV_ARGS(&mDxcCompiler)));
+	ThrowIfFailed(mDxcUtils->CreateDefaultIncludeHandler(&mDxcIncludeHandler));
+}
+
+ComPtr<ID3DBlob> RenderingSystem::DXCCompileShader(const std::wstring& filename, const D3D_SHADER_MACRO* defines, const std::string& entrypoint, const std::wstring& target)
+{
+	ComPtr<IDxcBlobEncoding> sourceBlob;
+	ThrowIfFailed(mDxcUtils->LoadFile(filename.c_str(), nullptr, &sourceBlob));
+
+	std::vector<LPCWSTR> arguments;
+	std::vector<std::wstring> storage;
+
+	// Точка входа
+	arguments.push_back(L"-E");
+	std::wstring entrypointW(entrypoint.begin(), entrypoint.end());
+	arguments.push_back(entrypointW.c_str());
+
+	// Целевая модель шейдера
+	arguments.push_back(L"-T");
+	arguments.push_back(target.c_str());
+
+	// Добавляем пути для включения файлов
+	arguments.push_back(L"-I");
+	arguments.push_back(SHADERS_ENGINE_DIR); // Основная папка с шейдерами
+
+	arguments.push_back(L"-I");
+	arguments.push_back(L"./"); // Текущая директория
+
+	arguments.push_back(L"-I");
+	arguments.push_back(L"../"); // Родительская директория
+
+#if defined(DEBUG) || defined(_DEBUG)
+	arguments.push_back(L"-Zi");
+	arguments.push_back(L"-Qembed_debug");
+	arguments.push_back(L"-Od"); // Отключение оптимизаций в отладке
+#else
+	arguments.push_back(L"-O3"); // Максимальная оптимизация в релизе
+#endif
+
+	// Добавляем определения
+	if (defines)
+	{
+		const D3D_SHADER_MACRO* define = defines;
+		while (define->Name && define->Definition)
+		{
+			// Простое создание define строки ASCII
+			std::string defineStr = std::string(define->Name) + "=" + define->Definition;
+
+			arguments.push_back(L"-D");
+			std::wstring defineWide(defineStr.begin(), defineStr.end());
+			storage.push_back(defineWide);
+			arguments.push_back(storage.back().c_str());
+
+			define++;
+		}
+	}
+
+	DxcBuffer sourceBuffer;
+	sourceBuffer.Ptr = sourceBlob->GetBufferPointer();
+	sourceBuffer.Size = sourceBlob->GetBufferSize();
+	sourceBuffer.Encoding = DXC_CP_UTF8;
+
+	ComPtr<IDxcResult> results;
+	HRESULT hr = mDxcCompiler->Compile(
+		&sourceBuffer,
+		arguments.data(),
+		(UINT32)arguments.size(),
+		mDxcIncludeHandler.Get(),
+		IID_PPV_ARGS(&results));
+
+	ComPtr<IDxcBlobUtf8> errors;
+	if (SUCCEEDED(hr)) {
+		results->GetOutput(DXC_OUT_ERRORS, IID_PPV_ARGS(&errors), nullptr);
+	}
+
+	if (errors != nullptr && errors->GetStringLength() > 0)
+	{
+		OutputDebugStringA("Shader compilation warnings/errors:\n");
+		OutputDebugStringA(errors->GetStringPointer());
+
+		// Если есть ошибки, выводим дополнительную информацию
+		if (errors->GetStringLength() > 0) {
+			OutputDebugStringA("\n=== Shader Compilation Details ===\n");
+			OutputDebugStringA(("Shader: " + std::string(filename.begin(), filename.end()) + "\n").c_str());
+			OutputDebugStringA(("Entry point: " + entrypoint + "\n").c_str());
+			OutputDebugStringA(("Target: " + std::string(target.begin(), target.end()) + "\n").c_str());
+		}
+	}
+
+	ComPtr<IDxcBlobUtf16> outputName;
+	HRESULT compileStatus;
+	if (SUCCEEDED(results->GetStatus(&compileStatus)) && FAILED(compileStatus))
+	{
+		if (errors != nullptr && errors->GetStringLength() > 0)
+		{
+			OutputDebugStringA("Shader compilation failed:\n");
+			OutputDebugStringA(errors->GetStringPointer());
+		}
+		ThrowIfFailed(compileStatus);
+	}
+
+	ComPtr<IDxcBlob> dxcBlob;
+	ThrowIfFailed(results->GetOutput(DXC_OUT_OBJECT, IID_PPV_ARGS(&dxcBlob), &outputName));
+
+	// Создаем ID3DBlob и копируем данные
+	ComPtr<ID3DBlob> d3dBlob;
+	D3DCreateBlob(dxcBlob->GetBufferSize(), &d3dBlob);
+	memcpy(d3dBlob->GetBufferPointer(), dxcBlob->GetBufferPointer(), dxcBlob->GetBufferSize());
+
+	return d3dBlob;
 }
 
 void RenderingSystem::LogAdapterOutputs(IDXGIAdapter* adapter)
@@ -3960,40 +4076,41 @@ void RenderingSystem::BuildShaders(std::vector<ShaderDesc>& ShaderDescs)
 {
 	for (ShaderDesc& i : ShaderDescs)
 	{
-		mShaders[i.Name] = d3dUtil::CompileShader(i.Path, i.ShaderDefines, i.FunctionName, i.ShaderProfile);
+		std::wstring profileW(i.ShaderProfile.begin(), i.ShaderProfile.end());
+		mShaders[i.Name] = DXCCompileShader(i.Path, i.ShaderDefines, i.FunctionName, profileW);
 	}
 
-	//standard shaders for deferred geometry rendering
-	mShaders["standardVS"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\DeferredGeometryPass.hlsl", nullptr, "VS", "vs_5_1");
-	mShaders["standardPS"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\DeferredGeometryPass.hlsl", nullptr, "PS", "ps_5_1");
-	mShaders["standardHS"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\DeferredGeometryPass.hlsl", nullptr, "HSMain", "hs_5_1");
-	mShaders["standardDS"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\DeferredGeometryPass.hlsl", nullptr, "DSMain", "ds_5_1");
+	// Стандартные шейдеры для deferred geometry rendering
+	mShaders["standardVS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\DeferredGeometryPass.hlsl", nullptr, "VS", L"vs_6_8");
+	mShaders["standardPS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\DeferredGeometryPass.hlsl", nullptr, "PS", L"ps_6_8");
+	mShaders["standardHS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\DeferredGeometryPass.hlsl", nullptr, "HSMain", L"hs_6_8");
+	mShaders["standardDS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\DeferredGeometryPass.hlsl", nullptr, "DSMain", L"ds_6_8");
 
-	//standard shaders for deferred light rendering
-	mShaders["DeferredLightPassVS_FSQuad"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\DeferredLightPass.hlsl", nullptr, "VS_FSQuad", "vs_5_1");
-	mShaders["DeferredLightPassVS_Bounded"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\DeferredLightPass.hlsl", nullptr, "VS_Bounded", "vs_5_1");
-	mShaders["DeferredLightPassPS"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\DeferredLightPass.hlsl", nullptr, "PS", "ps_5_1");
-	mShaders["DeferredLightPassPS_AddAmbient"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\DeferredLightPass.hlsl", nullptr, "PS_AddAmbient", "ps_5_1");
+	// Стандартные шейдеры для deferred light rendering
+	mShaders["DeferredLightPassVS_FSQuad"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\DeferredLightPass.hlsl", nullptr, "VS_FSQuad", L"vs_6_8");
+	mShaders["DeferredLightPassVS_Bounded"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\DeferredLightPass.hlsl", nullptr, "VS_Bounded", L"vs_6_8");
+	mShaders["DeferredLightPassPS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\DeferredLightPass.hlsl", nullptr, "PS", L"ps_6_8");
+	mShaders["DeferredLightPassPS_AddAmbient"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\DeferredLightPass.hlsl", nullptr, "PS_AddAmbient", L"ps_6_8");
 
-	//for skybox rendering
-	mShaders["SkyBoxVS"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\SkyBox.hlsl", nullptr, "VS", "vs_5_1");
-	mShaders["SkyBoxPS"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\SkyBox.hlsl", nullptr, "PS", "ps_5_1");
+	// Для skybox rendering
+	mShaders["SkyBoxVS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\SkyBox.hlsl", nullptr, "VS", L"vs_6_8");
+	mShaders["SkyBoxPS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\SkyBox.hlsl", nullptr, "PS", L"ps_6_8");
 
-	//for shadowmap geometry generation
-	mShaders["ShadowOpaqueVS"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\Shadows.hlsl", nullptr, "VS", "vs_5_1");
-	mShaders["ShadowOpaquePS"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\Shadows.hlsl", nullptr, "PS", "ps_5_1");
-	mShaders["ShadowOpaqueGS"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\Shadows.hlsl", nullptr, "GS", "gs_5_1");
+	// Для shadowmap geometry generation
+	mShaders["ShadowOpaqueVS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\Shadows.hlsl", nullptr, "VS", L"vs_6_8");
+	mShaders["ShadowOpaquePS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\Shadows.hlsl", nullptr, "PS", L"ps_6_8");
+	mShaders["ShadowOpaqueGS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\Shadows.hlsl", nullptr, "GS", L"gs_6_8");
 
-	mShaders["ShadowOpaqueVS_Terrain"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\Shadows_Terrain.hlsl", nullptr, "VS", "vs_5_1");
-	mShaders["ShadowOpaqueGS_Terrain"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\Shadows_Terrain.hlsl", nullptr, "GS", "gs_5_1");
+	mShaders["ShadowOpaqueVS_Terrain"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\Shadows_Terrain.hlsl", nullptr, "VS", L"vs_6_8");
+	mShaders["ShadowOpaqueGS_Terrain"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\Shadows_Terrain.hlsl", nullptr, "GS", L"gs_6_8");
 
-	//for post-processing
-	mShaders["PPVS"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\PostProcessing.hlsl", nullptr, "VS_FSQuad", "vs_5_1");
-	mShaders["PPPS"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\PostProcessing.hlsl", nullptr, "PS", "ps_5_1");
+	// Для post-processing
+	mShaders["PPVS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\PostProcessing.hlsl", nullptr, "VS_FSQuad", L"vs_6_8");
+	mShaders["PPPS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\PostProcessing.hlsl", nullptr, "PS", L"ps_6_8");
 
-	//for TAA Resolving
-	mShaders["TAAResolveVS"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\TAAResolve.hlsl", nullptr, "VS_FSQuad", "vs_5_1");
-	mShaders["TAAResolvePS"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\TAAResolve.hlsl", nullptr, "PS", "ps_5_1");
+	// Для TAA Resolving
+	mShaders["TAAResolveVS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\TAAResolve.hlsl", nullptr, "VS_FSQuad", L"vs_6_8");
+	mShaders["TAAResolvePS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\TAAResolve.hlsl", nullptr, "PS", L"ps_6_8");
 }
 
 void RenderingSystem::BuildBasicGeometry()
