@@ -78,6 +78,24 @@ struct ParticleConstants
     DirectX::XMFLOAT4 _pad;
 };
 
+struct AtmosphereConstants
+{
+    DirectX::XMFLOAT3 BetaRayleigh;
+    float RayleighScaleHeight;
+    DirectX::XMFLOAT3 BetaMieSca;
+    float MieScaleHeight;
+    DirectX::XMFLOAT3 BetaMieExt;
+    float MieG;
+    DirectX::XMFLOAT3 SunDirection;
+    float SunIntensity;
+    float GroundLevelY;
+    float AtmosphereTopY;
+    float DensityScale;
+    float _pad0;
+    DirectX::XMFLOAT3 GroundAlbedo;
+    float _pad1;
+};
+
 // Stores the resources needed for the CPU to build the command lists
 // for a frame.  
 struct FrameResource
@@ -103,6 +121,7 @@ public:
 
     std::unique_ptr<UploadBuffer<ParticleConstants>> ParticleCB = nullptr;
     std::unique_ptr<UploadBuffer<UINT>> NullUploadBuffer = nullptr;
+    std::unique_ptr<UploadBuffer<AtmosphereConstants>> AtmosphereCB = nullptr;
 
     // Fence value to mark commands up to this fence point.  This lets us
     // check if these frame resources are still in use by the GPU.

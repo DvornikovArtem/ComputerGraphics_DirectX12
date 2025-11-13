@@ -19,6 +19,7 @@ FrameResource::FrameResource(ID3D12Device* device, UINT passCount, UINT objectCo
         UINT zero = 0;
         NullUploadBuffer->CopyData(0, zero);
     }
+    AtmosphereCB = std::make_unique<UploadBuffer<AtmosphereConstants>>(device, 1, true);
 }
 
 FrameResource::~FrameResource()

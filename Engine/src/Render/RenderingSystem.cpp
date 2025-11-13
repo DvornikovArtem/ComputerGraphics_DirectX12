@@ -117,7 +117,7 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 	BuildInputLayout();
 	BuildBasicGeometry();
 	BuildSceneGrid();
-	//BuildTerrain();
+	BuildTerrain();
 
 
 	// Execute the initialization commands.
@@ -865,6 +865,15 @@ void RenderingSystem::RegisterScenePanels() {
 					ImGui::Separator();
 					ImGui::PopID();
 				}
+
+
+				ImGui::Checkbox("Enable", &mAtm.Enabled);
+				ImGui::SliderFloat("DensityScale", &mAtm.DensityScale, 0.0f, 30.0f);
+				ImGui::SliderFloat("Cleanliness", &mAtm.Cleanliness, 0.0f, 2.0f);
+				ImGui::SliderFloat("Mie g", &mAtm.MieG, 0.0f, 0.99f);
+				ImGui::SliderFloat("Rayleigh H (m)", &mAtm.RayleighScaleHeight, 2000.f, 15000.f);
+				ImGui::SliderFloat("Mie H (m)", &mAtm.MieScaleHeight, 200.f, 5000.f);
+				ImGui::SliderFloat("Sun Intensity", &mAtm.SunIntensity, 0.0f, 50.0f);
 
 				
 				// Resources
@@ -2040,15 +2049,16 @@ void RenderingSystem::BuildRootSignatures()
 
 	//for post-processing
 
-	CD3DX12_ROOT_PARAMETER PPSlotRootParameter[5];
+	CD3DX12_ROOT_PARAMETER PPSlotRootParameter[6];
 
 	PPSlotRootParameter[0].InitAsConstantBufferView(0); //MainPassCB
 	PPSlotRootParameter[1].InitAsDescriptorTable(1, &texTable1, D3D12_SHADER_VISIBILITY_ALL); //GBufferChannels
 	PPSlotRootParameter[2].InitAsDescriptorTable(1, &texTable2, D3D12_SHADER_VISIBILITY_ALL);
 	PPSlotRootParameter[3].InitAsDescriptorTable(1, &texTable3, D3D12_SHADER_VISIBILITY_ALL);
 	PPSlotRootParameter[4].InitAsDescriptorTable(1, &texTable4, D3D12_SHADER_VISIBILITY_ALL);
+	PPSlotRootParameter[5].InitAsConstantBufferView(1);
 
-	CD3DX12_ROOT_SIGNATURE_DESC PPRootSigDesc(5, PPSlotRootParameter,
+	CD3DX12_ROOT_SIGNATURE_DESC PPRootSigDesc(6, PPSlotRootParameter,
 		(UINT)staticSamplers.size(), staticSamplers.data(),
 		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
@@ -2124,6 +2134,7 @@ void RenderingSystem::Update(std::vector<DrawableObject*>& mAllObjectsToUpdate, 
 	UpdateMainPassCB(*gt);
 	UpdateLightItems(mAllLightObjectsToUpdate);
 	UpdateLightCBs(*gt);
+	UpdateAtmosphereCB();
 }
 
 void RenderingSystem::UpdateObjectCBs(const GameTimer& gt)
@@ -3278,6 +3289,12 @@ void RenderingSystem::PostProcessingPass()
 	mCommandList->SetGraphicsRootDescriptorTable(3, GetGpuSrv(mGBuffer->Normal.SRVHeapIndex));
 	mCommandList->SetGraphicsRootDescriptorTable(4, GetGpuSrv(mGBuffer->ObjectOutlines.SRVHeapIndex));
 
+	if (mAtm.Enabled)
+	{
+		auto atmCB = mCurrFrameResource->AtmosphereCB->Resource();
+		mCommandList->SetGraphicsRootConstantBufferView(5, atmCB->GetGPUVirtualAddress());
+	}
+
 
 	mCommandList->DrawInstanced(6, 1, 0, 0);
 	if (mFSREnabled) mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mFSROutput.Get(),
@@ -4043,6 +4060,93 @@ void RenderingSystem::UpdateMainPassCB(const GameTimer& gt)
 	// Main pass stored in index 2
 	auto currPassCB = mCurrFrameResource->PassCB.get();
 	currPassCB->CopyData(0, mMainPassCB);
+}
+
+void RenderingSystem::UpdateAtmosphereCB()
+{
+	AtmosphereConstants a{};
+
+	const float pi = 3.14159265f;
+
+	// Air parameters
+
+	// Index of refraction
+	const float n = 1.0003f;
+	// Molecules per m^3
+	const float N = 2.687e25f;
+	// Depolarization factor
+	const float pn = 0.035f;
+
+	// Common factor before 1 / lambda^4
+	const float n2 = n * n;
+	const float delta2 = (n2 - 1.0f) * (n2 - 1.0f);
+	const float Fdelta = (6.0f + 3.0f * pn) / (6.0f - 7.0f * pn);
+	const float factor = (8.0f * pi * pi * pi * delta2 / (3.0f * N)) * Fdelta;
+
+	auto SigmaRayleigh = [factor](float lambdaNm) -> float
+		{
+			// lambda to nanometers
+			const float lambda = lambdaNm * 1e-9f;
+			const float lambda2 = lambda * lambda;
+			const float lambda4 = lambda2 * lambda2;
+			return factor / lambda4;
+		};
+
+	// RGB wavelengths (nm)
+	const float lambdaR = 650.0f;
+	const float lambdaG = 570.0f;
+	const float lambdaB = 475.0f;
+
+	a.BetaRayleigh = {
+		SigmaRayleigh(lambdaR), // 650 nm
+		SigmaRayleigh(lambdaG), // 570 nm
+		SigmaRayleigh(lambdaB)  // 475 nm
+	};
+
+
+	// Cleanliness = 0  -> dirty air (a lot of Mie)
+	// Cleanliness = 2  -> clean air (less Mie)
+	float cleanliness = std::clamp(mAtm.Cleanliness, 0.0f, 2.0f);
+
+	// medium haze
+	//const float betaMBase = 2.1e-5f;
+	const float betaMBase = 0.00001;
+
+	// dirtiness: 0 (clean) -> 2 (dirty)
+	const float dirtiness = 2.0f - cleanliness;
+
+	const float betaM = betaMBase * dirtiness;
+
+	// Let ~90% go into scattering, and the rest into absorption
+	a.BetaMieSca = { betaM * 0.9f, betaM * 0.9f, betaM * 0.9f };
+	a.BetaMieExt = { betaM,        betaM,        betaM };
+
+
+	a.RayleighScaleHeight = mAtm.RayleighScaleHeight;
+	a.MieScaleHeight = mAtm.MieScaleHeight;
+	a.MieG = mAtm.MieG;
+
+	// For sunDir copying DirectionalLight dir
+	XMFLOAT3 sunDir = { 0.57735f, -0.57735f, 0.57735f };
+	for (auto light : mAllLights)
+	{
+		if (light->LightType == LightType::Directional)
+		{
+			sunDir = light->WorldDirection;
+			break;
+		}
+	}
+	a.SunDirection = {-sunDir.x, -sunDir.y, -sunDir.z};
+	a.SunIntensity = mAtm.SunIntensity;
+
+	a.GroundLevelY = mAtm.GroundLevelY;
+	a.AtmosphereTopY = mAtm.AtmosphereTopY;
+
+	a.DensityScale = mAtm.Enabled ? mAtm.DensityScale : 0.0f;
+
+	a.GroundAlbedo = { 0.1f, 0.1f, 0.1f };
+
+	mCurrFrameResource->AtmosphereCB->CopyData(0, a);
 }
 
 void RenderingSystem::UpdateCamera(const GameTimer& gt)

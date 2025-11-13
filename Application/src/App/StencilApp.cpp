@@ -413,14 +413,14 @@ void StencilApp::MakeDrawableObjects()
 
     mAllDrawableObjects[Svidetel->Name] = Svidetel;
 
-    DrawableObject* SkyBoxSphere = new DrawableObject();
+    /*DrawableObject* SkyBoxSphere = new DrawableObject();
     SkyBoxSphere->Name = "SkyBoxSphere";
     SkyBoxSphere->GeometryName = "Sphere";
     SkyBoxSphere->MaterialName = "SkyBox";
     SkyBoxSphere->renderLayer = RenderLayer::Sky;
     SkyBoxSphere->Scale = XMFLOAT3(5000.0f, 5000.0f, 5000.0f);
 
-    mAllDrawableObjects[SkyBoxSphere->Name] = SkyBoxSphere;
+    mAllDrawableObjects[SkyBoxSphere->Name] = SkyBoxSphere;*/
 
     DrawableObject* TesselationTestSphere = new DrawableObject();
     TesselationTestSphere->Name = "TesselationTestSphere";

@@ -98,3 +98,21 @@ struct ParticleCB
     float3 CameraDir;
     float4 _pad;
 };
+
+struct AtmosphereCB
+{
+    float3 BetaRayleigh;
+    float RayleighScaleHeight;
+    float3 BetaMieSca;
+    float MieScaleHeight;
+    float3 BetaMieExt;
+    float MieG;
+    float3 SunDirection;
+    float SunIntensity;
+    float GroundLevelY;
+    float AtmosphereTopY;
+    float DensityScale;
+    float _pad0;
+    float3 GroundAlbedo;
+    float _pad1;
+};

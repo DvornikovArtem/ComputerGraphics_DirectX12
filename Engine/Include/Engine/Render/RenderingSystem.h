@@ -387,6 +387,25 @@ protected:
     float mJitterY;
     int mJitterIndex = 0;
 // =================================================================================================
+
+    
+// For Atmosphere ==================================================================================
+    struct AtmosphereSettings
+    {
+        bool Enabled = true;
+        float Cleanliness = 1.0f;
+        float RayleighScaleHeight = 8000.f;
+        float MieScaleHeight = 1200.f;
+        float MieG = 0.8f;
+        float SunIntensity = 15.0f;
+        float GroundLevelY = -1000.0f;
+        float AtmosphereTopY = 80000.0f;
+        // 1.0f - realistic, but non-visible for small scenes
+        float DensityScale = 1.0f;
+    } mAtm;
+
+    void UpdateAtmosphereCB();
+// =================================================================================================
 };
 
 
