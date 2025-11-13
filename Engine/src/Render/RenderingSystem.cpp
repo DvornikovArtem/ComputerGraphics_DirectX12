@@ -1934,42 +1934,35 @@ ComPtr<ID3DBlob> RenderingSystem::DXCCompileShader(const std::wstring& filename,
 	std::vector<LPCWSTR> arguments;
 	std::vector<std::wstring> storage;
 
-	// Точка входа
 	arguments.push_back(L"-E");
 	std::wstring entrypointW(entrypoint.begin(), entrypoint.end());
 	arguments.push_back(entrypointW.c_str());
 
-	// Целевая модель шейдера
 	arguments.push_back(L"-T");
 	arguments.push_back(target.c_str());
 
-	// Добавляем пути для включения файлов
 	arguments.push_back(L"-I");
-	arguments.push_back(SHADERS_ENGINE_DIR); // Основная папка с шейдерами
-
-	arguments.push_back(L"-I");
-	arguments.push_back(L"./"); // Текущая директория
+	arguments.push_back(SHADERS_ENGINE_DIR);
 
 	arguments.push_back(L"-I");
-	arguments.push_back(L"../"); // Родительская директория
+	arguments.push_back(L"./");
 
-#if defined(DEBUG) || defined(_DEBUG)
-	arguments.push_back(L"-Zi");
-	arguments.push_back(L"-Qembed_debug");
-	arguments.push_back(L"-Od"); // Отключение оптимизаций в отладке
-#else
-	arguments.push_back(L"-O3"); // Максимальная оптимизация в релизе
-#endif
+	arguments.push_back(L"-I");
+	arguments.push_back(L"../");
 
-	// Добавляем определения
+	//in case we need no optimization
+	//arguments.push_back(L"-Zi");
+	//arguments.push_back(L"-Qembed_debug");
+	//arguments.push_back(L"-Od");
+
+	arguments.push_back(L"-O3"); // max optimization otherwise
+
 	if (defines)
 	{
 		const D3D_SHADER_MACRO* define = defines;
 		while (define->Name && define->Definition)
 		{
-			// Простое создание define строки ASCII
 			std::string defineStr = std::string(define->Name) + "=" + define->Definition;
-
 			arguments.push_back(L"-D");
 			std::wstring defineWide(defineStr.begin(), defineStr.end());
 			storage.push_back(defineWide);
@@ -1993,16 +1986,14 @@ ComPtr<ID3DBlob> RenderingSystem::DXCCompileShader(const std::wstring& filename,
 		IID_PPV_ARGS(&results));
 
 	ComPtr<IDxcBlobUtf8> errors;
-	if (SUCCEEDED(hr)) {
-		results->GetOutput(DXC_OUT_ERRORS, IID_PPV_ARGS(&errors), nullptr);
-	}
+	if (SUCCEEDED(hr)) results->GetOutput(DXC_OUT_ERRORS, IID_PPV_ARGS(&errors), nullptr);
 
 	if (errors != nullptr && errors->GetStringLength() > 0)
 	{
+		//print a bunch of info if shader doesnt want to compile
 		OutputDebugStringA("Shader compilation warnings/errors:\n");
 		OutputDebugStringA(errors->GetStringPointer());
 
-		// Если есть ошибки, выводим дополнительную информацию
 		if (errors->GetStringLength() > 0) {
 			OutputDebugStringA("\n=== Shader Compilation Details ===\n");
 			OutputDebugStringA(("Shader: " + std::string(filename.begin(), filename.end()) + "\n").c_str());
@@ -2023,10 +2014,10 @@ ComPtr<ID3DBlob> RenderingSystem::DXCCompileShader(const std::wstring& filename,
 		ThrowIfFailed(compileStatus);
 	}
 
+	//IDxcBlob to ID3DBlob conversion because im lazy to convert everything to IDxcBlob
 	ComPtr<IDxcBlob> dxcBlob;
 	ThrowIfFailed(results->GetOutput(DXC_OUT_OBJECT, IID_PPV_ARGS(&dxcBlob), &outputName));
 
-	// Создаем ID3DBlob и копируем данные
 	ComPtr<ID3DBlob> d3dBlob;
 	D3DCreateBlob(dxcBlob->GetBufferSize(), &d3dBlob);
 	memcpy(d3dBlob->GetBufferPointer(), dxcBlob->GetBufferPointer(), dxcBlob->GetBufferSize());
