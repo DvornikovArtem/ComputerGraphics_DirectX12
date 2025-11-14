@@ -116,6 +116,7 @@ public:
     void TAAResolve();
     void BuildBLASForGeometries();
     void BuildTLAS();
+    void RefitTLAS();
     void InitializeDXC();
     ComPtr<ID3DBlob> DXCCompileShader(const std::wstring& filename, const D3D_SHADER_MACRO* defines, const std::string& entrypoint, const std::wstring& target);
 
@@ -399,6 +400,8 @@ protected:
     Microsoft::WRL::ComPtr<ID3D12Resource> mTLASResource;
     Microsoft::WRL::ComPtr<ID3D12Resource> mTLASScratchResource;
     int mTLASSRVHeapIndex;
+    Microsoft::WRL::ComPtr<ID3D12Resource> mInstanceDescsResource;
+    Microsoft::WRL::ComPtr<ID3D12Resource> mInstanceDescsUploadResource;
 // =================================================================================================
 
 // For DXC Shader compilation ======================================================================

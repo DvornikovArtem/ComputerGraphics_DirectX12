@@ -196,8 +196,11 @@ void RenderingSystem::FinishInitialize()
 
 
 	BuildFrameResources();
-	BuildBLASForGeometries();
-	BuildTLAS();
+	if (RTSupport)
+	{
+		BuildBLASForGeometries();
+		BuildTLAS();
+	}
 
 	mGbufferImguiSlots.resize(mGBuffer->NumBuffers);
 	for (int i = 0; i < mGBuffer->NumBuffers; ++i) {
@@ -1828,16 +1831,13 @@ void RenderingSystem::BuildTLAS()
 
 	UINT instanceDescsSize = InstanceCount * sizeof(D3D12_RAYTRACING_INSTANCE_DESC);
 
-	Microsoft::WRL::ComPtr<ID3D12Resource> InstanceDescsResource;
-	Microsoft::WRL::ComPtr<ID3D12Resource> InstanceDescsUploadResource;
-
 	ThrowIfFailed(md3dDevice->CreateCommittedResource(
 		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
 		D3D12_HEAP_FLAG_NONE,
 		&CD3DX12_RESOURCE_DESC::Buffer(instanceDescsSize),
 		D3D12_RESOURCE_STATE_GENERIC_READ,
 		nullptr,
-		IID_PPV_ARGS(InstanceDescsUploadResource.GetAddressOf())));
+		IID_PPV_ARGS(mInstanceDescsUploadResource.GetAddressOf())));
 
 	ThrowIfFailed(md3dDevice->CreateCommittedResource(
 		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
@@ -1845,31 +1845,32 @@ void RenderingSystem::BuildTLAS()
 		&CD3DX12_RESOURCE_DESC::Buffer(instanceDescsSize),
 		D3D12_RESOURCE_STATE_COMMON,
 		nullptr,
-		IID_PPV_ARGS(InstanceDescsResource.GetAddressOf())));
+		IID_PPV_ARGS(mInstanceDescsResource.GetAddressOf())));
 
 	void* pData;
-	ThrowIfFailed(InstanceDescsUploadResource->Map(0, nullptr, &pData));
+	ThrowIfFailed(mInstanceDescsUploadResource->Map(0, nullptr, &pData));
 	memcpy(pData, instanceDescs.data(), instanceDescsSize);
-	InstanceDescsUploadResource->Unmap(0, nullptr);
+	mInstanceDescsUploadResource->Unmap(0, nullptr);
 
 	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
-		InstanceDescsResource.Get(),
+		mInstanceDescsResource.Get(),
 		D3D12_RESOURCE_STATE_COMMON,
 		D3D12_RESOURCE_STATE_COPY_DEST));
 
-	mCommandList->CopyResource(InstanceDescsResource.Get(), InstanceDescsUploadResource.Get());
+	mCommandList->CopyResource(mInstanceDescsResource.Get(), mInstanceDescsUploadResource.Get());
 
 	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
-		InstanceDescsResource.Get(),
+		mInstanceDescsResource.Get(),
 		D3D12_RESOURCE_STATE_COPY_DEST,
 		D3D12_RESOURCE_STATE_GENERIC_READ));
 
 	D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS inputs = {};
 	inputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
 	inputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
-	inputs.InstanceDescs = InstanceDescsResource->GetGPUVirtualAddress();
+	inputs.InstanceDescs = mInstanceDescsResource->GetGPUVirtualAddress();
 	inputs.NumDescs = InstanceCount;
-	inputs.Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE;
+	inputs.Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE |
+		           D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE;
 
 	D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO prebuildInfo;
 	md3dDevice->GetRaytracingAccelerationStructurePrebuildInfo(&inputs, &prebuildInfo);
@@ -1933,6 +1934,84 @@ void RenderingSystem::BuildTLAS()
 		mCbvSrvUavDescriptorSize);
 
 	md3dDevice->CreateShaderResourceView(nullptr, &srvDesc, srvHandle);
+}
+
+void RenderingSystem::RefitTLAS()
+{
+	//Might require FlushCommandQueue() call, but it eats fps. A lot.
+	ThrowIfFailed(mCommandList->Reset(mDirectCmdListAlloc.Get(), nullptr));
+
+	std::vector<std::pair<Microsoft::WRL::ComPtr<ID3D12Resource>, DirectX::XMMATRIX>> instances;
+
+	for (RenderItem* ri : mAllRitems) {
+		if (ri->Geo && ri->Geo->BLASResource) {
+			DirectX::XMMATRIX worldMatrix = DirectX::XMLoadFloat4x4(&ri->World);
+			instances.emplace_back(ri->Geo->BLASResource, worldMatrix);
+		}
+	}
+
+	UINT InstanceCount = static_cast<UINT>(instances.size());
+
+	if (InstanceCount == 0) {
+		OutputDebugStringA("RebuildTLAS: No instances found\n");
+		return;
+	}
+
+	std::vector<D3D12_RAYTRACING_INSTANCE_DESC> instanceDescs(InstanceCount);
+
+	for (UINT i = 0; i < InstanceCount; ++i) {
+		D3D12_RAYTRACING_INSTANCE_DESC& desc = instanceDescs[i];
+		desc.InstanceID = i;
+		desc.InstanceContributionToHitGroupIndex = 0;
+		desc.Flags = D3D12_RAYTRACING_INSTANCE_FLAG_NONE;
+		desc.AccelerationStructure = instances[i].first->GetGPUVirtualAddress();
+
+		DirectX::XMMATRIX worldMatrix = instances[i].second;
+		DirectX::XMFLOAT3X4 transform3x4;
+		DirectX::XMStoreFloat3x4(&transform3x4, worldMatrix);
+		memcpy(desc.Transform, &transform3x4, sizeof(desc.Transform));
+
+		desc.InstanceMask = 0xFF;
+	}
+
+	UINT instanceDescsSize = InstanceCount * sizeof(D3D12_RAYTRACING_INSTANCE_DESC);
+
+	void* pData;
+	ThrowIfFailed(mInstanceDescsUploadResource->Map(0, nullptr, &pData));
+	memcpy(pData, instanceDescs.data(), instanceDescsSize);
+	mInstanceDescsUploadResource->Unmap(0, nullptr);
+
+	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+		mInstanceDescsResource.Get(),
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		D3D12_RESOURCE_STATE_COPY_DEST));
+
+	mCommandList->CopyResource(mInstanceDescsResource.Get(), mInstanceDescsUploadResource.Get());
+
+	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+		mInstanceDescsResource.Get(),
+		D3D12_RESOURCE_STATE_COPY_DEST,
+		D3D12_RESOURCE_STATE_GENERIC_READ));
+
+	D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC buildDesc = {};
+	buildDesc.Inputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
+	buildDesc.Inputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
+	buildDesc.Inputs.InstanceDescs = mInstanceDescsResource->GetGPUVirtualAddress();
+	buildDesc.Inputs.NumDescs = InstanceCount;
+	buildDesc.Inputs.Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PERFORM_UPDATE;
+
+	buildDesc.ScratchAccelerationStructureData = mTLASScratchResource->GetGPUVirtualAddress();
+	buildDesc.DestAccelerationStructureData = mTLASResource->GetGPUVirtualAddress();
+	buildDesc.SourceAccelerationStructureData = mTLASResource->GetGPUVirtualAddress();
+
+	mCommandList->BuildRaytracingAccelerationStructure(&buildDesc, 0, nullptr);
+
+	auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(mTLASResource.Get());
+	mCommandList->ResourceBarrier(1, &barrier);
+
+	ThrowIfFailed(mCommandList->Close());
+	ID3D12CommandList* cmdsLists[] = { mCommandList.Get() };
+	mCommandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
 }
 
 void RenderingSystem::InitializeDXC()
@@ -2254,7 +2333,7 @@ void RenderingSystem::BuildRootSignatures()
 	CD3DX12_DESCRIPTOR_RANGE texTable9;
 	texTable9.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 8);
 
-	CD3DX12_ROOT_PARAMETER lightPassSlotRootParameter[11];
+	CD3DX12_ROOT_PARAMETER lightPassSlotRootParameter[10];
 
 	lightPassSlotRootParameter[0].InitAsConstantBufferView(0); //MainPassCB
 	lightPassSlotRootParameter[1].InitAsConstantBufferView(1); //LightCB
@@ -2269,8 +2348,6 @@ void RenderingSystem::BuildRootSignatures()
 	lightPassSlotRootParameter[7].InitAsDescriptorTable(1, &texTable6, D3D12_SHADER_VISIBILITY_ALL); //IBL SkyMaps
 	lightPassSlotRootParameter[8].InitAsDescriptorTable(1, &texTable7, D3D12_SHADER_VISIBILITY_ALL);
 	lightPassSlotRootParameter[9].InitAsDescriptorTable(1, &texTable8, D3D12_SHADER_VISIBILITY_ALL);
-
-	lightPassSlotRootParameter[10].InitAsShaderResourceView(8, 0, D3D12_SHADER_VISIBILITY_ALL); //TLAS
 
 	//ShadowMap ComparisonSampler
 	const CD3DX12_STATIC_SAMPLER_DESC StaticSamplers[2] =
@@ -2294,7 +2371,7 @@ void RenderingSystem::BuildRootSignatures()
 		D3D12_TEXTURE_ADDRESS_MODE_CLAMP)
 	};
 
-	CD3DX12_ROOT_SIGNATURE_DESC lightPassRootSigDesc(11, lightPassSlotRootParameter,
+	CD3DX12_ROOT_SIGNATURE_DESC lightPassRootSigDesc(10, lightPassSlotRootParameter,
 		2, StaticSamplers,
 		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
@@ -2395,6 +2472,7 @@ void RenderingSystem::Update(std::vector<DrawableObject*>& mAllObjectsToUpdate, 
 	}
 
 	if (mTAAEnabled) CalculateJitter();
+	if (RTSupport && mAllObjectsToUpdate.size() != 0) RefitTLAS();
 	UpdateCamera(*gt);
 	UpdateRenderItems(mAllObjectsToUpdate);
 	UpdateObjectCBs(*gt);
@@ -3311,7 +3389,6 @@ void RenderingSystem::GBufferLightPass()
 	mCommandList->SetGraphicsRootDescriptorTable(7, GetGpuSrv(mTextures["SkyIrradiance"]->srvHeapIndex));
 	mCommandList->SetGraphicsRootDescriptorTable(8, GetGpuSrv(mTextures["SkyPref"]->srvHeapIndex));
 	mCommandList->SetGraphicsRootDescriptorTable(9, GetGpuSrv(mTextures["SkyBRDF"]->srvHeapIndex));
-	mCommandList->SetGraphicsRootShaderResourceView(10, mTLASResource->GetGPUVirtualAddress());
 
 	mCommandList->SetGraphicsRootConstantBufferView(0, passCB->GetGPUVirtualAddress());
 	mCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
