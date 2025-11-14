@@ -158,13 +158,13 @@
       <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;SOLUTION_DIR=LR"($(SolutionDir))";PROJECT_DIR=LR"($(ProjectDir))";SHADERS_APPLICATION_DIR=LR"($(ProjectDir)Shaders)";SHADERS_ENGINE_DIR=LR"($(ProjectDir)..\Engine\Shaders)";%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>Default</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>$(SolutionDir)..\Engine\include;$(SolutionDir)..\Engine\extern\assimp\include;$(SolutionDir)src;$(SolutionDir)..\Engine\extern\DirectXTex\include;$(SolutionDir)..\Engine\Extern\FideltyFX\sdk\include;$(SolutionDir)..\Engine\Extern\FideltyFX\ffx-api\include;$(SolutionDir)..\Engine\extern\imgui;$(SolutionDir)..\Engine\extern\imgui\backends;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)..\Engine\include;$(SolutionDir)..\Engine\extern\assimp\include;$(SolutionDir)src;$(SolutionDir)..\Engine\extern\DirectXTex\include;$(SolutionDir)..\Engine\Extern\FideltyFX\sdk\include;$(SolutionDir)..\Engine\Extern\FideltyFX\ffx-api\include;$(SolutionDir)..\Engine\extern\imgui;$(SolutionDir)..\Engine\extern\imgui\backends;$(SolutionDir)..\Engine\Extern\Dxil\inc;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>Engine.lib;assimp-vc143-mtd.lib;DirectXTex.lib;amd_fidelityfx_dx12.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>$(ProjectDir)..\Engine\extern\assimp\lib\$(Configuration);$(ProjectDir)$(Platform)\$(Configuration);$(ProjectDir)..\Engine\extern\DirectXTex\lib\$(Configuration);$(ProjectDir)..\Engine\Extern\FideltyFX\ffx-api\bin;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>Engine.lib;assimp-vc143-mtd.lib;DirectXTex.lib;amd_fidelityfx_dx12.lib;dxcompiler.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(ProjectDir)..\Engine\extern\assimp\lib\$(Configuration);$(ProjectDir)$(Platform)\$(Configuration);$(ProjectDir)..\Engine\extern\DirectXTex\lib\$(Configuration);$(ProjectDir)..\Engine\Extern\FideltyFX\ffx-api\bin;E:\ComputerGraphics_DirectX12\Engine\Extern\Dxil\lib\$(Configuration);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
     <FxCompile>
       <ShaderModel>4.0</ShaderModel>

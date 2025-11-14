@@ -291,6 +291,7 @@ float4 PS(VertexOut pin) : SV_Target
             float3 diffuse = Diffuse.rgb * NdotL;
             float3 specular = MatFresnelR0 * specTerm;
 
+
             Lighting = CalcShadowFactor(WorldPosition, Normal, faceIndex) * (diffuse + specular) * radiance;
         }
         else

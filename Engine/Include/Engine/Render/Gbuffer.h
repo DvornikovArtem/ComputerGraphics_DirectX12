@@ -59,12 +59,12 @@ public:
     //All resources start as Common -> All resources transitted to RTV ->
     // -> resources are transited to SRVs as needed(all resources need to to be transited)  ->
     // -> All resources are transited from SRV to Common
-    void TransitCommonToRTV(ComPtr<ID3D12GraphicsCommandList>& c);
-    void TransitToLightsRenderingState(ComPtr<ID3D12GraphicsCommandList>& c);
-    void TransitToTonemappingState(ComPtr<ID3D12GraphicsCommandList>& c);
-    void TransitSRVToCommon(ComPtr<ID3D12GraphicsCommandList>& c);
+    void TransitCommonToRTV(ComPtr<ID3D12GraphicsCommandList4>& c);
+    void TransitToLightsRenderingState(ComPtr<ID3D12GraphicsCommandList4>& c);
+    void TransitToTonemappingState(ComPtr<ID3D12GraphicsCommandList4>& c);
+    void TransitSRVToCommon(ComPtr<ID3D12GraphicsCommandList4>& c);
 
-    void Clear(ComPtr<ID3D12GraphicsCommandList>& cmdList);
+    void Clear(ComPtr<ID3D12GraphicsCommandList4>& cmdList);
 
     void Resize(int width, int height);
 

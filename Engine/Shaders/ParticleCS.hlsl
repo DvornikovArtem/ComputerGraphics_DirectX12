@@ -36,15 +36,25 @@ void EmitCS(uint3 dispatchThreadID : SV_DispatchThreadID)
     
     uint seed = deadIndex + (uint) (cbMainPass.DeltaTime * 1000.0f);
 
+    float rand1 = rand_float(seed++);
+    float rand2 = rand_float(seed++);
+    float rand3 = rand_float(seed++);
+    float rand4 = rand_float(seed++);
+    
     ParticlePool[deadIndex].Pos = cbParticle.EmitterPos;
-    ParticlePool[deadIndex].LifeTime = 2.0f + rand_float(seed++) * 2.0f;
+    ParticlePool[deadIndex].LifeTime = 2.0f + rand1 * 2.0f;
     ParticlePool[deadIndex].Velocity = float3(
-        rand_float(seed++) * 2.0f - 1.0f, // x [-1, 1]
-        1.0f + rand_float(seed++) * 3.0f, // y [2, 5]
-        rand_float(seed++) * 2.0f - 1.0f // z [-1, 1]
+        rand2 * 2.0f - 1.0f, // x [-1, 1]
+        1.0f + rand3 * 3.0f, // y [2, 5]
+        rand4 * 2.0f - 1.0f // z [-1, 1]
     ) * 2.0f;
     ParticlePool[deadIndex].Size = cbParticle.ParticleSize;
-    ParticlePool[deadIndex].Color = float4(rand_float(seed*2), rand_float(seed), rand_float(seed), 1.0f);
+    
+    float rand5 = rand_float(seed++);
+    float rand6 = rand_float(seed++);
+    float rand7 = rand_float(seed++);
+    
+    ParticlePool[deadIndex].Color = float4(rand5, rand6, rand7, 1.0f);
     
     
     {
@@ -363,24 +373,39 @@ void EmitSmokeCS(uint3 dispatchThreadID : SV_DispatchThreadID)
     
     {
         uint s = seed;
-        float3 rnd = float3(
-            rand_float(s++),
-            rand_float(s++),
-            rand_float(s++)
-        );
+        float rand1 = rand_float(s);
+        s++;
+        float rand2 = rand_float(s);
+        s++;
+        float rand3 = rand_float(s);
+        s++;
+        
+        float3 rnd = float3(rand1, rand2, rand3);
         float3 offset = (rnd * 2.0f - 1.0f) * float3(0.1f, 0.4f, 0.2f);
         ParticlePool[slot].Pos = cbParticle.EmitterPos + offset;
     }
     
     //gParticlePool[slot].Pos = gEmitterPos + offset;
     
+    float rand4 = hash11(seed);
+    seed++;
+    float rand5 = hash11(seed);
+    seed++;
+    float rand6 = hash11(seed);
+    seed++;
+    float rand7 = hash11(seed);
+    seed++;
+    float rand8 = hash11(seed);
+    seed++;
+    
     ParticlePool[slot].Velocity = float3(
-        (hash11(seed++) - 0.5) * 0.5,
-         2.0 + hash11(seed++) * 0.4,
-        (hash11(seed++) - 0.5) * 0.5);
+        (rand4 - 0.5) * 0.5,
+        2.0 + rand5 * 0.4,
+        (rand6 - 0.5) * 0.5
+    );
 
-    ParticlePool[slot].LifeTime = 5.0 + hash11(seed++) * 1.5;
-    ParticlePool[slot].Size = cbParticle.ParticleSize * (0.6 + hash11(seed++) * 0.4);
+    ParticlePool[slot].LifeTime = 5.0 + rand7 * 1.5;
+    ParticlePool[slot].Size = cbParticle.ParticleSize * (0.6 + rand8 * 0.4);
     ParticlePool[slot].Color = float4(0.06, 0.06, 0.06, 0.85);
 }
 

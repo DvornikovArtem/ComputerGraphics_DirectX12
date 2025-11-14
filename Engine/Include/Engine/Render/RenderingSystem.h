@@ -46,6 +46,8 @@
 #include <ffx_api/ffx_upscale.h>
 #include <ffx_api/dx12/ffx_api_dx12.h>
 
+#include <dxil/dxcapi.h>
+#include <dxil/d3d12shader.h>
 
 #pragma comment(lib,"d3dcompiler.lib")
 #pragma comment(lib, "D3D12.lib")
@@ -112,6 +114,11 @@ public:
     void SaveFrameAsPrevious();
     void CalculateJitter();
     void TAAResolve();
+    void BuildBLASForGeometries();
+    void BuildTLAS();
+    void RefitTLAS();
+    void InitializeDXC();
+    ComPtr<ID3DBlob> DXCCompileShader(const std::wstring& filename, const D3D_SHADER_MACRO* defines, const std::string& entrypoint, const std::wstring& target);
 
     void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems, std::string PSOName);
 
@@ -155,7 +162,7 @@ public:
 
     float AspectRatio() const { return static_cast<float>(mClientWidth) / mClientHeight; }
 
-    Microsoft::WRL::ComPtr<ID3D12Device> getd3dDevice() { return md3dDevice; };
+    Microsoft::WRL::ComPtr<ID3D12Device5> getd3dDevice() { return md3dDevice; };
 
     void setScreenParams(int NewWidth, int NewHeight) { mClientWidth = NewWidth; mClientHeight = NewHeight; }
 
@@ -192,7 +199,7 @@ protected:
 
     Microsoft::WRL::ComPtr<IDXGIFactory4> mdxgiFactory;
     Microsoft::WRL::ComPtr<IDXGISwapChain> mSwapChain;
-    Microsoft::WRL::ComPtr<ID3D12Device> md3dDevice;
+    Microsoft::WRL::ComPtr<ID3D12Device5> md3dDevice;
 
     D3D12_CPU_DESCRIPTOR_HANDLE mDepthBufferSRV;
 
@@ -201,7 +208,7 @@ protected:
 
     Microsoft::WRL::ComPtr<ID3D12CommandQueue> mCommandQueue;
     Microsoft::WRL::ComPtr<ID3D12CommandAllocator> mDirectCmdListAlloc;
-    Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> mCommandList;
+    Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList4> mCommandList;
 
     static const int SwapChainBufferCount = 2;
     int mCurrBackBuffer = 0;
@@ -222,8 +229,8 @@ protected:
     D3D_DRIVER_TYPE md3dDriverType = D3D_DRIVER_TYPE_HARDWARE;
     DXGI_FORMAT mBackBufferFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
     DXGI_FORMAT mDepthStencilFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
-    int mClientWidth = 800;
-    int mClientHeight = 600;
+    int mClientWidth;
+    int mClientHeight;
 
     std::vector<std::unique_ptr<FrameResource>> mFrameResources;
     FrameResource* mCurrFrameResource = nullptr;
@@ -386,6 +393,21 @@ protected:
     float mJitterX;
     float mJitterY;
     int mJitterIndex = 0;
+// =================================================================================================
+
+// For RT ==========================================================================================
+    bool RTSupport = false;
+    Microsoft::WRL::ComPtr<ID3D12Resource> mTLASResource;
+    Microsoft::WRL::ComPtr<ID3D12Resource> mTLASScratchResource;
+    int mTLASSRVHeapIndex;
+    Microsoft::WRL::ComPtr<ID3D12Resource> mInstanceDescsResource;
+    Microsoft::WRL::ComPtr<ID3D12Resource> mInstanceDescsUploadResource;
+// =================================================================================================
+
+// For DXC Shader compilation ======================================================================
+	ComPtr<IDxcCompiler3> mDxcCompiler;
+	ComPtr<IDxcUtils> mDxcUtils;
+	ComPtr<IDxcIncludeHandler> mDxcIncludeHandler;
 // =================================================================================================
 };
 

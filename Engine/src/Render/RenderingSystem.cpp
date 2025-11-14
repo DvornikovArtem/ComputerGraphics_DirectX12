@@ -76,6 +76,15 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 	OutputDebugStringW(adapterDesc.Description);
 	OutputDebugStringA("\n\n");
 
+	//check RT support
+	D3D12_FEATURE_DATA_D3D12_OPTIONS5 options5 = {};
+	HRESULT hr = md3dDevice->CheckFeatureSupport(
+		D3D12_FEATURE_D3D12_OPTIONS5,
+		&options5,
+		sizeof(options5));
+
+	if (SUCCEEDED(hr) && options5.RaytracingTier != D3D12_RAYTRACING_TIER_NOT_SUPPORTED) RTSupport = true;
+	else RTSupport = false;
 
 	ThrowIfFailed(md3dDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&mFence)));
 
@@ -90,6 +99,7 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 	CreateCommandObjects();
 	CreateSwapChain();
 	BuildFSRContext();
+	InitializeDXC();
 
 	mGBuffer = std::make_unique<Gbuffer>(mClientWidth, mClientHeight, md3dDevice);
 
@@ -186,6 +196,11 @@ void RenderingSystem::FinishInitialize()
 
 
 	BuildFrameResources();
+	if (RTSupport)
+	{
+		BuildBLASForGeometries();
+		BuildTLAS();
+	}
 
 	mGbufferImguiSlots.resize(mGBuffer->NumBuffers);
 	for (int i = 0; i < mGBuffer->NumBuffers; ++i) {
@@ -737,6 +752,7 @@ void RenderingSystem::RegisterScenePanels() {
 				ImGui::Text("Render Resolution: %dx%d", mFSREnabled ? mRecommendedRenderResolutionX : mClientWidth, mFSREnabled ? mRecommendedRenderResolutionY : mClientHeight);
 				ImGui::Text("Viewport Resolution: %dx%d", mClientWidth, mClientHeight);
 				ImGui::Text("UI Clipped Resolution: %dx%d", (int)(mSceneImgRectMax.x - mSceneImgRectMin.x), (int)(mSceneImgRectMax.y - mSceneImgRectMin.y));
+				ImGui::Text("RayTracing Support: %s", RTSupport ? "ACTIVE" : "INACTIVE");
 			}
 			ImGui::End();
 			};
@@ -1765,6 +1781,345 @@ void RenderingSystem::TAAResolve()
 	mCommandList->ResourceBarrier(3, antibarriers);
 }
 
+void RenderingSystem::BuildBLASForGeometries()
+{
+	if (!RTSupport) return;
+
+	ThrowIfFailed(mCommandList->Reset(mDirectCmdListAlloc.Get(), nullptr));
+
+	for (auto& geoPair : mGeometries) 
+	{
+		geoPair.second->BuildBLAS(md3dDevice.Get(), mCommandList, true);
+	}
+
+}
+
+void RenderingSystem::BuildTLAS()
+{
+	std::vector<std::pair<Microsoft::WRL::ComPtr<ID3D12Resource>, DirectX::XMMATRIX>> instances;
+
+	for (RenderItem* ri : mAllRitems) {
+		if (ri->Geo && ri->Geo->BLASResource) {
+			DirectX::XMMATRIX worldMatrix = DirectX::XMLoadFloat4x4(&ri->World);
+			instances.emplace_back(ri->Geo->BLASResource, worldMatrix);
+		}
+	}
+
+	UINT InstanceCount = static_cast<UINT>(instances.size());
+
+	if (InstanceCount == 0) {
+		OutputDebugStringA("BuildTLAS: No instances found\n");
+		return;
+	}
+
+	std::vector<D3D12_RAYTRACING_INSTANCE_DESC> instanceDescs(InstanceCount);
+
+	for (UINT i = 0; i < InstanceCount; ++i) {
+		D3D12_RAYTRACING_INSTANCE_DESC& desc = instanceDescs[i];
+		desc.InstanceID = i;
+		desc.InstanceContributionToHitGroupIndex = 0;
+		desc.Flags = D3D12_RAYTRACING_INSTANCE_FLAG_NONE;
+		desc.AccelerationStructure = instances[i].first->GetGPUVirtualAddress();
+
+		DirectX::XMMATRIX worldMatrix = instances[i].second;
+		DirectX::XMFLOAT3X4 transform3x4;
+		DirectX::XMStoreFloat3x4(&transform3x4, worldMatrix);
+		memcpy(desc.Transform, &transform3x4, sizeof(desc.Transform));
+
+		desc.InstanceMask = 0xFF;
+	}
+
+	UINT instanceDescsSize = InstanceCount * sizeof(D3D12_RAYTRACING_INSTANCE_DESC);
+
+	ThrowIfFailed(md3dDevice->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Buffer(instanceDescsSize),
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(mInstanceDescsUploadResource.GetAddressOf())));
+
+	ThrowIfFailed(md3dDevice->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Buffer(instanceDescsSize),
+		D3D12_RESOURCE_STATE_COMMON,
+		nullptr,
+		IID_PPV_ARGS(mInstanceDescsResource.GetAddressOf())));
+
+	void* pData;
+	ThrowIfFailed(mInstanceDescsUploadResource->Map(0, nullptr, &pData));
+	memcpy(pData, instanceDescs.data(), instanceDescsSize);
+	mInstanceDescsUploadResource->Unmap(0, nullptr);
+
+	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+		mInstanceDescsResource.Get(),
+		D3D12_RESOURCE_STATE_COMMON,
+		D3D12_RESOURCE_STATE_COPY_DEST));
+
+	mCommandList->CopyResource(mInstanceDescsResource.Get(), mInstanceDescsUploadResource.Get());
+
+	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+		mInstanceDescsResource.Get(),
+		D3D12_RESOURCE_STATE_COPY_DEST,
+		D3D12_RESOURCE_STATE_GENERIC_READ));
+
+	D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS inputs = {};
+	inputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
+	inputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
+	inputs.InstanceDescs = mInstanceDescsResource->GetGPUVirtualAddress();
+	inputs.NumDescs = InstanceCount;
+	inputs.Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE |
+		           D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE;
+
+	D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO prebuildInfo;
+	md3dDevice->GetRaytracingAccelerationStructurePrebuildInfo(&inputs, &prebuildInfo);
+
+	auto tlasDesc = CD3DX12_RESOURCE_DESC::Buffer(
+		prebuildInfo.ResultDataMaxSizeInBytes,
+		D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
+	);
+
+	ThrowIfFailed(md3dDevice->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+		D3D12_HEAP_FLAG_NONE,
+		&tlasDesc,
+		D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE,
+		nullptr,
+		IID_PPV_ARGS(&mTLASResource)
+	));
+	mTLASResource->SetName(L"TLAS_Resource");
+
+	auto scratchDesc = CD3DX12_RESOURCE_DESC::Buffer(
+		prebuildInfo.ScratchDataSizeInBytes,
+		D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
+	);
+
+	ThrowIfFailed(md3dDevice->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+		D3D12_HEAP_FLAG_NONE,
+		&scratchDesc,
+		D3D12_RESOURCE_STATE_COMMON,
+		nullptr,
+		IID_PPV_ARGS(&mTLASScratchResource)
+	));
+	mTLASScratchResource->SetName(L"TLAS_Scratch");
+
+	D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC buildDesc = {};
+	buildDesc.Inputs = inputs;
+	buildDesc.ScratchAccelerationStructureData = mTLASScratchResource->GetGPUVirtualAddress();
+	buildDesc.DestAccelerationStructureData = mTLASResource->GetGPUVirtualAddress();
+	buildDesc.SourceAccelerationStructureData = 0;
+
+	mCommandList->BuildRaytracingAccelerationStructure(&buildDesc, 0, nullptr);
+
+	auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(mTLASResource.Get());
+	mCommandList->ResourceBarrier(1, &barrier);
+
+	ThrowIfFailed(mCommandList->Close());
+	ID3D12CommandList* cmdsLists[] = { mCommandList.Get() };
+	mCommandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
+	FlushCommandQueue();
+
+
+	//building TLAS SRV
+	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_RAYTRACING_ACCELERATION_STRUCTURE;
+	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	srvDesc.RaytracingAccelerationStructure.Location = mTLASResource->GetGPUVirtualAddress();
+
+	CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle(
+		mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
+		mTLASSRVHeapIndex,
+		mCbvSrvUavDescriptorSize);
+
+	md3dDevice->CreateShaderResourceView(nullptr, &srvDesc, srvHandle);
+}
+
+void RenderingSystem::RefitTLAS()
+{
+	//Might require FlushCommandQueue() call, but it eats fps. A lot.
+	ThrowIfFailed(mCommandList->Reset(mDirectCmdListAlloc.Get(), nullptr));
+
+	std::vector<std::pair<Microsoft::WRL::ComPtr<ID3D12Resource>, DirectX::XMMATRIX>> instances;
+
+	for (RenderItem* ri : mAllRitems) {
+		if (ri->Geo && ri->Geo->BLASResource) {
+			DirectX::XMMATRIX worldMatrix = DirectX::XMLoadFloat4x4(&ri->World);
+			instances.emplace_back(ri->Geo->BLASResource, worldMatrix);
+		}
+	}
+
+	UINT InstanceCount = static_cast<UINT>(instances.size());
+
+	if (InstanceCount == 0) {
+		OutputDebugStringA("RebuildTLAS: No instances found\n");
+		return;
+	}
+
+	std::vector<D3D12_RAYTRACING_INSTANCE_DESC> instanceDescs(InstanceCount);
+
+	for (UINT i = 0; i < InstanceCount; ++i) {
+		D3D12_RAYTRACING_INSTANCE_DESC& desc = instanceDescs[i];
+		desc.InstanceID = i;
+		desc.InstanceContributionToHitGroupIndex = 0;
+		desc.Flags = D3D12_RAYTRACING_INSTANCE_FLAG_NONE;
+		desc.AccelerationStructure = instances[i].first->GetGPUVirtualAddress();
+
+		DirectX::XMMATRIX worldMatrix = instances[i].second;
+		DirectX::XMFLOAT3X4 transform3x4;
+		DirectX::XMStoreFloat3x4(&transform3x4, worldMatrix);
+		memcpy(desc.Transform, &transform3x4, sizeof(desc.Transform));
+
+		desc.InstanceMask = 0xFF;
+	}
+
+	UINT instanceDescsSize = InstanceCount * sizeof(D3D12_RAYTRACING_INSTANCE_DESC);
+
+	void* pData;
+	ThrowIfFailed(mInstanceDescsUploadResource->Map(0, nullptr, &pData));
+	memcpy(pData, instanceDescs.data(), instanceDescsSize);
+	mInstanceDescsUploadResource->Unmap(0, nullptr);
+
+	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+		mInstanceDescsResource.Get(),
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		D3D12_RESOURCE_STATE_COPY_DEST));
+
+	mCommandList->CopyResource(mInstanceDescsResource.Get(), mInstanceDescsUploadResource.Get());
+
+	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+		mInstanceDescsResource.Get(),
+		D3D12_RESOURCE_STATE_COPY_DEST,
+		D3D12_RESOURCE_STATE_GENERIC_READ));
+
+	D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC buildDesc = {};
+	buildDesc.Inputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
+	buildDesc.Inputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
+	buildDesc.Inputs.InstanceDescs = mInstanceDescsResource->GetGPUVirtualAddress();
+	buildDesc.Inputs.NumDescs = InstanceCount;
+	buildDesc.Inputs.Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PERFORM_UPDATE;
+
+	buildDesc.ScratchAccelerationStructureData = mTLASScratchResource->GetGPUVirtualAddress();
+	buildDesc.DestAccelerationStructureData = mTLASResource->GetGPUVirtualAddress();
+	buildDesc.SourceAccelerationStructureData = mTLASResource->GetGPUVirtualAddress();
+
+	mCommandList->BuildRaytracingAccelerationStructure(&buildDesc, 0, nullptr);
+
+	auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(mTLASResource.Get());
+	mCommandList->ResourceBarrier(1, &barrier);
+
+	ThrowIfFailed(mCommandList->Close());
+	ID3D12CommandList* cmdsLists[] = { mCommandList.Get() };
+	mCommandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
+}
+
+void RenderingSystem::InitializeDXC()
+{
+	ThrowIfFailed(DxcCreateInstance(CLSID_DxcUtils, IID_PPV_ARGS(&mDxcUtils)));
+	ThrowIfFailed(DxcCreateInstance(CLSID_DxcCompiler, IID_PPV_ARGS(&mDxcCompiler)));
+	ThrowIfFailed(mDxcUtils->CreateDefaultIncludeHandler(&mDxcIncludeHandler));
+}
+
+ComPtr<ID3DBlob> RenderingSystem::DXCCompileShader(const std::wstring& filename, const D3D_SHADER_MACRO* defines, const std::string& entrypoint, const std::wstring& target)
+{
+	ComPtr<IDxcBlobEncoding> sourceBlob;
+	ThrowIfFailed(mDxcUtils->LoadFile(filename.c_str(), nullptr, &sourceBlob));
+
+	std::vector<LPCWSTR> arguments;
+	std::vector<std::wstring> storage;
+
+	arguments.push_back(L"-E");
+	std::wstring entrypointW(entrypoint.begin(), entrypoint.end());
+	arguments.push_back(entrypointW.c_str());
+
+	arguments.push_back(L"-T");
+	arguments.push_back(target.c_str());
+
+	arguments.push_back(L"-I");
+	arguments.push_back(SHADERS_ENGINE_DIR);
+
+	arguments.push_back(L"-I");
+	arguments.push_back(L"./");
+
+	arguments.push_back(L"-I");
+	arguments.push_back(L"../");
+
+	//in case we need no optimization
+	//arguments.push_back(L"-Zi");
+	//arguments.push_back(L"-Qembed_debug");
+	//arguments.push_back(L"-Od");
+
+	arguments.push_back(L"-O3"); // max optimization otherwise
+
+	if (defines)
+	{
+		const D3D_SHADER_MACRO* define = defines;
+		while (define->Name && define->Definition)
+		{
+			std::string defineStr = std::string(define->Name) + "=" + define->Definition;
+			arguments.push_back(L"-D");
+			std::wstring defineWide(defineStr.begin(), defineStr.end());
+			storage.push_back(defineWide);
+			arguments.push_back(storage.back().c_str());
+
+			define++;
+		}
+	}
+
+	DxcBuffer sourceBuffer;
+	sourceBuffer.Ptr = sourceBlob->GetBufferPointer();
+	sourceBuffer.Size = sourceBlob->GetBufferSize();
+	sourceBuffer.Encoding = DXC_CP_UTF8;
+
+	ComPtr<IDxcResult> results;
+	HRESULT hr = mDxcCompiler->Compile(
+		&sourceBuffer,
+		arguments.data(),
+		(UINT32)arguments.size(),
+		mDxcIncludeHandler.Get(),
+		IID_PPV_ARGS(&results));
+
+	ComPtr<IDxcBlobUtf8> errors;
+	if (SUCCEEDED(hr)) results->GetOutput(DXC_OUT_ERRORS, IID_PPV_ARGS(&errors), nullptr);
+
+	if (errors != nullptr && errors->GetStringLength() > 0)
+	{
+		//print a bunch of info if shader doesnt want to compile
+		OutputDebugStringA("Shader compilation warnings/errors:\n");
+		OutputDebugStringA(errors->GetStringPointer());
+
+		if (errors->GetStringLength() > 0) {
+			OutputDebugStringA("\n=== Shader Compilation Details ===\n");
+			OutputDebugStringA(("Shader: " + std::string(filename.begin(), filename.end()) + "\n").c_str());
+			OutputDebugStringA(("Entry point: " + entrypoint + "\n").c_str());
+			OutputDebugStringA(("Target: " + std::string(target.begin(), target.end()) + "\n").c_str());
+		}
+	}
+
+	ComPtr<IDxcBlobUtf16> outputName;
+	HRESULT compileStatus;
+	if (SUCCEEDED(results->GetStatus(&compileStatus)) && FAILED(compileStatus))
+	{
+		if (errors != nullptr && errors->GetStringLength() > 0)
+		{
+			OutputDebugStringA("Shader compilation failed:\n");
+			OutputDebugStringA(errors->GetStringPointer());
+		}
+		ThrowIfFailed(compileStatus);
+	}
+
+	//IDxcBlob to ID3DBlob conversion because im lazy to convert everything to IDxcBlob
+	ComPtr<IDxcBlob> dxcBlob;
+	ThrowIfFailed(results->GetOutput(DXC_OUT_OBJECT, IID_PPV_ARGS(&dxcBlob), &outputName));
+
+	ComPtr<ID3DBlob> d3dBlob;
+	D3DCreateBlob(dxcBlob->GetBufferSize(), &d3dBlob);
+	memcpy(d3dBlob->GetBufferPointer(), dxcBlob->GetBufferPointer(), dxcBlob->GetBufferSize());
+
+	return d3dBlob;
+}
+
 void RenderingSystem::LogAdapterOutputs(IDXGIAdapter* adapter)
 {
 	UINT i = 0;
@@ -2117,6 +2472,7 @@ void RenderingSystem::Update(std::vector<DrawableObject*>& mAllObjectsToUpdate, 
 	}
 
 	if (mTAAEnabled) CalculateJitter();
+	if (RTSupport && mAllObjectsToUpdate.size() != 0) RefitTLAS();
 	UpdateCamera(*gt);
 	UpdateRenderItems(mAllObjectsToUpdate);
 	UpdateObjectCBs(*gt);
@@ -3598,6 +3954,8 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 	mPrevFrameSRVHeapIndex = SRVHeapHeadIndex;
 	SRVHeapHeadIndex++;
 	mResolvedAccBufferSRVHeapIndex = SRVHeapHeadIndex;
+	SRVHeapHeadIndex++;
+	mTLASSRVHeapIndex = SRVHeapHeadIndex;
 	ThrowIfFailed(mCommandList->Close());
 	ID3D12CommandList* cmdsLists[] = { mCommandList.Get() };
 	mCommandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
@@ -3807,40 +4165,41 @@ void RenderingSystem::BuildShaders(std::vector<ShaderDesc>& ShaderDescs)
 {
 	for (ShaderDesc& i : ShaderDescs)
 	{
-		mShaders[i.Name] = d3dUtil::CompileShader(i.Path, i.ShaderDefines, i.FunctionName, i.ShaderProfile);
+		std::wstring profileW(i.ShaderProfile.begin(), i.ShaderProfile.end());
+		mShaders[i.Name] = DXCCompileShader(i.Path, i.ShaderDefines, i.FunctionName, profileW);
 	}
 
-	//standard shaders for deferred geometry rendering
-	mShaders["standardVS"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\DeferredGeometryPass.hlsl", nullptr, "VS", "vs_5_1");
-	mShaders["standardPS"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\DeferredGeometryPass.hlsl", nullptr, "PS", "ps_5_1");
-	mShaders["standardHS"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\DeferredGeometryPass.hlsl", nullptr, "HSMain", "hs_5_1");
-	mShaders["standardDS"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\DeferredGeometryPass.hlsl", nullptr, "DSMain", "ds_5_1");
+	// Стандартные шейдеры для deferred geometry rendering
+	mShaders["standardVS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\DeferredGeometryPass.hlsl", nullptr, "VS", L"vs_6_8");
+	mShaders["standardPS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\DeferredGeometryPass.hlsl", nullptr, "PS", L"ps_6_8");
+	mShaders["standardHS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\DeferredGeometryPass.hlsl", nullptr, "HSMain", L"hs_6_8");
+	mShaders["standardDS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\DeferredGeometryPass.hlsl", nullptr, "DSMain", L"ds_6_8");
 
-	//standard shaders for deferred light rendering
-	mShaders["DeferredLightPassVS_FSQuad"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\DeferredLightPass.hlsl", nullptr, "VS_FSQuad", "vs_5_1");
-	mShaders["DeferredLightPassVS_Bounded"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\DeferredLightPass.hlsl", nullptr, "VS_Bounded", "vs_5_1");
-	mShaders["DeferredLightPassPS"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\DeferredLightPass.hlsl", nullptr, "PS", "ps_5_1");
-	mShaders["DeferredLightPassPS_AddAmbient"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\DeferredLightPass.hlsl", nullptr, "PS_AddAmbient", "ps_5_1");
+	// Стандартные шейдеры для deferred light rendering
+	mShaders["DeferredLightPassVS_FSQuad"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\DeferredLightPass.hlsl", nullptr, "VS_FSQuad", L"vs_6_8");
+	mShaders["DeferredLightPassVS_Bounded"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\DeferredLightPass.hlsl", nullptr, "VS_Bounded", L"vs_6_8");
+	mShaders["DeferredLightPassPS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\DeferredLightPass.hlsl", nullptr, "PS", L"ps_6_8");
+	mShaders["DeferredLightPassPS_AddAmbient"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\DeferredLightPass.hlsl", nullptr, "PS_AddAmbient", L"ps_6_8");
 
-	//for skybox rendering
-	mShaders["SkyBoxVS"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\SkyBox.hlsl", nullptr, "VS", "vs_5_1");
-	mShaders["SkyBoxPS"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\SkyBox.hlsl", nullptr, "PS", "ps_5_1");
+	// Для skybox rendering
+	mShaders["SkyBoxVS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\SkyBox.hlsl", nullptr, "VS", L"vs_6_8");
+	mShaders["SkyBoxPS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\SkyBox.hlsl", nullptr, "PS", L"ps_6_8");
 
-	//for shadowmap geometry generation
-	mShaders["ShadowOpaqueVS"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\Shadows.hlsl", nullptr, "VS", "vs_5_1");
-	mShaders["ShadowOpaquePS"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\Shadows.hlsl", nullptr, "PS", "ps_5_1");
-	mShaders["ShadowOpaqueGS"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\Shadows.hlsl", nullptr, "GS", "gs_5_1");
+	// Для shadowmap geometry generation
+	mShaders["ShadowOpaqueVS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\Shadows.hlsl", nullptr, "VS", L"vs_6_8");
+	mShaders["ShadowOpaquePS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\Shadows.hlsl", nullptr, "PS", L"ps_6_8");
+	mShaders["ShadowOpaqueGS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\Shadows.hlsl", nullptr, "GS", L"gs_6_8");
 
-	mShaders["ShadowOpaqueVS_Terrain"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\Shadows_Terrain.hlsl", nullptr, "VS", "vs_5_1");
-	mShaders["ShadowOpaqueGS_Terrain"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\Shadows_Terrain.hlsl", nullptr, "GS", "gs_5_1");
+	mShaders["ShadowOpaqueVS_Terrain"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\Shadows_Terrain.hlsl", nullptr, "VS", L"vs_6_8");
+	mShaders["ShadowOpaqueGS_Terrain"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\Shadows_Terrain.hlsl", nullptr, "GS", L"gs_6_8");
 
-	//for post-processing
-	mShaders["PPVS"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\PostProcessing.hlsl", nullptr, "VS_FSQuad", "vs_5_1");
-	mShaders["PPPS"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\PostProcessing.hlsl", nullptr, "PS", "ps_5_1");
+	// Для post-processing
+	mShaders["PPVS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\PostProcessing.hlsl", nullptr, "VS_FSQuad", L"vs_6_8");
+	mShaders["PPPS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\PostProcessing.hlsl", nullptr, "PS", L"ps_6_8");
 
-	//for TAA Resolving
-	mShaders["TAAResolveVS"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\TAAResolve.hlsl", nullptr, "VS_FSQuad", "vs_5_1");
-	mShaders["TAAResolvePS"] = d3dUtil::CompileShader(SHADERS_ENGINE_DIR L"\\TAAResolve.hlsl", nullptr, "PS", "ps_5_1");
+	// Для TAA Resolving
+	mShaders["TAAResolveVS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\TAAResolve.hlsl", nullptr, "VS_FSQuad", L"vs_6_8");
+	mShaders["TAAResolvePS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\TAAResolve.hlsl", nullptr, "PS", L"ps_6_8");
 }
 
 void RenderingSystem::BuildBasicGeometry()

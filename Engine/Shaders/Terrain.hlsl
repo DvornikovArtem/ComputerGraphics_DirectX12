@@ -214,12 +214,12 @@ GBufferData PS(GS_OUT pin)
     w = float4(seaW, landW, rockW, snowW) / sum;
 
     float3 blended = SEA_COLOR * w.x + LAND_COLOR * w.y + ROCK_COLOR * w.z + SNW_COLOR * w.w;
-    
 
     pout.Diffuse = float4(blended, 1.0);
     pout.DepthStencils = float4(0.f, 0.f, 0.f, pin.PosCS.z);
     pout.Normal = float4(NormalMapSample, cbMaterial.Metallic);
     pout.MaterialFresnelRoughness = float4(cbMaterial.FresnelR0, cbMaterial.Roughness);
-
+    pout.MotionVector = int2(0, 0);
+    pout.ObjectOutline = cbObject.HasOutline > 0.1f ? float4(cbObject.OutlineColor, 1.f) : 0.f.xxxx;
     return pout;
 }
