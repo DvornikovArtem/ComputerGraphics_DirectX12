@@ -513,13 +513,14 @@ void RenderingSystem::Render()
 
 	mCommandList->OMSetRenderTargets(1, &mSceneColorRTV, FALSE, &DepthStencilView());
 
-	DrawShadowMaps();
 
 	mGBuffer->TransitCommonToRTV(mCommandList);
 	mGBuffer->Clear(mCommandList);
 	GBufferGeometryPass();
 
 	mGBuffer->TransitToLightsRenderingState(mCommandList);
+	DrawShadowMaps();
+
 	GBufferLightPass();
 
 	DrawSkyBox();
@@ -1236,7 +1237,7 @@ void RenderingSystem::BuildLightItems(std::unordered_map<std::string, LightObjec
 
 		i->LightCBIndex = k;
 
-		i->shadowMap = new ShadowMap(md3dDevice.Get(), 2048, 2048);
+		i->shadowMap = new ShadowMap(md3dDevice.Get(), mClientWidth, mClientHeight);
 
 		//generated bounding geometry and world matrix for light
 		switch (i->LightType)
@@ -2472,7 +2473,9 @@ void RenderingSystem::Update(std::vector<DrawableObject*>& mAllObjectsToUpdate, 
 	}
 
 	if (mTAAEnabled) CalculateJitter();
-	if (RTSupport && mAllObjectsToUpdate.size() != 0) RefitTLAS();
+	//for whatever reason, this function makes it unable for RDC and NSight to parse frame data. 
+	// Comment it for now if you need debugging
+	//if (RTSupport && mAllObjectsToUpdate.size() != 0) RefitTLAS();
 	UpdateCamera(*gt);
 	UpdateRenderItems(mAllObjectsToUpdate);
 	UpdateObjectCBs(*gt);
@@ -3252,6 +3255,47 @@ void RenderingSystem::BuildGlobalPSOs()
 	};
 	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&PPPsoDesc, IID_PPV_ARGS(&GlobalPSOs["TAAResolve"])));
 
+	///
+	/// RTSS generation (opaque geometry)
+	/// 
+
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC RTSSPSODesc = {};
+	RTSSPSODesc.InputLayout = { nullptr, 0 };
+	RTSSPSODesc.pRootSignature = RootSignatures["Default"].Get();
+	RTSSPSODesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+	RTSSPSODesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+	RTSSPSODesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+	RTSSPSODesc.DSVFormat = mDepthStencilFormat;
+	RTSSPSODesc.SampleMask = UINT_MAX;
+	RTSSPSODesc.SampleDesc.Count = 1;
+	RTSSPSODesc.RasterizerState.DepthBias = 1000;
+	RTSSPSODesc.RasterizerState.DepthBiasClamp = 0.0f;
+	RTSSPSODesc.RasterizerState.SlopeScaledDepthBias = 1.0f;
+	RTSSPSODesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+	RTSSPSODesc.VS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["RTSSSVS_FSQuad"]->GetBufferPointer()),
+		mShaders["RTSSSVS_FSQuad"]->GetBufferSize()
+	};
+	RTSSPSODesc.PS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["RTSSSPS"]->GetBufferPointer()),
+		mShaders["RTSSSPS"]->GetBufferSize()
+	};
+	RTSSPSODesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+
+	RTSSPSODesc.NumRenderTargets = 0;
+	RTSSPSODesc.RTVFormats[0] = DXGI_FORMAT_UNKNOWN;
+	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&RTSSPSODesc, IID_PPV_ARGS(&GlobalPSOs["RTSS_FSQuad"])));
+
+	RTSSPSODesc.InputLayout = { mInputLayout.data(), (UINT)mInputLayout.size() };
+	RTSSPSODesc.VS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["RTSSSVS_Bounded"]->GetBufferPointer()),
+		mShaders["RTSSSVS_Bounded"]->GetBufferSize()
+	};
+
+	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&RTSSPSODesc, IID_PPV_ARGS(&GlobalPSOs["RTSS_Bounded"])));
 }
 
 void RenderingSystem::BuildFrameResources()
@@ -3410,8 +3454,6 @@ void RenderingSystem::GBufferLightPass()
 		}
 		else
 		{
-			if (!li->IsInViewFrustum) continue;
-
 			mCommandList->SetPipelineState(GlobalPSOs["DeferredLightPass_Bounded"].Get());
 			mCommandList->IASetVertexBuffers(0, 1, &li->Geo->VertexBufferView());
 			mCommandList->IASetIndexBuffer(&li->Geo->IndexBufferView());
@@ -3507,10 +3549,11 @@ void RenderingSystem::DrawParticleSystems()
 void RenderingSystem::DrawShadowMaps()
 {
 	mCommandList->SetGraphicsRootSignature(RootSignatures["Default"].Get());
+	mCommandList->SetGraphicsRootDescriptorTable(0, GetGpuSrv(mTLASSRVHeapIndex));
+	mCommandList->SetGraphicsRootDescriptorTable(1, GetGpuSrv(mGBuffer->DepthStencils.SRVHeapIndex));
+	mCommandList->SetGraphicsRootDescriptorTable(2, GetGpuSrv(mGBuffer->Normal.SRVHeapIndex));
 	for (auto& i : mAllLights)
 	{
-		//if (i->LightType == LightType::Pointlight) continue;
-
 		mCommandList->RSSetViewports(1, &i->shadowMap->Viewport());
 		mCommandList->RSSetScissorRects(1, &i->shadowMap->ScissorRect());
 
@@ -3533,71 +3576,34 @@ void RenderingSystem::DrawShadowMaps()
 		UINT lightCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(Light));
 		auto lightCB = mCurrFrameResource->LightCB->Resource();
 
-		UINT objCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(ObjectConstants));
-		UINT matCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(MaterialConstants));
-		auto objectCB = mCurrFrameResource->ObjectCB->Resource();
-		auto matCB = mCurrFrameResource->MaterialCB->Resource();
-
-		ID3D12DescriptorHeap* descriptorHeaps[] = { mSrvDescriptorHeap.Get() };
-		mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
+		UINT passCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(PassConstants));
+		auto passCB = mCurrFrameResource->PassCB->Resource();
 
 		D3D12_GPU_VIRTUAL_ADDRESS lightCBAddress = lightCB->GetGPUVirtualAddress() + i->LightCBIndex * lightCBByteSize;
 		mCommandList->SetGraphicsRootConstantBufferView(4, lightCBAddress);
+		mCommandList->SetGraphicsRootConstantBufferView(3, passCB->GetGPUVirtualAddress());
 
-		for (size_t j = 0; j < i->VisibleRitems.size(); ++j)
+
+		if (i->LightType == LightType::Directional)
 		{
-			auto& ri = i->VisibleRitems[j];
+			mCommandList->SetPipelineState(GlobalPSOs["RTSS_FSQuad"].Get());
+			mCommandList->DrawInstanced(6, 1, 0, 0);
+		}
+		else
+		{
+			if (!i->IsInViewFrustum) continue;
 
-			mCommandList->IASetVertexBuffers(0, 1, &ri->Geo->VertexBufferView());
-			mCommandList->IASetIndexBuffer(&ri->Geo->IndexBufferView());
-			mCommandList->SetPipelineState(ri->Mat->PSOs["ShadowOpaque"].Get());
+			mCommandList->SetPipelineState(GlobalPSOs["RTSS_Bounded"].Get());
+			mCommandList->IASetVertexBuffers(0, 1, &i->Geo->VertexBufferView());
+			mCommandList->IASetIndexBuffer(&i->Geo->IndexBufferView());
 
-			mCommandList->SetGraphicsRootDescriptorTable(0, GetGpuSrv(ri->Mat->DiffuseSrvHeapIndex));
-			mCommandList->SetGraphicsRootDescriptorTable(1, GetGpuSrv(ri->Mat->NormalSrvHeapIndex));
-			mCommandList->SetGraphicsRootDescriptorTable(2, GetGpuSrv(ri->Mat->HeightSrvHeapIndex));
-
-
-			D3D12_GPU_VIRTUAL_ADDRESS objCBAddress = objectCB->GetGPUVirtualAddress() + ri->ObjCBIndex * objCBByteSize;
-			D3D12_GPU_VIRTUAL_ADDRESS matCBAddress = matCB->GetGPUVirtualAddress() + ri->Mat->MatCBIndex * matCBByteSize;
-
-			mCommandList->SetGraphicsRootConstantBufferView(3, objCBAddress);
-			mCommandList->SetGraphicsRootConstantBufferView(5, matCBAddress);
-
-
-			std::string subMeshName = "LOD" + std::to_string(ri->currentLOD);
-
-			UINT IndexCount = ri->Geo->DrawArgs[subMeshName].IndexCount;
-			UINT StartIndexLocation = ri->Geo->DrawArgs[subMeshName].StartIndexLocation;
-			UINT BaseVertexLocation = ri->Geo->DrawArgs[subMeshName].BaseVertexLocation;
+			UINT IndexCount = i->Geo->DrawArgs["LOD0"].IndexCount;
+			UINT StartIndexLocation = i->Geo->DrawArgs["LOD0"].StartIndexLocation;
+			UINT BaseVertexLocation = i->Geo->DrawArgs["LOD0"].BaseVertexLocation;
 
 			mCommandList->DrawIndexedInstanced(IndexCount, 1, StartIndexLocation, BaseVertexLocation, 0);
 
-		}
-
-		//checking intesction with biggest tile of terrain, draw it into shadow map if true
-		if (terrainRenderer)
-		{
-			auto& Terrain = terrainRenderer->Quad().Find(0, 0, 0)->terrainTileItem;
-			if (i->LightFrustum.Intersects(Terrain->bounds))
-			{
-				mCommandList->SetPipelineState(Terrain->Mat->PSOs["ShadowOpaque_terrain"].Get());
-				mCommandList->IASetVertexBuffers(0, 1, &Terrain->Geo->VertexBufferView());
-				mCommandList->IASetIndexBuffer(&Terrain->Geo->IndexBufferView());
-				mCommandList->SetGraphicsRootDescriptorTable(2, GetGpuSrv(Terrain->Mat->HeightSrvHeapIndex));
-
-				D3D12_GPU_VIRTUAL_ADDRESS objCBAddress = objectCB->GetGPUVirtualAddress() + Terrain->ObjCBIndex * objCBByteSize;
-				D3D12_GPU_VIRTUAL_ADDRESS matCBAddress = matCB->GetGPUVirtualAddress() + Terrain->Mat->MatCBIndex * matCBByteSize;
-
-				mCommandList->SetGraphicsRootConstantBufferView(3, objCBAddress);
-				mCommandList->SetGraphicsRootConstantBufferView(5, matCBAddress);
-
-				std::string subMeshName = "LOD" + std::to_string(Terrain->currentLOD);
-				UINT IndexCount = Terrain->Geo->DrawArgs[subMeshName].IndexCount;
-				UINT StartIndexLocation = Terrain->Geo->DrawArgs[subMeshName].StartIndexLocation;
-				UINT BaseVertexLocation = Terrain->Geo->DrawArgs[subMeshName].BaseVertexLocation;
-
-				mCommandList->DrawIndexedInstanced(IndexCount, 1, StartIndexLocation, BaseVertexLocation, 0);
-			}
+			i->IsInViewFrustum = false;
 		}
 
 		// Change back to GENERIC_READ so we can read the texture in a shader.
@@ -4200,6 +4206,11 @@ void RenderingSystem::BuildShaders(std::vector<ShaderDesc>& ShaderDescs)
 	// Äëÿ TAA Resolving
 	mShaders["TAAResolveVS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\TAAResolve.hlsl", nullptr, "VS_FSQuad", L"vs_6_8");
 	mShaders["TAAResolvePS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\TAAResolve.hlsl", nullptr, "PS", L"ps_6_8");
+
+	// RTSS ShadowMaps
+	mShaders["RTSSSVS_FSQuad"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\RTSSShadows.hlsl", nullptr, "VS_FSQuad", L"vs_6_8");
+	mShaders["RTSSSVS_Bounded"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\RTSSShadows.hlsl", nullptr, "VS_Bounded", L"vs_6_8");
+	mShaders["RTSSSPS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\RTSSShadows.hlsl", nullptr, "PS", L"ps_6_8");
 }
 
 void RenderingSystem::BuildBasicGeometry()

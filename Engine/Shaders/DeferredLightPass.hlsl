@@ -72,6 +72,11 @@ float3 ReconstructWorldPosition(float2 UV, float depth)
     return viewPos.xyz;
 }
 
+float CalcRTShadow(Light light, uint2 TexelCoord)
+{
+    return ShadowMaps.Load(int4(TexelCoord, 0, 0)).x;
+}
+
 float CalcShadowFactor(float3 WorldPosition, float3 Normal, uint ShadowMapIndex)
 {
     float4 shadowPosH = mul(float4(WorldPosition, 1.f), cbLight.ShadowTransform[ShadowMapIndex]);
@@ -209,16 +214,18 @@ float4 PS(VertexOut pin) : SV_Target
         float shadowFactor = 1.f;
         float distanceFromEye = length(WorldPosition - cbMainPass.CameraPos);
         
-        for (uint cascade = 0; cascade < 5; cascade++)
-        {
-            float factor = CalcShadowFactor(WorldPosition, Normal, cascade);
-            if (factor < 0.3f)
-            {
-                shadowFactor = factor;
-                break;
-            }
-        }
+        //for (uint cascade = 0; cascade < 5; cascade++)
+        //{
+        //    float factor = CalcShadowFactor(WorldPosition, Normal, cascade);
+        //    if (factor < 0.3f)
+        //    {
+        //        shadowFactor = factor;
+        //        break;
+        //    }
+        //}
         
+        shadowFactor = CalcRTShadow(cbLight.lightData, TexelCoord);
+
         float3 lightDir = normalize(-cbLight.lightData.Direction);
         float3 halfVec = normalize(toEyeW + lightDir);
         float NdotL = max(dot(Normal, lightDir), 0.0);
@@ -292,18 +299,20 @@ float4 PS(VertexOut pin) : SV_Target
             float3 specular = MatFresnelR0 * specTerm;
 
 
-            Lighting = CalcShadowFactor(WorldPosition, Normal, faceIndex) * (diffuse + specular) * radiance;
+            Lighting = CalcRTShadow(cbLight.lightData, TexelCoord) * (diffuse + specular) * radiance;
         }
         else
         {
-            Lighting = CalcShadowFactor(WorldPosition, Normal, faceIndex)
+            Lighting = CalcRTShadow(cbLight.lightData, TexelCoord)
                  * ComputePointLight(cbLight.lightData, mat, WorldPosition, Normal, toEyeW) * cbLight.lightData.Color;
+           
+
         }
     }
     else if (cbLight.lightData.LightType == 2)
     {
         // no cascades or complex maps here. using shadow map 0
-        Lighting = CalcShadowFactor(WorldPosition, Normal, 0) * ComputeSpotLight(cbLight.lightData, mat, WorldPosition, Normal, toEyeW) * cbLight.lightData.Color;
+        Lighting = CalcRTShadow(cbLight.lightData, TexelCoord) * ComputeSpotLight(cbLight.lightData, mat, WorldPosition, Normal, toEyeW) * cbLight.lightData.Color;
     }
 
     float4 litColor = float4(Lighting, 0.f);
