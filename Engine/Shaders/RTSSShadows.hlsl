@@ -55,7 +55,7 @@ bool TraceRay(float3 origin, float3 direction, float maxDistance)
     ray.TMin = 0;
     ray.TMax = maxDistance;
     
-    rayQuery.TraceRayInline(TLAS, 0x01, 0x01, ray);
+    rayQuery.TraceRayInline(TLAS, RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, 0xff, ray);
     rayQuery.Proceed();
     
     return rayQuery.CommittedStatus() != COMMITTED_NOTHING;
@@ -88,7 +88,7 @@ psout PS(VertexOut pin)
     psout res;
     
     float2 UV = pin.PosH.xy / cbMainPass.RenderTargetSize;
-    float screenDepth = DepthMaps.Load(int3(pin.PosH.xy, 0)).r;
+    float screenDepth = DepthMaps.Load(int3(pin.PosH.xy, 0)).w;
     float3 WorldPos = ReconstructWorldPosition(UV, screenDepth);
     float3 Normal = NormalMap.Load(int3(pin.PosH.xy, 0)).rgb;
     
@@ -99,12 +99,17 @@ psout PS(VertexOut pin)
     }
     
     float shadowFactor = 1.0f;
+    float rayJitter = 0.01f;
     
     // RayTrace based on light type
     if (cbLight.lightData.LightType == 0) // Directional Light
     {
         float3 RayOrigin = WorldPos + Normal * 0.1f;
-        float3 lightDir = normalize(-cbLight.lightData.Direction);
+        float3 lightDir = normalize(-cbLight.lightData.Direction + float3(
+            (frac(sin(dot(UV, float2(12.9898, 78.233))) * 43758.5453) - 0.5f) * rayJitter,
+            (frac(sin(dot(UV, float2(39.346, 11.135))) * 43758.5453) - 0.5f) * rayJitter,
+            (frac(sin(dot(UV, float2(67.89, 45.321))) * 43758.5453) - 0.5f) * rayJitter
+        ));
         
         bool hit = TraceRay(RayOrigin, lightDir, 1000.0f);
         shadowFactor = hit ? 0.0f : 1.0f;
@@ -113,7 +118,11 @@ psout PS(VertexOut pin)
     {
         float3 toLight = cbLight.lightData.Position - WorldPos;
         float distanceToLight = length(toLight);
-        float3 lightDir = toLight / distanceToLight;
+        float3 lightDir = normalize(toLight / distanceToLight + float3(
+            (frac(sin(dot(UV, float2(23.456, 89.012))) * 43758.5453) - 0.5f) * rayJitter,
+            (frac(sin(dot(UV, float2(56.789, 34.567))) * 43758.5453) - 0.5f) * rayJitter,
+            (frac(sin(dot(UV, float2(90.123, 67.890))) * 43758.5453) - 0.5f) * rayJitter
+        ));
         
         float3 rayOrigin = WorldPos + normalize(Normal) * 0.1f;
         
@@ -134,6 +143,5 @@ psout PS(VertexOut pin)
     
     //draw result into Depth stencil
     res.Depth = shadowFactor;
-    
     return res;
 }

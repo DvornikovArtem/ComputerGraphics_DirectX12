@@ -74,7 +74,39 @@ float3 ReconstructWorldPosition(float2 UV, float depth)
 
 float CalcRTShadow(Light light, uint2 TexelCoord)
 {
-    return ShadowMaps.Load(int4(TexelCoord, 0, 0)).x;
+    static const float Kernel[11] =
+    {
+        0.000003, 0.000229, 0.005977, 0.060598, 0.24173,
+        0.382925, 0.24173, 0.060598, 0.005977, 0.000229, 0.000003
+    };
+    
+    uint width, height, numLayers, numMips;
+    ShadowMaps.GetDimensions(0, width, height, numLayers, numMips);
+    
+    float2 viewportSize = float2(width, height);
+    float blurStrength = 10.0f;
+    
+    float result = 0.0f;
+    
+    [unroll]
+    for (int x = -5; x <= 5; x++)
+    {
+        [unroll]
+        for (int y = -5; y <= 5; y++)
+        {
+            float2 offset = float2(x, y) / viewportSize * blurStrength;
+            uint2 sampleCoord = TexelCoord + uint2(offset * viewportSize);
+            
+            if (sampleCoord.x < width && sampleCoord.y < height)
+            {
+                float kernelValue = Kernel[x + 5] * Kernel[y + 5];
+                float sampleValue = ShadowMaps.Load(int4(sampleCoord, 0, 0)).x;
+                result += sampleValue * kernelValue;
+            }
+        }
+    }
+    
+    return result;
 }
 
 float CalcShadowFactor(float3 WorldPosition, float3 Normal, uint ShadowMapIndex)
