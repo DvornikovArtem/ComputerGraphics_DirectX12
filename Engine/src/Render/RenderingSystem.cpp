@@ -163,6 +163,10 @@ void RenderingSystem::FinishInitialize()
 		litem->shadowMap->BuildDescriptors(GetCpuSrv(shadowBase + k), GetGpuSrv(shadowBase + k), GetDsv(1 + k));
 		litem->shadowMap->SRVHeapIndex = shadowBase + k;
 		k++;
+		
+		litem->BlurredShadowMap->BuildDescriptors(GetCpuSrv(shadowBase + k), GetGpuSrv(shadowBase + k), GetDsv(1 + k));
+		litem->BlurredShadowMap->SRVHeapIndex = shadowBase + k;
+		k++;
 	}
 
 	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
@@ -1238,6 +1242,7 @@ void RenderingSystem::BuildLightItems(std::unordered_map<std::string, LightObjec
 		i->LightCBIndex = k;
 
 		i->shadowMap = new ShadowMap(md3dDevice.Get(), mClientWidth, mClientHeight);
+		i->BlurredShadowMap = new ShadowMap(md3dDevice.Get(), mClientWidth, mClientHeight);
 
 		//generated bounding geometry and world matrix for light
 		switch (i->LightType)
@@ -2211,7 +2216,7 @@ void RenderingSystem::CreateRtvAndDsvDescriptorHeaps()
 
 
 	D3D12_DESCRIPTOR_HEAP_DESC dsvHeapDesc;
-	dsvHeapDesc.NumDescriptors = static_cast<UINT>(1 + mAllLights.size());
+	dsvHeapDesc.NumDescriptors = static_cast<UINT>(1 + mAllLights.size() * 2);
 	dsvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
 	dsvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
 	dsvHeapDesc.NodeMask = 0;
@@ -3296,6 +3301,20 @@ void RenderingSystem::BuildGlobalPSOs()
 	};
 
 	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&RTSSPSODesc, IID_PPV_ARGS(&GlobalPSOs["RTSS_Bounded"])));
+
+	RTSSPSODesc.InputLayout = { nullptr, 0 };
+	RTSSPSODesc.VS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["RTSSSVS_FSQuad"]->GetBufferPointer()),
+		mShaders["RTSSSVS_FSQuad"]->GetBufferSize()
+	};
+	RTSSPSODesc.PS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["RTSSSPS_BlurPass"]->GetBufferPointer()),
+		mShaders["RTSSSPS_BlurPass"]->GetBufferSize()
+	};
+
+	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&RTSSPSODesc, IID_PPV_ARGS(&GlobalPSOs["RTSS_BlurPass"])));
 }
 
 void RenderingSystem::BuildFrameResources()
@@ -3445,7 +3464,7 @@ void RenderingSystem::GBufferLightPass()
 		D3D12_GPU_VIRTUAL_ADDRESS lightCBAddress = lightCB->GetGPUVirtualAddress() + li->LightCBIndex * lightCBByteSize;
 		mCommandList->SetGraphicsRootConstantBufferView(1, lightCBAddress);
 
-		mCommandList->SetGraphicsRootDescriptorTable(6, GetGpuSrv(li->shadowMap->SRVHeapIndex));
+		mCommandList->SetGraphicsRootDescriptorTable(6, GetGpuSrv(li->BlurredShadowMap->SRVHeapIndex));
 
 		if (li->LightType == LightType::Directional)
 		{
@@ -3550,7 +3569,6 @@ void RenderingSystem::DrawShadowMaps()
 {
 	mCommandList->SetGraphicsRootSignature(RootSignatures["Default"].Get());
 	mCommandList->SetGraphicsRootDescriptorTable(0, GetGpuSrv(mTLASSRVHeapIndex));
-	mCommandList->SetGraphicsRootDescriptorTable(1, GetGpuSrv(mGBuffer->DepthStencils.SRVHeapIndex));
 	mCommandList->SetGraphicsRootDescriptorTable(2, GetGpuSrv(mGBuffer->Normal.SRVHeapIndex));
 	for (auto& i : mAllLights)
 	{
@@ -3583,6 +3601,8 @@ void RenderingSystem::DrawShadowMaps()
 		mCommandList->SetGraphicsRootConstantBufferView(4, lightCBAddress);
 		mCommandList->SetGraphicsRootConstantBufferView(3, passCB->GetGPUVirtualAddress());
 
+		mCommandList->SetGraphicsRootDescriptorTable(1, GetGpuSrv(mGBuffer->DepthStencils.SRVHeapIndex));
+
 
 		if (i->LightType == LightType::Directional)
 		{
@@ -3608,6 +3628,20 @@ void RenderingSystem::DrawShadowMaps()
 
 		// Change back to GENERIC_READ so we can read the texture in a shader.
 		mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(i->shadowMap->Resource(),
+			D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_GENERIC_READ));
+
+		//copy shadow map to another shadow map and blur it
+		mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(i->BlurredShadowMap->Resource(),
+			D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_DEPTH_WRITE));
+
+		mCommandList->ClearDepthStencilView(i->BlurredShadowMap->Dsv(),
+			D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
+		mCommandList->OMSetRenderTargets(0, nullptr, false, &i->BlurredShadowMap->Dsv());
+		mCommandList->SetGraphicsRootDescriptorTable(1, GetGpuSrv(i->shadowMap->SRVHeapIndex));
+		mCommandList->SetPipelineState(GlobalPSOs["RTSS_BlurPass"].Get());
+		mCommandList->DrawInstanced(6, 1, 0, 0);
+
+		mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(i->BlurredShadowMap->Resource(),
 			D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_GENERIC_READ));
 	}
 }
@@ -3953,7 +3987,7 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 	for (int i = 0; i < mAllLights.size(); i++) {
 		md3dDevice->CreateShaderResourceView(nullptr, &srvDesc, hDescriptor);
 		hDescriptor.Offset(1, mCbvSrvUavDescriptorSize);
-		SRVHeapHeadIndex++;
+		SRVHeapHeadIndex += 2;
 	}
 	mFSROutputSRVHeapIndex = SRVHeapHeadIndex;
 	SRVHeapHeadIndex++;
@@ -4211,6 +4245,7 @@ void RenderingSystem::BuildShaders(std::vector<ShaderDesc>& ShaderDescs)
 	mShaders["RTSSSVS_FSQuad"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\RTSSShadows.hlsl", nullptr, "VS_FSQuad", L"vs_6_8");
 	mShaders["RTSSSVS_Bounded"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\RTSSShadows.hlsl", nullptr, "VS_Bounded", L"vs_6_8");
 	mShaders["RTSSSPS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\RTSSShadows.hlsl", nullptr, "PS", L"ps_6_8");
+	mShaders["RTSSSPS_BlurPass"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\RTSSShadows.hlsl", nullptr, "PS_BlurPass", L"ps_6_8");
 }
 
 void RenderingSystem::BuildBasicGeometry()

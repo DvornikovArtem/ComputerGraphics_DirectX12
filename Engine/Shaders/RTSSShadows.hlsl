@@ -145,3 +145,43 @@ psout PS(VertexOut pin)
     res.Depth = shadowFactor;
     return res;
 }
+
+psout PS_BlurPass(VertexOut pin)
+{
+    psout res;
+    //blur screen depth map
+    
+    static const float Kernel[11] =
+    {
+        0.000003, 0.000229, 0.005977, 0.060598, 0.24173,
+        0.382925, 0.24173, 0.060598, 0.005977, 0.000229, 0.000003
+    };
+    
+    uint width, height, numLayers;
+    DepthMaps.GetDimensions(0, width, height, numLayers);
+    float2 viewportSize = float2(width, height);
+    float blurStrength = 10.0f;
+    
+    float result = 0.0f;
+    
+    [unroll]
+    for (int x = -5; x <= 5; x++)
+    {
+        [unroll]
+        for (int y = -5; y <= 5; y++)
+        {
+            float2 offset = float2(x, y) / viewportSize * blurStrength;
+            uint2 sampleCoord = pin.PosH.xy + uint2(offset * viewportSize);
+            
+            if (sampleCoord.x < width && sampleCoord.y < height)
+            {
+                float kernelValue = Kernel[x + 5] * Kernel[y + 5];
+                float sampleValue = DepthMaps.Load(int3(sampleCoord, 0)).x;
+                result += sampleValue * kernelValue;
+            }
+        }
+    }
+    
+    res.Depth = result;
+    return res;
+}

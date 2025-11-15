@@ -172,6 +172,7 @@ struct LightObject
 
     ~LightObject() {
         delete shadowMap;
+        delete BlurredShadowMap;
     };
 
     BoundingBox bounds;
@@ -179,6 +180,7 @@ struct LightObject
     std::vector<OctTreeNode*> occupiedLeaves;
 
     ShadowMap* shadowMap;
+    ShadowMap* BlurredShadowMap;
 
     float Strength = 0.5f;
     float FalloffStart = 1.0f;                          // point/spot light only
