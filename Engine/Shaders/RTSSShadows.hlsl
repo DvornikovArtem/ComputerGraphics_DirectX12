@@ -87,7 +87,7 @@ psout PS(VertexOut pin)
 {
     psout res;
     
-    float2 UV = pin.PosH.xy / cbMainPass.RenderTargetSize;
+    float2 UV = pin.PosH.xy / cbMainPass.ViewportSize;
     float screenDepth = DepthMaps.Load(int3(pin.PosH.xy, 0)).w;
     float3 WorldPos = ReconstructWorldPosition(UV, screenDepth);
     float3 Normal = NormalMap.Load(int3(pin.PosH.xy, 0)).rgb;
@@ -151,35 +151,51 @@ psout PS_BlurPass(VertexOut pin)
     psout res;
     //blur screen depth map
     
-    static const float Kernel[11] =
+    static const float Kernel[41] =
     {
-        0.000003, 0.000229, 0.005977, 0.060598, 0.24173,
-        0.382925, 0.24173, 0.060598, 0.005977, 0.000229, 0.000003
+        0.002216, 0.003266, 0.004700, 0.006582, 0.008956,
+    0.011834, 0.015192, 0.018965, 0.023049, 0.027308,
+    0.031580, 0.035684, 0.039434, 0.042651, 0.045175,
+    0.046876, 0.047663, 0.047488, 0.046347, 0.044274,
+    0.041341, 0.037648, 0.033315, 0.028478, 0.023284,
+    0.017884, 0.012429, 0.008062, 0.004903, 0.002818,
+    0.001519, 0.000765, 0.000359, 0.000156, 0.000062,
+    0.000022, 0.000007, 0.000002, 0.000000, 0.000000,
+    0.000000
     };
     
     uint width, height, numLayers;
     DepthMaps.GetDimensions(0, width, height, numLayers);
     float2 viewportSize = float2(width, height);
-    float blurStrength = 10.0f;
+    float blurStrength = 1.0f;
     
     float result = 0.0f;
+    float kernelSum = 0.0f;
     
     [unroll]
-    for (int x = -5; x <= 5; x++)
+    for (int x = -20; x <= 20; x++)
     {
         [unroll]
-        for (int y = -5; y <= 5; y++)
+        for (int y = -20; y <= 20; y++)
         {
             float2 offset = float2(x, y) / viewportSize * blurStrength;
-            uint2 sampleCoord = pin.PosH.xy + uint2(offset * viewportSize);
+            int2 sampleCoord = pin.PosH.xy + int2(offset * viewportSize);
             
-            if (sampleCoord.x < width && sampleCoord.y < height)
+            if (sampleCoord.x >= 0 && sampleCoord.x < width &&
+                sampleCoord.y >= 0 && sampleCoord.y < height)
             {
-                float kernelValue = Kernel[x + 5] * Kernel[y + 5];
+                float kernelValue = Kernel[x + 20] * Kernel[y + 20];
                 float sampleValue = DepthMaps.Load(int3(sampleCoord, 0)).x;
                 result += sampleValue * kernelValue;
+                kernelSum += kernelValue;
             }
         }
+    }
+    
+    // Нормализация результата
+    if (kernelSum > 0.0f)
+    {
+        result /= kernelSum;
     }
     
     res.Depth = result;

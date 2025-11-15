@@ -7,8 +7,8 @@ ShadowMap::ShadowMap(ID3D12Device* device, UINT width, UINT height)
 	mWidth = width;
 	mHeight = height;
 
-	mViewport = { 0.0f, 0.0f, (float)width, (float)height, 0.0f, 1.0f };
-	mScissorRect = { 0, 0, (int)width, (int)height };
+	mViewport = { 0.0f, 0.0f, (float)mWidth, (float)mHeight, 0.0f, 1.0f };
+	mScissorRect = { 0, 0, (int)mWidth, (int)mHeight };
 
 	BuildResource();
 }
@@ -63,16 +63,16 @@ void ShadowMap::BuildDescriptors(CD3DX12_CPU_DESCRIPTOR_HANDLE hCpuSrv,
 
 void ShadowMap::OnResize(UINT newWidth, UINT newHeight)
 {
-	if ((mWidth != newWidth) || (mHeight != newHeight))
-	{
-		mWidth = newWidth;
-		mHeight = newHeight;
+	mWidth = newWidth;
+	mHeight = newHeight;
 
-		BuildResource();
+	mViewport = { 0.0f, 0.0f, (float)mWidth, (float)mHeight, 0.0f, 1.0f };
+	mScissorRect = { 0, 0, (int)mWidth, (int)mHeight };
 
-		// New resource, so we need new descriptors to that resource.
-		BuildDescriptors();
-	}
+	BuildResource();
+
+	// New resource, so we need new descriptors to that resource.
+	BuildDescriptors();
 }
 
 void ShadowMap::BuildDescriptors()

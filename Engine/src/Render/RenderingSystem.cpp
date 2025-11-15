@@ -438,6 +438,12 @@ void RenderingSystem::OnResize() {
 			md3dDevice->CreateShaderResourceView(mTAAResolvedAccBuffer.Get(), &srvDesc,
 				CD3DX12_CPU_DESCRIPTOR_HANDLE(mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), mResolvedAccBufferSRVHeapIndex, mCbvSrvDescriptorSize));
 		}
+
+		for (auto& i : mAllLights)
+		{
+			i->shadowMap->OnResize(mClientWidth, mClientHeight);
+			i->BlurredShadowMap->OnResize(mClientWidth, mClientHeight);
+		}
 	}
 
 	if (!mGbufferImguiSlots.empty()) {
