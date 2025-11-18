@@ -6,67 +6,114 @@ RWTexture2D<float> OutputTexture : register(u0);
 
 static const float Weights[KERNEL_RADIUS + 1] =
 {
-    0.2500f,
-    0.1800f,
-    0.1300f,
-    0.0900f,
-    0.0600f,
-    0.0350f,
-    0.0200f // |x|% from center
+    0.2143f, 
+    0.1805f, 
+    0.1218f, 
+    0.0652f, 
+    0.0284f, 
+    0.0101f, 
+    0.0029f // % for |x| pixels from center
 };
 
+// we'll use group memory it works as:
+// thread loads pixels in this cache
+// this memory is avalible to all threads
+// so if pixel is already there, there's no need to load it again
+// this saves a LOT of time
+groupshared float Cache[GROUP_SIZE + 2 * KERNEL_RADIUS][GROUP_SIZE + 2 * KERNEL_RADIUS];
+
 [numthreads(GROUP_SIZE, GROUP_SIZE, 1)]
-void CS_HorizontalBlur(uint3 id : SV_DispatchThreadID)
+void CS_HorizontalBlur(uint3 groupID : SV_GroupID, uint3 groupThreadID : SV_GroupThreadID)
 {
     uint2 dimensions;
     InputTexture.GetDimensions(dimensions.x, dimensions.y);
     
-    if (any(id.xy >= dimensions))
-        return;
+    uint2 groupStart = groupID.xy * GROUP_SIZE;
+    uint2 globalThreadID = groupStart + groupThreadID.xy;
     
-    float result = InputTexture[id.xy] * Weights[0];
-    
-    [unroll]
-    for (int i = 1; i <= KERNEL_RADIUS; i++)
+    for (int y = 0; y < (GROUP_SIZE + 2 * KERNEL_RADIUS); y += GROUP_SIZE)
     {
-        float weight = Weights[i];
-       
-        int2 leftPos = id.xy + int2(-i, 0);
-        leftPos.x = max(leftPos.x, 0);
-        result += InputTexture[leftPos] * weight;
-        
-        int2 rightPos = id.xy + int2(i, 0);
-        rightPos.x = min(rightPos.x, (int) dimensions.x - 1);
-        result += InputTexture[rightPos] * weight;
+        for (int x = 0; x < (GROUP_SIZE + 2 * KERNEL_RADIUS); x += GROUP_SIZE)
+        {
+            uint2 loadPos = groupStart + uint2(x, y) - KERNEL_RADIUS + groupThreadID.xy;
+            loadPos = clamp(loadPos, uint2(0, 0), dimensions - uint2(1, 1));
+            
+            int cacheX = groupThreadID.x + x;
+            int cacheY = groupThreadID.y + y;
+            
+            if (cacheX < (GROUP_SIZE + 2 * KERNEL_RADIUS) && cacheY < (GROUP_SIZE + 2 * KERNEL_RADIUS))
+            {
+                Cache[cacheY][cacheX] = InputTexture[loadPos];
+            }
+        }
     }
     
-    OutputTexture[id.xy] = result;
+    GroupMemoryBarrierWithGroupSync();
+    
+    if (all(globalThreadID < dimensions))
+    {
+        float result = 0.0f;
+        int centerX = groupThreadID.x + KERNEL_RADIUS;
+        int centerY = groupThreadID.y + KERNEL_RADIUS;
+        
+        result = Cache[centerY][centerX] * Weights[0];
+        
+        [unroll]
+        for (int i = 1; i <= KERNEL_RADIUS; i++)
+        {
+            float weight = Weights[i];
+            result += Cache[centerY][centerX - i] * weight;
+            result += Cache[centerY][centerX + i] * weight;
+        }
+        
+        OutputTexture[globalThreadID] = result;
+    }
 }
 
 [numthreads(GROUP_SIZE, GROUP_SIZE, 1)]
-void CS_VerticalBlur(uint3 id : SV_DispatchThreadID)
+void CS_VerticalBlur(uint3 groupID : SV_GroupID, uint3 groupThreadID : SV_GroupThreadID)
 {
     uint2 dimensions;
     InputTexture.GetDimensions(dimensions.x, dimensions.y);
     
-    if (any(id.xy >= dimensions))
-        return;
+    uint2 groupStart = groupID.xy * GROUP_SIZE;
+    uint2 globalThreadID = groupStart + groupThreadID.xy;
     
-    float result = InputTexture[id.xy] * Weights[0];
-    
-    [unroll]
-    for (int i = 1; i <= KERNEL_RADIUS; i++)
+    for (int y = 0; y < (GROUP_SIZE + 2 * KERNEL_RADIUS); y += GROUP_SIZE)
     {
-        float weight = Weights[i];
-        
-        int2 topPos = id.xy + int2(0, -i);
-        topPos.y = max(topPos.y, 0);
-        result += InputTexture[topPos] * weight;
-        
-        int2 bottomPos = id.xy + int2(0, i);
-        bottomPos.y = min(bottomPos.y, (int) dimensions.y - 1);
-        result += InputTexture[bottomPos] * weight;
+        for (int x = 0; x < (GROUP_SIZE + 2 * KERNEL_RADIUS); x += GROUP_SIZE)
+        {
+            uint2 loadPos = groupStart + uint2(x, y) - KERNEL_RADIUS + groupThreadID.xy;
+            loadPos = clamp(loadPos, uint2(0, 0), dimensions - uint2(1, 1));
+            
+            int cacheX = groupThreadID.x + x;
+            int cacheY = groupThreadID.y + y;
+            
+            if (cacheX < (GROUP_SIZE + 2 * KERNEL_RADIUS) && cacheY < (GROUP_SIZE + 2 * KERNEL_RADIUS))
+            {
+                Cache[cacheY][cacheX] = InputTexture[loadPos];
+            }
+        }
     }
     
-    OutputTexture[id.xy] = result;
+    GroupMemoryBarrierWithGroupSync();
+    
+    if (all(globalThreadID < dimensions))
+    {
+        float result = 0.0f;
+        int centerX = groupThreadID.x + KERNEL_RADIUS;
+        int centerY = groupThreadID.y + KERNEL_RADIUS;
+        
+        result = Cache[centerY][centerX] * Weights[0];
+        
+        [unroll]
+        for (int i = 1; i <= KERNEL_RADIUS; i++)
+        {
+            float weight = Weights[i];
+            result += Cache[centerY - i][centerX] * weight;
+            result += Cache[centerY + i][centerX] * weight;
+        }
+        
+        OutputTexture[globalThreadID] = result;
+    }
 }
