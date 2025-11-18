@@ -119,6 +119,8 @@ public:
     void RefitTLAS();
     void InitializeDXC();
     ComPtr<ID3DBlob> DXCCompileShader(const std::wstring& filename, const D3D_SHADER_MACRO* defines, const std::string& entrypoint, const std::wstring& target);
+    void InitRTOcclusion();
+    void RTOcclusionPass();
 
     void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems, std::string PSOName);
 
@@ -402,6 +404,16 @@ protected:
     int mTLASSRVHeapIndex;
     Microsoft::WRL::ComPtr<ID3D12Resource> mInstanceDescsResource;
     Microsoft::WRL::ComPtr<ID3D12Resource> mInstanceDescsUploadResource;
+
+    //RT occlusion buffers
+    Microsoft::WRL::ComPtr<ID3D12Resource> mOcclusionBuffer;
+    Microsoft::WRL::ComPtr<ID3D12Resource> mOcclusionBufferUpload;
+    std::vector<RenderItem*> mRTVisibleObjects;
+    int mOcclusionBufferUAVIndex;
+    UINT mMaxVisibleObjects = 10000;
+
+    Microsoft::WRL::ComPtr<ID3D12Resource> mOcclusionClearBuffer;
+    UINT mOcclusionBufferSize;
 // =================================================================================================
 
 // For DXC Shader compilation ======================================================================

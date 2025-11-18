@@ -203,6 +203,7 @@ void RenderingSystem::FinishInitialize()
 	{
 		BuildBLASForGeometries();
 		BuildTLAS();
+		InitRTOcclusion();
 	}
 
 	mGbufferImguiSlots.resize(mGBuffer->NumBuffers);
@@ -513,6 +514,7 @@ void RenderingSystem::Render()
 	ThrowIfFailed(mCommandList->Reset(cmdListAlloc.Get(), nullptr));
 
 	if (mTAAEnabled) SaveFrameAsPrevious();
+	if (RTSupport) RTOcclusionPass();
 
 	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mSceneColor.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_RENDER_TARGET));
 
@@ -2129,6 +2131,110 @@ ComPtr<ID3DBlob> RenderingSystem::DXCCompileShader(const std::wstring& filename,
 	return d3dBlob;
 }
 
+void RenderingSystem::InitRTOcclusion()
+{
+	mMaxVisibleObjects = mAllRitems.size();
+	mOcclusionBufferSize = mMaxVisibleObjects * sizeof(uint32_t);
+
+	ThrowIfFailed(md3dDevice->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Buffer(mOcclusionBufferSize, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
+		D3D12_RESOURCE_STATE_COMMON,
+		nullptr,
+		IID_PPV_ARGS(&mOcclusionBuffer)));
+
+	ThrowIfFailed(md3dDevice->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_READBACK),
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Buffer(mOcclusionBufferSize),
+		D3D12_RESOURCE_STATE_COPY_DEST,
+		nullptr,
+		IID_PPV_ARGS(&mOcclusionBufferUpload)));
+
+	D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
+	uavDesc.Format = DXGI_FORMAT_UNKNOWN;
+	uavDesc.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
+	uavDesc.Buffer.FirstElement = 0;
+	uavDesc.Buffer.NumElements = mMaxVisibleObjects;
+	uavDesc.Buffer.StructureByteStride = sizeof(uint32_t);
+	uavDesc.Buffer.CounterOffsetInBytes = 0;
+	uavDesc.Buffer.Flags = D3D12_BUFFER_UAV_FLAG_NONE;
+
+	CD3DX12_CPU_DESCRIPTOR_HANDLE uavHandle(
+		mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
+		mOcclusionBufferUAVIndex,
+		mCbvSrvUavDescriptorSize);
+
+	md3dDevice->CreateUnorderedAccessView(mOcclusionBuffer.Get(), nullptr, &uavDesc, uavHandle);
+	mRTVisibleObjects.resize(mMaxVisibleObjects);
+
+	CD3DX12_RESOURCE_DESC desc = CD3DX12_RESOURCE_DESC::Buffer(mOcclusionBufferSize);
+	ThrowIfFailed(md3dDevice->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+		D3D12_HEAP_FLAG_NONE,
+		&desc,
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(&mOcclusionClearBuffer)));
+
+	// fill buffer with -1
+	UINT* mappedData = nullptr;
+	CD3DX12_RANGE readRange(0, 0);
+	ThrowIfFailed(mOcclusionClearBuffer->Map(0, &readRange, reinterpret_cast<void**>(&mappedData)));
+
+	UINT elementCount = mOcclusionBufferSize / sizeof(UINT);
+	for (UINT i = 0; i < elementCount; ++i) mappedData[i] = ~0u;
+
+	mOcclusionClearBuffer->Unmap(0, nullptr);
+}
+
+void RenderingSystem::RTOcclusionPass()
+{
+	ID3D12DescriptorHeap* descriptorHeaps[] = { mSrvDescriptorHeap.Get() };
+	mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
+	
+	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+		mOcclusionBuffer.Get(),
+		D3D12_RESOURCE_STATE_COMMON,
+		D3D12_RESOURCE_STATE_COPY_DEST));
+
+	mCommandList->CopyBufferRegion(mOcclusionBuffer.Get(), 0, mOcclusionClearBuffer.Get(), 0, mOcclusionBufferSize);
+
+	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+		mOcclusionBuffer.Get(),
+		D3D12_RESOURCE_STATE_COPY_DEST,
+		D3D12_RESOURCE_STATE_UNORDERED_ACCESS));
+
+	mCommandList->RSSetViewports(1, &mScreenViewport);
+	mCommandList->RSSetScissorRects(1, &mScissorRect);
+	mCommandList->SetGraphicsRootSignature(RootSignatures["RTOcclusion"].Get());
+	mCommandList->SetPipelineState(GlobalPSOs["RTOcclusion"].Get());
+	mCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+
+	mCommandList->SetGraphicsRootDescriptorTable(0, GetGpuSrv(mTLASSRVHeapIndex));
+	mCommandList->SetGraphicsRootDescriptorTable(1, GetGpuSrv(mOcclusionBufferUAVIndex));
+
+	UINT passCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(PassConstants));
+	auto passCB = mCurrFrameResource->PassCB->Resource();
+	mCommandList->SetGraphicsRootConstantBufferView(2, passCB->GetGPUVirtualAddress());
+
+	mCommandList->DrawInstanced(6, 1, 0, 0);
+
+	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+		mOcclusionBuffer.Get(),
+		D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+		D3D12_RESOURCE_STATE_COPY_SOURCE));
+
+	mCommandList->CopyResource(mOcclusionBufferUpload.Get(), mOcclusionBuffer.Get());
+
+	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+		mOcclusionBuffer.Get(),
+		D3D12_RESOURCE_STATE_COPY_SOURCE,
+		D3D12_RESOURCE_STATE_COMMON));
+}
+
 void RenderingSystem::LogAdapterOutputs(IDXGIAdapter* adapter)
 {
 	UINT i = 0;
@@ -2483,6 +2589,24 @@ void RenderingSystem::BuildRootSignatures()
 		serializedComputeRootSig->GetBufferPointer(),
 		serializedComputeRootSig->GetBufferSize(),
 		IID_PPV_ARGS(RootSignatures["RTSSS_CSBlur"].GetAddressOf())));
+
+	//RTOcclusion
+	CD3DX12_ROOT_PARAMETER RTORootParams[3];
+	RTORootParams[0].InitAsDescriptorTable(1, &texTable1); //TLAS
+	RTORootParams[1].InitAsDescriptorTable(1, &uavTable);  //visible indices
+	RTORootParams[2].InitAsConstantBufferView(0);          // MainPassCB
+
+	CD3DX12_ROOT_SIGNATURE_DESC RTORootSigDesc(3, RTORootParams,
+		0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_NONE);
+
+	ComPtr<ID3DBlob> serializedRTORootSig;
+	ThrowIfFailed(D3D12SerializeRootSignature(&RTORootSigDesc,
+		D3D_ROOT_SIGNATURE_VERSION_1, &serializedRTORootSig, nullptr));
+
+	ThrowIfFailed(md3dDevice->CreateRootSignature(0,
+		serializedRTORootSig->GetBufferPointer(),
+		serializedRTORootSig->GetBufferSize(),
+		IID_PPV_ARGS(RootSignatures["RTOcclusion"].GetAddressOf())));
 
 }
 
@@ -3327,6 +3451,25 @@ void RenderingSystem::BuildGlobalPSOs()
 
 	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&RTSSPSODesc, IID_PPV_ARGS(&GlobalPSOs["RTSS_Bounded"])));
 
+	// RTO
+	RTSSPSODesc.InputLayout = { nullptr, 0 };
+	RTSSPSODesc.DSVFormat = DXGI_FORMAT_UNKNOWN;
+	RTSSPSODesc.DepthStencilState.StencilEnable = false;
+	RTSSPSODesc.DepthStencilState.DepthEnable = false;
+	RTSSPSODesc.pRootSignature = RootSignatures["RTOcclusion"].Get();
+	RTSSPSODesc.VS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["RTOVS_FSQuad"]->GetBufferPointer()),
+		mShaders["RTOVS_FSQuad"]->GetBufferSize()
+	};
+	RTSSPSODesc.PS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["RTOPS"]->GetBufferPointer()),
+		mShaders["RTOPS"]->GetBufferSize()
+	};
+
+	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&RTSSPSODesc, IID_PPV_ARGS(&GlobalPSOs["RTOcclusion"])));
+
 	D3D12_COMPUTE_PIPELINE_STATE_DESC computePsoDesc = {};
 	computePsoDesc.pRootSignature = RootSignatures["RTSSS_CSBlur"].Get();
 	computePsoDesc.Flags = D3D12_PIPELINE_STATE_FLAG_NONE;
@@ -3345,6 +3488,8 @@ void RenderingSystem::BuildGlobalPSOs()
 
 	ThrowIfFailed(md3dDevice->CreateComputePipelineState(
 		&computePsoDesc, IID_PPV_ARGS(&GlobalPSOs["RTSSS_CSBlur_Ver"])));
+
+
 }
 
 void RenderingSystem::BuildFrameResources()
@@ -3452,7 +3597,7 @@ void RenderingSystem::GBufferGeometryPass()
 
 	const std::string psoName = GetWireframe() ? "GBufferGeometryPass_WireFrame" : "GBufferGeometryPass";
 
-	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Opaque], psoName);
+	DrawRenderItems(mCommandList.Get(), mRTVisibleObjects, psoName);
 
 	//DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Landscape], "GBufferGeometryPass");
 	DrawRenderItems(mCommandList.Get(), mVisibleTerrainRitems, psoName);
@@ -4065,6 +4210,8 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 	mResolvedAccBufferSRVHeapIndex = SRVHeapHeadIndex;
 	SRVHeapHeadIndex++;
 	mTLASSRVHeapIndex = SRVHeapHeadIndex;
+	SRVHeapHeadIndex++;
+	mOcclusionBufferUAVIndex = SRVHeapHeadIndex;
 	ThrowIfFailed(mCommandList->Close());
 	ID3D12CommandList* cmdsLists[] = { mCommandList.Get() };
 	mCommandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
@@ -4163,16 +4310,41 @@ void RenderingSystem::ProcessEmbeddedTexture(const aiTexture* texture, std::stri
 std::unordered_set<RenderItem*> alreadyCheckedRitems;
 void RenderingSystem::CollectVisibleRenderItems()
 {
-	std::vector<OctTreeNode*> leaves = mOctTree->GetAllNodesAtLevel(static_cast<int>(mOctTree->getNumDivisions() - 1));
+	if (RTSupport)
+	{
+		uint32_t* bufferData = nullptr;
+		D3D12_RANGE readRange = { 0, mMaxVisibleObjects * sizeof(uint32_t) };
+		mOcclusionBufferUpload->Map(0, &readRange, reinterpret_cast<void**>(&bufferData));
+
+		if (bufferData)
+		{
+			mRTVisibleObjects.clear();
+			for (uint32_t i = 0; i < mMaxVisibleObjects; ++i)
+			{
+				if (bufferData[i] == 1 && i < mAllRitems.size())
+				{
+					mAllRitems[i]->IsInViewFrustum = true;
+					mRTVisibleObjects.push_back(mAllRitems[i]); // i = instanceID
+				}
+			}
+
+			OutputDebugStringA(("Objects drawn: " + std::to_string(mRTVisibleObjects.size()) + "\n").c_str());
+		}
+		mOcclusionBufferUpload->Unmap(0, nullptr);
+	}
+	else
+	{
+		std::vector<OctTreeNode*> leaves = mOctTree->GetAllNodesAtLevel(static_cast<int>(mOctTree->getNumDivisions() - 1));
 
 
-	for (auto& leaf : leaves) {
-		if (ViewFrustum.Contains(leaf->bounds) != DirectX::ContainmentType::DISJOINT) {
-			for (RenderItem* ri : leaf->OverlappedRitems) {
-				if (ri->renderLayer == RenderLayer::Landscape || alreadyCheckedRitems.find(ri) != alreadyCheckedRitems.end()) continue;
-				alreadyCheckedRitems.insert(ri);
-				ri->IsInViewFrustum = ViewFrustum.Intersects(ri->bounds);
-				if (ri->IsInViewFrustum) mAllVisibleRitems.push_back(ri);
+		for (auto& leaf : leaves) {
+			if (ViewFrustum.Contains(leaf->bounds) != DirectX::ContainmentType::DISJOINT) {
+				for (RenderItem* ri : leaf->OverlappedRitems) {
+					if (ri->renderLayer == RenderLayer::Landscape || alreadyCheckedRitems.find(ri) != alreadyCheckedRitems.end()) continue;
+					alreadyCheckedRitems.insert(ri);
+					ri->IsInViewFrustum = ViewFrustum.Intersects(ri->bounds);
+					if (ri->IsInViewFrustum) mAllVisibleRitems.push_back(ri);
+				}
 			}
 		}
 	}
@@ -4316,6 +4488,10 @@ void RenderingSystem::BuildShaders(std::vector<ShaderDesc>& ShaderDescs)
 	mShaders["RTSSSPS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\RTSSShadows.hlsl", nullptr, "PS", L"ps_6_8");
 	mShaders["RTSSSCS_HorBlur"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\TextureBlurCS.hlsl", nullptr, "CS_HorizontalBlur", L"cs_6_8");
 	mShaders["RTSSSCS_VerBlur"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\TextureBlurCS.hlsl", nullptr, "CS_VerticalBlur", L"cs_6_8");
+
+	// RT Occlusion
+	mShaders["RTOVS_FSQuad"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\RTOcclusion.hlsl", nullptr, "VS_FSQuad", L"vs_6_8");
+	mShaders["RTOPS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\RTOcclusion.hlsl", nullptr, "PS", L"ps_6_8");
 }
 
 void RenderingSystem::BuildBasicGeometry()
