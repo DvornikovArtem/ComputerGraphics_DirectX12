@@ -2133,6 +2133,7 @@ ComPtr<ID3DBlob> RenderingSystem::DXCCompileShader(const std::wstring& filename,
 
 void RenderingSystem::InitRTOcclusion()
 {
+	//build visible object buffers
 	mMaxVisibleObjects = mAllRitems.size();
 	mOcclusionBufferSize = mMaxVisibleObjects * sizeof(uint32_t);
 
@@ -2169,6 +2170,7 @@ void RenderingSystem::InitRTOcclusion()
 	md3dDevice->CreateUnorderedAccessView(mOcclusionBuffer.Get(), nullptr, &uavDesc, uavHandle);
 	mRTVisibleObjects.resize(mMaxVisibleObjects);
 
+	//create clear buffer(we'll copy this buffer in place of original buffer to clear it)
 	CD3DX12_RESOURCE_DESC desc = CD3DX12_RESOURCE_DESC::Buffer(mOcclusionBufferSize);
 	ThrowIfFailed(md3dDevice->CreateCommittedResource(
 		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
@@ -2187,6 +2189,130 @@ void RenderingSystem::InitRTOcclusion()
 	for (UINT i = 0; i < elementCount; ++i) mappedData[i] = ~0u;
 
 	mOcclusionClearBuffer->Unmap(0, nullptr);
+
+	BuildRTPSO();
+	BuildRTOShaderTable();
+}
+
+void RenderingSystem::BuildRTPSO()
+{
+	//Creating subojects
+	std::vector<D3D12_STATE_SUBOBJECT> subobjects;
+
+	// DXIL Library (contains all shaders in one file)
+	D3D12_DXIL_LIBRARY_DESC libraryDesc = {};
+	libraryDesc.DXILLibrary.BytecodeLength = mShaders["RTOcclusionLib"]->GetBufferSize();
+	libraryDesc.DXILLibrary.pShaderBytecode = mShaders["RTOcclusionLib"]->GetBufferPointer();
+
+	const WCHAR* exportNames[] = { L"RayGen", L"ClosestHit", L"Miss" };
+	D3D12_EXPORT_DESC exports[3];
+	for (UINT i = 0; i < 3; i++)
+	{
+		exports[i].Name = exportNames[i];
+		exports[i].ExportToRename = nullptr;
+		exports[i].Flags = D3D12_EXPORT_FLAG_NONE;
+	}
+
+	libraryDesc.NumExports = 3;
+	libraryDesc.pExports = exports;
+
+	D3D12_STATE_SUBOBJECT librarySubobject = { D3D12_STATE_SUBOBJECT_TYPE_DXIL_LIBRARY, &libraryDesc };
+	subobjects.push_back(librarySubobject);
+
+	// Hit Group
+	D3D12_HIT_GROUP_DESC hitGroupDesc = {};
+	hitGroupDesc.HitGroupExport = L"HitGroup";
+	hitGroupDesc.Type = D3D12_HIT_GROUP_TYPE_TRIANGLES;
+	hitGroupDesc.ClosestHitShaderImport = L"ClosestHit";
+
+	D3D12_STATE_SUBOBJECT hitGroupSubobject = { D3D12_STATE_SUBOBJECT_TYPE_HIT_GROUP, &hitGroupDesc };
+	subobjects.push_back(hitGroupSubobject);
+
+	// Shader Config
+	D3D12_RAYTRACING_SHADER_CONFIG shaderConfig = {};
+	shaderConfig.MaxPayloadSizeInBytes = sizeof(UINT);
+	shaderConfig.MaxAttributeSizeInBytes = sizeof(float) * 2;
+
+	D3D12_STATE_SUBOBJECT shaderConfigSubobject = { D3D12_STATE_SUBOBJECT_TYPE_RAYTRACING_SHADER_CONFIG, &shaderConfig };
+	subobjects.push_back(shaderConfigSubobject);
+
+	// Pipeline Config
+	D3D12_RAYTRACING_PIPELINE_CONFIG pipelineConfig = {};
+	pipelineConfig.MaxTraceRecursionDepth = 1;
+
+	D3D12_STATE_SUBOBJECT pipelineConfigSubobject = { D3D12_STATE_SUBOBJECT_TYPE_RAYTRACING_PIPELINE_CONFIG, &pipelineConfig };
+	subobjects.push_back(pipelineConfigSubobject);
+
+	// Global Root Signature
+	D3D12_GLOBAL_ROOT_SIGNATURE globalRootSig = {};
+	globalRootSig.pGlobalRootSignature = RootSignatures["RTOcclusion"].Get();
+
+	D3D12_STATE_SUBOBJECT globalRootSigSubobject = { D3D12_STATE_SUBOBJECT_TYPE_GLOBAL_ROOT_SIGNATURE, &globalRootSig };
+	subobjects.push_back(globalRootSigSubobject);
+
+	D3D12_STATE_OBJECT_DESC pipelineDesc = {};
+	pipelineDesc.Type = D3D12_STATE_OBJECT_TYPE_RAYTRACING_PIPELINE;
+	pipelineDesc.NumSubobjects = (UINT)subobjects.size();
+	pipelineDesc.pSubobjects = subobjects.data();
+
+	md3dDevice->CreateStateObject(&pipelineDesc, IID_PPV_ARGS(&mRTOcclusionPSO));
+}
+
+void RenderingSystem::BuildRTOShaderTable()
+{
+	ComPtr<ID3D12StateObjectProperties> stateObjectProperties;
+	mRTOcclusionPSO->QueryInterface(IID_PPV_ARGS(&stateObjectProperties));
+
+	// Get shader IDs
+	void* rayGenShaderID = stateObjectProperties->GetShaderIdentifier(L"RayGen");
+	void* hitGroupShaderID = stateObjectProperties->GetShaderIdentifier(L"HitGroup");
+	void* missShaderID = stateObjectProperties->GetShaderIdentifier(L"Miss");
+
+	UINT shaderRecordSize = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
+	UINT rayGenTableSize = shaderRecordSize;
+	UINT missTableSize = shaderRecordSize;
+	UINT hitGroupTableSize = shaderRecordSize;
+
+	// Shader table Buffers
+	ThrowIfFailed(md3dDevice->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Buffer(rayGenTableSize),
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(&mRayGenShaderTable)));
+
+	ThrowIfFailed(md3dDevice->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Buffer(missTableSize),
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(&mMissShaderTable)));
+
+	ThrowIfFailed(md3dDevice->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Buffer(hitGroupTableSize),
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(&mHitGroupShaderTable)));
+
+	// Copy ShaderID into shader table resource
+	UINT8* pData;
+	CD3DX12_RANGE readRange(0, 0);
+
+	mRayGenShaderTable->Map(0, &readRange, reinterpret_cast<void**>(&pData));
+	memcpy(pData, rayGenShaderID, shaderRecordSize);
+	mRayGenShaderTable->Unmap(0, nullptr);
+
+	mMissShaderTable->Map(0, &readRange, reinterpret_cast<void**>(&pData));
+	memcpy(pData, missShaderID, shaderRecordSize);
+	mMissShaderTable->Unmap(0, nullptr);
+
+	mHitGroupShaderTable->Map(0, &readRange, reinterpret_cast<void**>(&pData));
+	memcpy(pData, hitGroupShaderID, shaderRecordSize);
+	mHitGroupShaderTable->Unmap(0, nullptr);
 }
 
 void RenderingSystem::RTOcclusionPass()
@@ -2206,21 +2332,32 @@ void RenderingSystem::RTOcclusionPass()
 		D3D12_RESOURCE_STATE_COPY_DEST,
 		D3D12_RESOURCE_STATE_UNORDERED_ACCESS));
 
-	mCommandList->RSSetViewports(1, &mScreenViewport);
-	mCommandList->RSSetScissorRects(1, &mScissorRect);
-	mCommandList->SetGraphicsRootSignature(RootSignatures["RTOcclusion"].Get());
-	mCommandList->SetPipelineState(GlobalPSOs["RTOcclusion"].Get());
-	mCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	mCommandList->SetPipelineState1(mRTOcclusionPSO.Get());
+	mCommandList->SetComputeRootSignature(RootSignatures["RTOcclusion"].Get());
 
+	mCommandList->SetComputeRootDescriptorTable(0, GetGpuSrv(mTLASSRVHeapIndex));        // TLAS
+	mCommandList->SetComputeRootDescriptorTable(1, GetGpuSrv(mOcclusionBufferUAVIndex)); // UAV Buffer
+	mCommandList->SetComputeRootConstantBufferView(2, mCurrFrameResource->PassCB->Resource()->GetGPUVirtualAddress()); // MainPassCB
 
-	mCommandList->SetGraphicsRootDescriptorTable(0, GetGpuSrv(mTLASSRVHeapIndex));
-	mCommandList->SetGraphicsRootDescriptorTable(1, GetGpuSrv(mOcclusionBufferUAVIndex));
+	D3D12_DISPATCH_RAYS_DESC dispatchDesc = {};
 
-	UINT passCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(PassConstants));
-	auto passCB = mCurrFrameResource->PassCB->Resource();
-	mCommandList->SetGraphicsRootConstantBufferView(2, passCB->GetGPUVirtualAddress());
+	dispatchDesc.RayGenerationShaderRecord.StartAddress = mRayGenShaderTable->GetGPUVirtualAddress();
+	dispatchDesc.RayGenerationShaderRecord.SizeInBytes = mRayGenShaderTable->GetDesc().Width;
 
-	mCommandList->DrawInstanced(6, 1, 0, 0);
+	dispatchDesc.MissShaderTable.StartAddress = mMissShaderTable->GetGPUVirtualAddress();
+	dispatchDesc.MissShaderTable.SizeInBytes = mMissShaderTable->GetDesc().Width;
+	dispatchDesc.MissShaderTable.StrideInBytes = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
+
+	dispatchDesc.HitGroupTable.StartAddress = mHitGroupShaderTable->GetGPUVirtualAddress();
+	dispatchDesc.HitGroupTable.SizeInBytes = mHitGroupShaderTable->GetDesc().Width;
+	dispatchDesc.HitGroupTable.StrideInBytes = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
+
+	// Trace ray every second pixel
+	dispatchDesc.Width = (mClientWidth + 1) / 2;
+	dispatchDesc.Height = (mClientHeight + 1) / 2;
+	dispatchDesc.Depth = 1;
+
+	mCommandList->DispatchRays(&dispatchDesc);
 
 	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
 		mOcclusionBuffer.Get(),
@@ -3451,25 +3588,6 @@ void RenderingSystem::BuildGlobalPSOs()
 
 	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&RTSSPSODesc, IID_PPV_ARGS(&GlobalPSOs["RTSS_Bounded"])));
 
-	// RTO
-	RTSSPSODesc.InputLayout = { nullptr, 0 };
-	RTSSPSODesc.DSVFormat = DXGI_FORMAT_UNKNOWN;
-	RTSSPSODesc.DepthStencilState.StencilEnable = false;
-	RTSSPSODesc.DepthStencilState.DepthEnable = false;
-	RTSSPSODesc.pRootSignature = RootSignatures["RTOcclusion"].Get();
-	RTSSPSODesc.VS =
-	{
-		reinterpret_cast<BYTE*>(mShaders["RTOVS_FSQuad"]->GetBufferPointer()),
-		mShaders["RTOVS_FSQuad"]->GetBufferSize()
-	};
-	RTSSPSODesc.PS =
-	{
-		reinterpret_cast<BYTE*>(mShaders["RTOPS"]->GetBufferPointer()),
-		mShaders["RTOPS"]->GetBufferSize()
-	};
-
-	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&RTSSPSODesc, IID_PPV_ARGS(&GlobalPSOs["RTOcclusion"])));
-
 	D3D12_COMPUTE_PIPELINE_STATE_DESC computePsoDesc = {};
 	computePsoDesc.pRootSignature = RootSignatures["RTSSS_CSBlur"].Get();
 	computePsoDesc.Flags = D3D12_PIPELINE_STATE_FLAG_NONE;
@@ -4450,23 +4568,23 @@ void RenderingSystem::BuildShaders(std::vector<ShaderDesc>& ShaderDescs)
 		mShaders[i.Name] = DXCCompileShader(i.Path, i.ShaderDefines, i.FunctionName, profileW);
 	}
 
-	// Стандартные шейдеры для deferred geometry rendering
+	// Deferred Geometry Pass
 	mShaders["standardVS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\DeferredGeometryPass.hlsl", nullptr, "VS", L"vs_6_8");
 	mShaders["standardPS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\DeferredGeometryPass.hlsl", nullptr, "PS", L"ps_6_8");
 	mShaders["standardHS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\DeferredGeometryPass.hlsl", nullptr, "HSMain", L"hs_6_8");
 	mShaders["standardDS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\DeferredGeometryPass.hlsl", nullptr, "DSMain", L"ds_6_8");
 
-	// Стандартные шейдеры для deferred light rendering
+	// Deferred Light Pass
 	mShaders["DeferredLightPassVS_FSQuad"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\DeferredLightPass.hlsl", nullptr, "VS_FSQuad", L"vs_6_8");
 	mShaders["DeferredLightPassVS_Bounded"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\DeferredLightPass.hlsl", nullptr, "VS_Bounded", L"vs_6_8");
 	mShaders["DeferredLightPassPS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\DeferredLightPass.hlsl", nullptr, "PS", L"ps_6_8");
 	mShaders["DeferredLightPassPS_AddAmbient"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\DeferredLightPass.hlsl", nullptr, "PS_AddAmbient", L"ps_6_8");
 
-	// Для skybox rendering
+	// Skybox rendering
 	mShaders["SkyBoxVS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\SkyBox.hlsl", nullptr, "VS", L"vs_6_8");
 	mShaders["SkyBoxPS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\SkyBox.hlsl", nullptr, "PS", L"ps_6_8");
 
-	// Для shadowmap geometry generation
+	// ShadowMapping
 	mShaders["ShadowOpaqueVS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\Shadows.hlsl", nullptr, "VS", L"vs_6_8");
 	mShaders["ShadowOpaquePS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\Shadows.hlsl", nullptr, "PS", L"ps_6_8");
 	mShaders["ShadowOpaqueGS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\Shadows.hlsl", nullptr, "GS", L"gs_6_8");
@@ -4474,11 +4592,11 @@ void RenderingSystem::BuildShaders(std::vector<ShaderDesc>& ShaderDescs)
 	mShaders["ShadowOpaqueVS_Terrain"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\Shadows_Terrain.hlsl", nullptr, "VS", L"vs_6_8");
 	mShaders["ShadowOpaqueGS_Terrain"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\Shadows_Terrain.hlsl", nullptr, "GS", L"gs_6_8");
 
-	// Для post-processing
+	// Post-processing
 	mShaders["PPVS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\PostProcessing.hlsl", nullptr, "VS_FSQuad", L"vs_6_8");
 	mShaders["PPPS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\PostProcessing.hlsl", nullptr, "PS", L"ps_6_8");
 
-	// Для TAA Resolving
+	// TAA Resolving
 	mShaders["TAAResolveVS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\TAAResolve.hlsl", nullptr, "VS_FSQuad", L"vs_6_8");
 	mShaders["TAAResolvePS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\TAAResolve.hlsl", nullptr, "PS", L"ps_6_8");
 
@@ -4490,8 +4608,7 @@ void RenderingSystem::BuildShaders(std::vector<ShaderDesc>& ShaderDescs)
 	mShaders["RTSSSCS_VerBlur"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\TextureBlurCS.hlsl", nullptr, "CS_VerticalBlur", L"cs_6_8");
 
 	// RT Occlusion
-	mShaders["RTOVS_FSQuad"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\RTOcclusion.hlsl", nullptr, "VS_FSQuad", L"vs_6_8");
-	mShaders["RTOPS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\RTOcclusion.hlsl", nullptr, "PS", L"ps_6_8");
+	mShaders["RTOcclusionLib"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\RTOcclusion.hlsl", nullptr, "", L"lib_6_8");
 }
 
 void RenderingSystem::BuildBasicGeometry()

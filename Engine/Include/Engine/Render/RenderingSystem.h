@@ -120,6 +120,8 @@ public:
     void InitializeDXC();
     ComPtr<ID3DBlob> DXCCompileShader(const std::wstring& filename, const D3D_SHADER_MACRO* defines, const std::string& entrypoint, const std::wstring& target);
     void InitRTOcclusion();
+    void BuildRTPSO();
+    void BuildRTOShaderTable();
     void RTOcclusionPass();
 
     void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems, std::string PSOName);
@@ -414,6 +416,11 @@ protected:
 
     Microsoft::WRL::ComPtr<ID3D12Resource> mOcclusionClearBuffer;
     UINT mOcclusionBufferSize;
+
+    ComPtr<ID3D12StateObject> mRTOcclusionPSO;
+    ComPtr<ID3D12Resource> mRayGenShaderTable;
+    ComPtr<ID3D12Resource> mMissShaderTable;
+    ComPtr<ID3D12Resource> mHitGroupShaderTable;
 // =================================================================================================
 
 // For DXC Shader compilation ======================================================================
