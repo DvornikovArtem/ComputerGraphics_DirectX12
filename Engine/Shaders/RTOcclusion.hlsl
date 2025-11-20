@@ -39,17 +39,17 @@ void RayGen()
         0xFF, 0, 0, 0,
         ray,
         payload);
-
-    if (payload.InstanceID != 0xFFFFFFFF)
-    {
-        VisibleObjectBuffer[payload.InstanceID] = 1;
-    }
+    
+   // we can set the buffer to 1 in hit shader, as done in example below
+   //or we can do it via payload, the payload is filled out in this part of code
+   //VisibleObjectBuffer[payload.InstanceID] = 1
 }
 
 [shader("closesthit")]
 void ClosestHit(inout RayPayload payload : SV_RayPayload, in BuiltInTriangleIntersectionAttributes attr)
 {
     payload.InstanceID = InstanceID();
+    VisibleObjectBuffer[payload.InstanceID] = 1;
 }
 
 [shader("miss")]
