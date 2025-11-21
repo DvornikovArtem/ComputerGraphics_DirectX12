@@ -2352,9 +2352,9 @@ void RenderingSystem::RTOcclusionPass()
 	dispatchDesc.HitGroupTable.SizeInBytes = mHitGroupShaderTable->GetDesc().Width;
 	dispatchDesc.HitGroupTable.StrideInBytes = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
 
-	// Trace ray every second pixel
-	dispatchDesc.Width = (mClientWidth + 1) / 2;
-	dispatchDesc.Height = (mClientHeight + 1) / 2;
+	// Trace ray every 5 pixels
+	dispatchDesc.Width = (mClientWidth + 1) / 5;
+	dispatchDesc.Height = (mClientHeight + 1) / 5;
 	dispatchDesc.Depth = 1;
 
 	mCommandList->DispatchRays(&dispatchDesc);
