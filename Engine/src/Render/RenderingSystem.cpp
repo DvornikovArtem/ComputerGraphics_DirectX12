@@ -117,7 +117,7 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 	BuildInputLayout();
 	BuildBasicGeometry();
 	BuildSceneGrid();
-	BuildTerrain();
+	//BuildTerrain();
 
 
 	// Execute the initialization commands.
@@ -4093,9 +4093,12 @@ void RenderingSystem::UpdateAtmosphereCB()
 		};
 
 	// RGB wavelengths (nm)
-	const float lambdaR = 650.0f;
+	//const float lambdaR = 650.0f;
+	//const float lambdaG = 570.0f;
+	//const float lambdaB = 475.0f;
+	const float lambdaR = 475.0f;
 	const float lambdaG = 570.0f;
-	const float lambdaB = 475.0f;
+	const float lambdaB = 650.0f;
 
 	a.BetaRayleigh = {
 		SigmaRayleigh(lambdaR), // 650 nm

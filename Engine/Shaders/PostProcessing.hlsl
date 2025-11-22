@@ -243,19 +243,28 @@ float MiePhaseHG(float mu, float g)
 
 struct AerialResult
 {
+    // How much light the air ADDED along the way (blue light - Rayleigh, white/gray — Mie)
     float3 inscatter;
+    // How much light reached the camera (air transmittance coefficient)
     float3 transmittance;
 };
 
 AerialResult IntegrateAerial(float3 camPos, float tMax, float3 V)
 {
+    // Ensure that the integration distance is at least 0.5 units.
+    // If tMax is too small or close to zero, the integrator steps become meaningless. Therefore, the minimum tracing length is 0.5 to keep the atmospheric model stable
     tMax = max(tMax, 0.5f);
     
+    // The number of ray-marching steps
     int N = clamp((int) ceil(tMax / 2500.0f), 16, 64);
     float dt = tMax / N;
 
+    // The initial integration point
     float3 pos = camPos + V * (0.5f * dt);
+    
+    // Accumulated transmittance
     float3 Absorption = float3(1, 1, 1);
+    // Accumulated atmospheric emission (in-scattering)
     float3 L = float3(0, 0, 0);
 
     float mu = dot(cbAtm.SunDirection, V);
@@ -388,14 +397,16 @@ float4 PS(VertexOut pin) : SV_Target
         // Ray marching
         AerialResult arGeo = IntegrateAerial(camPos, tMaxGeo, V);
         
+        // The object's color is attenuated depending on how much air lies between it and the camera
         float3 objColor = Color.rgb * arGeo.transmittance;
         
-        float fogStartDepth = 0.1f;
+        float fogStartDepth = 0.05f;
         float fogEndDepth = 0.95f; 
         float fogFactor = saturate((depthDevice - fogStartDepth) / max(1e-3f, fogEndDepth - fogStartDepth));
         
         float fogIntensity = 1.0f;
 
+        // Fog adding
         float3 fogAdd = arGeo.inscatter * fogIntensity;
         
         Color.rgb = objColor + fogAdd * fogFactor;
