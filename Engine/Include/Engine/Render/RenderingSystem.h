@@ -107,18 +107,8 @@ public:
     void BuildTerrain();
     void BuildSceneGrid();
     void DrawSceneGrid();
-    void BuildFSRContext();
-    void FSRUpscale();
     void DrawUI();
     void PreRender();
-    void SaveFrameAsPrevious();
-    void CalculateJitter();
-    void TAAResolve();
-    void BuildBLASForGeometries();
-    void BuildTLAS();
-    void RefitTLAS();
-    void InitializeDXC();
-    ComPtr<ID3DBlob> DXCCompileShader(const std::wstring& filename, const D3D_SHADER_MACRO* defines, const std::string& entrypoint, const std::wstring& target);
 
     void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems, std::string PSOName);
 
@@ -295,6 +285,8 @@ protected:
 
     int SRVHeapHeadIndex = 0;
 
+    D3D_SHADER_MODEL MaxSupportedShaderModel;
+
 // For Post Effects ================================================================================
 public:
 
@@ -378,6 +370,9 @@ protected:
     bool mFSREnabled = false;
     bool mFSRSwitchFlag = false;
     bool mFSREnabledDisplayValue = mFSREnabled;
+
+    void BuildFSRContext();
+    void FSRUpscale();
 // =================================================================================================
     DirectX::XMFLOAT4 ClearValue = { 0.f, 0.f, 0.f, 1.f };
 
@@ -393,6 +388,11 @@ protected:
     float mJitterX;
     float mJitterY;
     int mJitterIndex = 0;
+
+    float HaltonSequence(uint32_t index, uint32_t base);
+    void SaveFrameAsPrevious();
+    void CalculateJitter();
+    void TAAResolve();
 // =================================================================================================
 
 // For RT ==========================================================================================
@@ -402,12 +402,19 @@ protected:
     int mTLASSRVHeapIndex;
     Microsoft::WRL::ComPtr<ID3D12Resource> mInstanceDescsResource;
     Microsoft::WRL::ComPtr<ID3D12Resource> mInstanceDescsUploadResource;
+
+    void BuildBLASForGeometries();
+    void BuildTLAS();
+    void RefitTLAS();
 // =================================================================================================
 
 // For DXC Shader compilation ======================================================================
 	ComPtr<IDxcCompiler3> mDxcCompiler;
 	ComPtr<IDxcUtils> mDxcUtils;
 	ComPtr<IDxcIncludeHandler> mDxcIncludeHandler;
+
+    void InitializeDXC();
+    ComPtr<ID3DBlob> DXCCompileShader(const std::wstring& filename, const D3D_SHADER_MACRO* defines, const std::string& entrypoint, const std::wstring& target);
 // =================================================================================================
 };
 

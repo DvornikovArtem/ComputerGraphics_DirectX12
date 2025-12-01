@@ -554,6 +554,7 @@
       <LanguageStandard>stdcpp17</LanguageStandard>
       <AdditionalIncludeDirectories>$(ProjectDir)Extern\assimp\include;$(ProjectDir)Include;$(ProjectDir)Extern\DirectXTex\include;$(ProjectDir)Extern\FideltyFX\ffx-api\include;$(ProjectDir)Extern\FideltyFX\sdk\include;$(ProjectDir)Extern\imgui;$(ProjectDir)Extern\imgui\backends;$(ProjectDir)Extern\minhook\include;$(ProjectDir)Extern\Dxil\inc;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <UndefinePreprocessorDefinitions>%(UndefinePreprocessorDefinitions)</UndefinePreprocessorDefinitions>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
     <Link>
       <SubSystem>

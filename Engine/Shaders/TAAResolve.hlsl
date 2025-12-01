@@ -94,7 +94,7 @@ float4 PS(VertexOut pin) : SV_Target
         
         PrevFrameColor = clamp(PrevFrameColor, minColor, maxColor);
         
-        float BlendFactor = 0.9 * saturate(1.0 - MotionLength / 50.0); // more movement = less influence
+        float BlendFactor = 0.9 * saturate(1.0 / MotionLength / 50.0); // more movement = less influence
         return lerp(CurrFrameColor, PrevFrameColor, BlendFactor);
     }
     

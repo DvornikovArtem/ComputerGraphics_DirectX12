@@ -159,6 +159,7 @@
       <ConformanceMode>Default</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <AdditionalIncludeDirectories>$(SolutionDir)..\Engine\include;$(SolutionDir)..\Engine\extern\assimp\include;$(SolutionDir)src;$(SolutionDir)..\Engine\extern\DirectXTex\include;$(SolutionDir)..\Engine\Extern\FideltyFX\sdk\include;$(SolutionDir)..\Engine\Extern\FideltyFX\ffx-api\include;$(SolutionDir)..\Engine\extern\imgui;$(SolutionDir)..\Engine\extern\imgui\backends;$(SolutionDir)..\Engine\Extern\Dxil\inc;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>

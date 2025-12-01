@@ -86,6 +86,34 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 	if (SUCCEEDED(hr) && options5.RaytracingTier != D3D12_RAYTRACING_TIER_NOT_SUPPORTED) RTSupport = true;
 	else RTSupport = false;
 
+	//check Highest Supported Shader Model
+	D3D12_FEATURE_DATA_SHADER_MODEL shaderModel;
+	D3D_SHADER_MODEL testModels[] = {
+		D3D_SHADER_MODEL_6_9,
+		D3D_SHADER_MODEL_6_8,
+		D3D_SHADER_MODEL_6_7,
+		D3D_SHADER_MODEL_6_6,
+		D3D_SHADER_MODEL_6_5,
+		D3D_SHADER_MODEL_6_4,
+		D3D_SHADER_MODEL_6_3,
+		D3D_SHADER_MODEL_6_2,
+		D3D_SHADER_MODEL_6_1,
+		D3D_SHADER_MODEL_6_0,
+		D3D_SHADER_MODEL_5_1 };
+
+	for (auto model : testModels)
+	{
+		shaderModel.HighestShaderModel = model;
+		if (SUCCEEDED(md3dDevice->CheckFeatureSupport(
+			D3D12_FEATURE_SHADER_MODEL,
+			&shaderModel,
+			sizeof(shaderModel))))
+		{
+			MaxSupportedShaderModel = model;
+			break;
+		}
+	}
+
 	ThrowIfFailed(md3dDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&mFence)));
 
 	mRtvDescriptorSize = md3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
@@ -753,6 +781,7 @@ void RenderingSystem::RegisterScenePanels() {
 				ImGui::Text("Viewport Resolution: %dx%d", mClientWidth, mClientHeight);
 				ImGui::Text("UI Clipped Resolution: %dx%d", (int)(mSceneImgRectMax.x - mSceneImgRectMin.x), (int)(mSceneImgRectMax.y - mSceneImgRectMin.y));
 				ImGui::Text("RayTracing Support: %s", RTSupport ? "ACTIVE" : "INACTIVE");
+				ImGui::Text("Max Supported Shader Model: %d.%d", (MaxSupportedShaderModel >> 4) & 0xF, MaxSupportedShaderModel & 0xF);
 			}
 			ImGui::End();
 			};
@@ -968,6 +997,21 @@ void RenderingSystem::RegisterScenePanels() {
 	p.layer = Engine::UI::UILayerKind::Editor;
 	p.tags = { "debug", "gbuffer", "textures" };
 	mPanelRegistry.register_panel(std::move(p));
+}
+
+float RenderingSystem::HaltonSequence(uint32_t index, uint32_t base)
+{
+	float f = 1.0f;
+	float result = 0.0f;
+
+	while (index > 0)
+	{
+		f /= static_cast<float>(base);
+		result += f * static_cast<float>(index % base);
+		index = static_cast<uint32_t>(floorf(static_cast<float>(index) / static_cast<float>(base)));
+	}
+
+	return result * 2;
 }
 
 
@@ -1708,26 +1752,26 @@ void RenderingSystem::CalculateJitter()
 
 	mJitterIndex++;
 
-	int32_t jitterPhaseCount;
-	ffxQueryDescUpscaleGetJitterPhaseCount getJitterPhaseDesc;
-	getJitterPhaseDesc.header.type = FFX_API_QUERY_DESC_TYPE_UPSCALE_GETJITTERPHASECOUNT;
-	getJitterPhaseDesc.displayWidth = mFSREnabled ? mRecommendedRenderResolutionX : mClientWidth;
-	getJitterPhaseDesc.renderWidth = mClientWidth;
-	getJitterPhaseDesc.pOutPhaseCount = &jitterPhaseCount;
+	//int32_t jitterPhaseCount;
+	//ffxQueryDescUpscaleGetJitterPhaseCount getJitterPhaseDesc;
+	//getJitterPhaseDesc.header.type = FFX_API_QUERY_DESC_TYPE_UPSCALE_GETJITTERPHASECOUNT;
+	//getJitterPhaseDesc.displayWidth = mFSREnabled ? mRecommendedRenderResolutionX : mClientWidth;
+	//getJitterPhaseDesc.renderWidth = mClientWidth;
+	//getJitterPhaseDesc.pOutPhaseCount = &jitterPhaseCount;
 
-	ffxQuery(&mFFXContext, &getJitterPhaseDesc.header);
+	//ffxQuery(&mFFXContext, &getJitterPhaseDesc.header);
 
-	ffxQueryDescUpscaleGetJitterOffset getJitterOffsetDesc{};
-	getJitterOffsetDesc.header.type = FFX_API_QUERY_DESC_TYPE_UPSCALE_GETJITTEROFFSET;
-	getJitterOffsetDesc.index = mJitterIndex;
-	getJitterOffsetDesc.phaseCount = jitterPhaseCount;
-	getJitterOffsetDesc.pOutX = &mJitterX;
-	getJitterOffsetDesc.pOutY = &mJitterY;
+	//ffxQueryDescUpscaleGetJitterOffset getJitterOffsetDesc{};
+	//getJitterOffsetDesc.header.type = FFX_API_QUERY_DESC_TYPE_UPSCALE_GETJITTEROFFSET;
+	//getJitterOffsetDesc.index = mJitterIndex;
+	//getJitterOffsetDesc.phaseCount = jitterPhaseCount;
+	//getJitterOffsetDesc.pOutX = &mJitterX;
+	//getJitterOffsetDesc.pOutY = &mJitterY;
 
-	ffxQuery(&mFFXContext, &getJitterOffsetDesc.header);
+	//ffxQuery(&mFFXContext, &getJitterOffsetDesc.header);
 
-	mJitterX = -2.f * mJitterX / (mFSREnabled ? mRecommendedRenderResolutionX : mClientWidth);
-	mJitterY = 2.f * mJitterY / (mFSREnabled ? mRecommendedRenderResolutionY : mClientHeight);
+	mJitterX = HaltonSequence(mJitterIndex, 2) / (float)mClientWidth;
+	mJitterY = HaltonSequence(mJitterIndex, 3) / (float)mClientHeight;
 	mCamera.SetJitter(mJitterX, mJitterY);
 }
 
@@ -4169,23 +4213,23 @@ void RenderingSystem::BuildShaders(std::vector<ShaderDesc>& ShaderDescs)
 		mShaders[i.Name] = DXCCompileShader(i.Path, i.ShaderDefines, i.FunctionName, profileW);
 	}
 
-	// Стандартные шейдеры для deferred geometry rendering
+	// Deferred Geometry Rendering
 	mShaders["standardVS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\DeferredGeometryPass.hlsl", nullptr, "VS", L"vs_6_8");
 	mShaders["standardPS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\DeferredGeometryPass.hlsl", nullptr, "PS", L"ps_6_8");
 	mShaders["standardHS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\DeferredGeometryPass.hlsl", nullptr, "HSMain", L"hs_6_8");
 	mShaders["standardDS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\DeferredGeometryPass.hlsl", nullptr, "DSMain", L"ds_6_8");
 
-	// Стандартные шейдеры для deferred light rendering
+	// Deferred Light Rendering
 	mShaders["DeferredLightPassVS_FSQuad"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\DeferredLightPass.hlsl", nullptr, "VS_FSQuad", L"vs_6_8");
 	mShaders["DeferredLightPassVS_Bounded"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\DeferredLightPass.hlsl", nullptr, "VS_Bounded", L"vs_6_8");
 	mShaders["DeferredLightPassPS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\DeferredLightPass.hlsl", nullptr, "PS", L"ps_6_8");
 	mShaders["DeferredLightPassPS_AddAmbient"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\DeferredLightPass.hlsl", nullptr, "PS_AddAmbient", L"ps_6_8");
 
-	// Для skybox rendering
+	// Skybox rendering
 	mShaders["SkyBoxVS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\SkyBox.hlsl", nullptr, "VS", L"vs_6_8");
 	mShaders["SkyBoxPS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\SkyBox.hlsl", nullptr, "PS", L"ps_6_8");
 
-	// Для shadowmap geometry generation
+	// Shadowmapping
 	mShaders["ShadowOpaqueVS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\Shadows.hlsl", nullptr, "VS", L"vs_6_8");
 	mShaders["ShadowOpaquePS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\Shadows.hlsl", nullptr, "PS", L"ps_6_8");
 	mShaders["ShadowOpaqueGS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\Shadows.hlsl", nullptr, "GS", L"gs_6_8");
@@ -4193,11 +4237,11 @@ void RenderingSystem::BuildShaders(std::vector<ShaderDesc>& ShaderDescs)
 	mShaders["ShadowOpaqueVS_Terrain"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\Shadows_Terrain.hlsl", nullptr, "VS", L"vs_6_8");
 	mShaders["ShadowOpaqueGS_Terrain"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\Shadows_Terrain.hlsl", nullptr, "GS", L"gs_6_8");
 
-	// Для post-processing
+	// Post-Processing
 	mShaders["PPVS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\PostProcessing.hlsl", nullptr, "VS_FSQuad", L"vs_6_8");
 	mShaders["PPPS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\PostProcessing.hlsl", nullptr, "PS", L"ps_6_8");
 
-	// Для TAA Resolving
+	// TAA Resolve
 	mShaders["TAAResolveVS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\TAAResolve.hlsl", nullptr, "VS_FSQuad", L"vs_6_8");
 	mShaders["TAAResolvePS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\TAAResolve.hlsl", nullptr, "PS", L"ps_6_8");
 }
