@@ -412,9 +412,9 @@ protected:
 	ComPtr<IDxcIncludeHandler> mDxcIncludeHandler;
     D3D_SHADER_MODEL MaxSupportedShaderModel;
 
-    std::wstring GetShaderTargetForModel(const std::wstring& shaderType);
+    std::string GetShaderTargetForModel(const std::string& shaderType);
     void InitializeDXC();
-    ComPtr<ID3DBlob> DXCCompileShader(const std::wstring& filename, const D3D_SHADER_MACRO* defines, const std::string& entrypoint, const std::wstring& target);
+    ComPtr<ID3DBlob> DXCCompileShader(const std::wstring& filename, const D3D_SHADER_MACRO* defines, const std::string& entrypoint, const std::string& shaderType);
 // =================================================================================================
 };
 
