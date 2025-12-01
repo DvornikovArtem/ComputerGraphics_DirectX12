@@ -268,16 +268,16 @@ void StencilApp::LoadShaders()
     std::vector<ShaderDesc> ShaderDescs = 
     {
         //has prebuilt shaders "standardVS(PS/HS/DS)", "SkyBoxVS(PS)"
-        ShaderDesc("RotatingTilesPS", SHADERS_ENGINE_DIR L"\\DeferredGeometryPass.hlsl", "PS", defines, "ps"),
-        ShaderDesc("EmitCS", SHADERS_ENGINE_DIR L"\\ParticleCS.hlsl", "EmitCS", nullptr, "cs"),
-        ShaderDesc("SimulateCS", SHADERS_ENGINE_DIR L"\\ParticleCS.hlsl", "SimulateCS", nullptr, "cs"),
-        ShaderDesc("SimulateCS2", SHADERS_ENGINE_DIR L"\\ParticleCS.hlsl", "SimulateCS2", nullptr, "cs"),
-        ShaderDesc("EmitSmokeCS", SHADERS_ENGINE_DIR L"\\ParticleCS.hlsl", "EmitSmokeCS", nullptr, "cs"),
-        ShaderDesc("SimulateSmokeCS", SHADERS_ENGINE_DIR L"\\ParticleCS.hlsl", "SimulateSmokeCS", nullptr, "cs"),
+        ShaderDesc("RotatingTilesPS", SHADERS_ENGINE_DIR "DeferredGeometryPass.hlsl", "PS", defines, "ps"),
+        ShaderDesc("EmitCS", SHADERS_ENGINE_DIR "ParticleCS.hlsl", "EmitCS", nullptr, "cs"),
+        ShaderDesc("SimulateCS", SHADERS_ENGINE_DIR "ParticleCS.hlsl", "SimulateCS", nullptr, "cs"),
+        ShaderDesc("SimulateCS2", SHADERS_ENGINE_DIR "ParticleCS.hlsl", "SimulateCS2", nullptr, "cs"),
+        ShaderDesc("EmitSmokeCS", SHADERS_ENGINE_DIR "ParticleCS.hlsl", "EmitSmokeCS", nullptr, "cs"),
+        ShaderDesc("SimulateSmokeCS", SHADERS_ENGINE_DIR "ParticleCS.hlsl", "SimulateSmokeCS", nullptr, "cs"),
         
-        ShaderDesc("TerrainVS", SHADERS_ENGINE_DIR L"\\Terrain.hlsl", "VS", nullptr, "vs"),
-        ShaderDesc("TerrainPS", SHADERS_ENGINE_DIR L"\\Terrain.hlsl", "PS", nullptr, "ps"),
-        ShaderDesc("TerrainGS", SHADERS_ENGINE_DIR L"\\Terrain.hlsl", "GS", nullptr, "gs"),
+        ShaderDesc("TerrainVS", SHADERS_ENGINE_DIR "Terrain.hlsl", "VS", nullptr, "vs"),
+        ShaderDesc("TerrainPS", SHADERS_ENGINE_DIR "Terrain.hlsl", "PS", nullptr, "ps"),
+        ShaderDesc("TerrainGS", SHADERS_ENGINE_DIR "Terrain.hlsl", "GS", nullptr, "gs"),
     };
 
     mRenderingSystem->BuildShaders(ShaderDescs);

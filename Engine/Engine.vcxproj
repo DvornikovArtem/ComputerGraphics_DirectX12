@@ -547,7 +547,7 @@
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>
       </SDLCheck>
-      <PreprocessorDefinitions>_DEBUG;_LIB;SOLUTION_DIR=LR"($(SolutionDir))";PROJECT_DIR=LR"($(ProjectDir))";SHADERS_ENGINE_DIR=LR"($(ProjectDir)Shaders)";%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_DEBUG;_LIB;SOLUTION_DIR=LR"($(SolutionDir))";PROJECT_DIR=LR"($(ProjectDir))";SHADERS_ENGINE_DIR=LR"($(ProjectDir)Shaders\\)";%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>Default</ConformanceMode>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
