@@ -285,8 +285,6 @@ protected:
 
     int SRVHeapHeadIndex = 0;
 
-    D3D_SHADER_MODEL MaxSupportedShaderModel;
-
 // For Post Effects ================================================================================
 public:
 
@@ -412,7 +410,9 @@ protected:
 	ComPtr<IDxcCompiler3> mDxcCompiler;
 	ComPtr<IDxcUtils> mDxcUtils;
 	ComPtr<IDxcIncludeHandler> mDxcIncludeHandler;
+    D3D_SHADER_MODEL MaxSupportedShaderModel;
 
+    std::wstring GetShaderTargetForModel(const std::wstring& shaderType);
     void InitializeDXC();
     ComPtr<ID3DBlob> DXCCompileShader(const std::wstring& filename, const D3D_SHADER_MACRO* defines, const std::string& entrypoint, const std::wstring& target);
 // =================================================================================================

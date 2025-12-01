@@ -268,16 +268,16 @@ void StencilApp::LoadShaders()
     std::vector<ShaderDesc> ShaderDescs = 
     {
         //has prebuilt shaders "standardVS(PS/HS/DS)", "SkyBoxVS(PS)"
-        ShaderDesc("RotatingTilesPS", SHADERS_ENGINE_DIR L"\\DeferredGeometryPass.hlsl", "PS", defines, "ps_6_8"),
-        ShaderDesc("EmitCS", SHADERS_ENGINE_DIR L"\\ParticleCS.hlsl", "EmitCS", nullptr, "cs_6_8"),
-        ShaderDesc("SimulateCS", SHADERS_ENGINE_DIR L"\\ParticleCS.hlsl", "SimulateCS", nullptr, "cs_6_8"),
-        ShaderDesc("SimulateCS2", SHADERS_ENGINE_DIR L"\\ParticleCS.hlsl", "SimulateCS2", nullptr, "cs_6_8"),
-        ShaderDesc("EmitSmokeCS", SHADERS_ENGINE_DIR L"\\ParticleCS.hlsl", "EmitSmokeCS", nullptr, "cs_6_8"),
-        ShaderDesc("SimulateSmokeCS", SHADERS_ENGINE_DIR L"\\ParticleCS.hlsl", "SimulateSmokeCS", nullptr, "cs_6_8"),
+        ShaderDesc("RotatingTilesPS", SHADERS_ENGINE_DIR L"\\DeferredGeometryPass.hlsl", "PS", defines, "ps"),
+        ShaderDesc("EmitCS", SHADERS_ENGINE_DIR L"\\ParticleCS.hlsl", "EmitCS", nullptr, "cs"),
+        ShaderDesc("SimulateCS", SHADERS_ENGINE_DIR L"\\ParticleCS.hlsl", "SimulateCS", nullptr, "cs"),
+        ShaderDesc("SimulateCS2", SHADERS_ENGINE_DIR L"\\ParticleCS.hlsl", "SimulateCS2", nullptr, "cs"),
+        ShaderDesc("EmitSmokeCS", SHADERS_ENGINE_DIR L"\\ParticleCS.hlsl", "EmitSmokeCS", nullptr, "cs"),
+        ShaderDesc("SimulateSmokeCS", SHADERS_ENGINE_DIR L"\\ParticleCS.hlsl", "SimulateSmokeCS", nullptr, "cs"),
         
-        ShaderDesc("TerrainVS", SHADERS_ENGINE_DIR L"\\Terrain.hlsl", "VS", nullptr, "vs_6_8"),
-        ShaderDesc("TerrainPS", SHADERS_ENGINE_DIR L"\\Terrain.hlsl", "PS", nullptr, "ps_6_8"),
-        ShaderDesc("TerrainGS", SHADERS_ENGINE_DIR L"\\Terrain.hlsl", "GS", nullptr, "gs_6_8"),
+        ShaderDesc("TerrainVS", SHADERS_ENGINE_DIR L"\\Terrain.hlsl", "VS", nullptr, "vs"),
+        ShaderDesc("TerrainPS", SHADERS_ENGINE_DIR L"\\Terrain.hlsl", "PS", nullptr, "ps"),
+        ShaderDesc("TerrainGS", SHADERS_ENGINE_DIR L"\\Terrain.hlsl", "GS", nullptr, "gs"),
     };
 
     mRenderingSystem->BuildShaders(ShaderDescs);

@@ -89,7 +89,6 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 	//check Highest Supported Shader Model
 	D3D12_FEATURE_DATA_SHADER_MODEL shaderModel;
 	D3D_SHADER_MODEL testModels[] = {
-		D3D_SHADER_MODEL_6_9,
 		D3D_SHADER_MODEL_6_8,
 		D3D_SHADER_MODEL_6_7,
 		D3D_SHADER_MODEL_6_6,
@@ -478,6 +477,54 @@ void RenderingSystem::OnResize() {
 	{
 		particleSystem->SetResources(mGBuffer->DepthStencils.Resource, mGBuffer->Normal.Resource);
 	}
+}
+
+std::wstring RenderingSystem::GetShaderTargetForModel(const std::wstring& shaderType)
+{
+	UINT modelMajor = (MaxSupportedShaderModel >> 4) & 0xF;
+	UINT modelMinor = MaxSupportedShaderModel & 0xF;
+
+	std::wstring targetVersion;
+
+	switch (modelMajor) {
+	case 6:
+		if (modelMinor >= 8 && MaxSupportedShaderModel >= D3D_SHADER_MODEL_6_8) {
+			targetVersion = L"6_8";
+		}
+		else if (modelMinor >= 7 && MaxSupportedShaderModel >= D3D_SHADER_MODEL_6_7) {
+			targetVersion = L"6_7";
+		}
+		else if (modelMinor >= 6 && MaxSupportedShaderModel >= D3D_SHADER_MODEL_6_6) {
+			targetVersion = L"6_6";
+		}
+		else if (modelMinor >= 5 && MaxSupportedShaderModel >= D3D_SHADER_MODEL_6_5) {
+			targetVersion = L"6_5";
+		}
+		else if (modelMinor >= 4 && MaxSupportedShaderModel >= D3D_SHADER_MODEL_6_4) {
+			targetVersion = L"6_4";
+		}
+		else if (modelMinor >= 3 && MaxSupportedShaderModel >= D3D_SHADER_MODEL_6_3) {
+			targetVersion = L"6_3";
+		}
+		else if (modelMinor >= 2 && MaxSupportedShaderModel >= D3D_SHADER_MODEL_6_2) {
+			targetVersion = L"6_2";
+		}
+		else if (modelMinor >= 1 && MaxSupportedShaderModel >= D3D_SHADER_MODEL_6_1) {
+			targetVersion = L"6_1";
+		}
+		else {
+			targetVersion = L"6_0";
+		}
+		break;
+	case 5:
+		targetVersion = L"5_1";
+		break;
+	default:
+		targetVersion = L"5_1";
+		break;
+	}
+
+	return shaderType + L"_" + targetVersion;
 }
 
 void RenderingSystem::CreateOrResizeSceneColor(int width, int height)
@@ -2065,8 +2112,10 @@ void RenderingSystem::InitializeDXC()
 	ThrowIfFailed(mDxcUtils->CreateDefaultIncludeHandler(&mDxcIncludeHandler));
 }
 
-ComPtr<ID3DBlob> RenderingSystem::DXCCompileShader(const std::wstring& filename, const D3D_SHADER_MACRO* defines, const std::string& entrypoint, const std::wstring& target)
+ComPtr<ID3DBlob> RenderingSystem::DXCCompileShader(const std::wstring& filename, const D3D_SHADER_MACRO* defines, const std::string& entrypoint, const std::wstring& shaderType)
 {
+	std::wstring target = GetShaderTargetForModel(shaderType);
+
 	ComPtr<IDxcBlobEncoding> sourceBlob;
 	ThrowIfFailed(mDxcUtils->LoadFile(filename.c_str(), nullptr, &sourceBlob));
 
@@ -4214,36 +4263,36 @@ void RenderingSystem::BuildShaders(std::vector<ShaderDesc>& ShaderDescs)
 	}
 
 	// Deferred Geometry Rendering
-	mShaders["standardVS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\DeferredGeometryPass.hlsl", nullptr, "VS", L"vs_6_8");
-	mShaders["standardPS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\DeferredGeometryPass.hlsl", nullptr, "PS", L"ps_6_8");
-	mShaders["standardHS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\DeferredGeometryPass.hlsl", nullptr, "HSMain", L"hs_6_8");
-	mShaders["standardDS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\DeferredGeometryPass.hlsl", nullptr, "DSMain", L"ds_6_8");
+	mShaders["standardVS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\DeferredGeometryPass.hlsl", nullptr, "VS", L"vs");
+	mShaders["standardPS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\DeferredGeometryPass.hlsl", nullptr, "PS", L"ps");
+	mShaders["standardHS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\DeferredGeometryPass.hlsl", nullptr, "HSMain", L"hs");
+	mShaders["standardDS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\DeferredGeometryPass.hlsl", nullptr, "DSMain", L"ds");
 
 	// Deferred Light Rendering
-	mShaders["DeferredLightPassVS_FSQuad"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\DeferredLightPass.hlsl", nullptr, "VS_FSQuad", L"vs_6_8");
-	mShaders["DeferredLightPassVS_Bounded"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\DeferredLightPass.hlsl", nullptr, "VS_Bounded", L"vs_6_8");
-	mShaders["DeferredLightPassPS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\DeferredLightPass.hlsl", nullptr, "PS", L"ps_6_8");
-	mShaders["DeferredLightPassPS_AddAmbient"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\DeferredLightPass.hlsl", nullptr, "PS_AddAmbient", L"ps_6_8");
+	mShaders["DeferredLightPassVS_FSQuad"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\DeferredLightPass.hlsl", nullptr, "VS_FSQuad", L"vs");
+	mShaders["DeferredLightPassVS_Bounded"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\DeferredLightPass.hlsl", nullptr, "VS_Bounded", L"vs");
+	mShaders["DeferredLightPassPS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\DeferredLightPass.hlsl", nullptr, "PS", L"ps");
+	mShaders["DeferredLightPassPS_AddAmbient"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\DeferredLightPass.hlsl", nullptr, "PS_AddAmbient", L"ps");
 
 	// Skybox rendering
-	mShaders["SkyBoxVS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\SkyBox.hlsl", nullptr, "VS", L"vs_6_8");
-	mShaders["SkyBoxPS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\SkyBox.hlsl", nullptr, "PS", L"ps_6_8");
+	mShaders["SkyBoxVS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\SkyBox.hlsl", nullptr, "VS", L"vs");
+	mShaders["SkyBoxPS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\SkyBox.hlsl", nullptr, "PS", L"ps");
 
 	// Shadowmapping
-	mShaders["ShadowOpaqueVS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\Shadows.hlsl", nullptr, "VS", L"vs_6_8");
-	mShaders["ShadowOpaquePS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\Shadows.hlsl", nullptr, "PS", L"ps_6_8");
-	mShaders["ShadowOpaqueGS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\Shadows.hlsl", nullptr, "GS", L"gs_6_8");
+	mShaders["ShadowOpaqueVS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\Shadows.hlsl", nullptr, "VS", L"vs");
+	mShaders["ShadowOpaquePS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\Shadows.hlsl", nullptr, "PS", L"ps");
+	mShaders["ShadowOpaqueGS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\Shadows.hlsl", nullptr, "GS", L"gs");
 
-	mShaders["ShadowOpaqueVS_Terrain"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\Shadows_Terrain.hlsl", nullptr, "VS", L"vs_6_8");
-	mShaders["ShadowOpaqueGS_Terrain"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\Shadows_Terrain.hlsl", nullptr, "GS", L"gs_6_8");
+	mShaders["ShadowOpaqueVS_Terrain"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\Shadows_Terrain.hlsl", nullptr, "VS", L"vs");
+	mShaders["ShadowOpaqueGS_Terrain"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\Shadows_Terrain.hlsl", nullptr, "GS", L"gs");
 
 	// Post-Processing
-	mShaders["PPVS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\PostProcessing.hlsl", nullptr, "VS_FSQuad", L"vs_6_8");
-	mShaders["PPPS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\PostProcessing.hlsl", nullptr, "PS", L"ps_6_8");
+	mShaders["PPVS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\PostProcessing.hlsl", nullptr, "VS_FSQuad", L"vs");
+	mShaders["PPPS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\PostProcessing.hlsl", nullptr, "PS", L"ps");
 
 	// TAA Resolve
-	mShaders["TAAResolveVS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\TAAResolve.hlsl", nullptr, "VS_FSQuad", L"vs_6_8");
-	mShaders["TAAResolvePS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\TAAResolve.hlsl", nullptr, "PS", L"ps_6_8");
+	mShaders["TAAResolveVS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\TAAResolve.hlsl", nullptr, "VS_FSQuad", L"vs");
+	mShaders["TAAResolvePS"] = DXCCompileShader(SHADERS_ENGINE_DIR L"\\TAAResolve.hlsl", nullptr, "PS", L"ps");
 }
 
 void RenderingSystem::BuildBasicGeometry()
