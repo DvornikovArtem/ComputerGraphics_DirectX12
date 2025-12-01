@@ -2116,6 +2116,17 @@ ComPtr<ID3DBlob> RenderingSystem::DXCCompileShader(const std::wstring& filename,
 {
 	std::wstring target = GetShaderTargetForModel(shaderType);
 
+	//Fallback to older shader compiler
+	if (MaxSupportedShaderModel == D3D_SHADER_MODEL_5_1)
+	{
+		//wstring to string conversion
+		int size_needed = WideCharToMultiByte(CP_UTF8, 0, &target[0], (int)target.size(), nullptr, 0, nullptr, nullptr);
+		std::string str(size_needed, 0);
+		WideCharToMultiByte(CP_UTF8, 0, &target[0], (int)target.size(), &str[0], size_needed, nullptr, nullptr);
+
+		return d3dUtil::CompileShader(filename, defines, entrypoint, str);
+	}
+
 	ComPtr<IDxcBlobEncoding> sourceBlob;
 	ThrowIfFailed(mDxcUtils->LoadFile(filename.c_str(), nullptr, &sourceBlob));
 
