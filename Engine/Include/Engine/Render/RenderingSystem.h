@@ -411,6 +411,7 @@ protected:
 	ComPtr<IDxcUtils> mDxcUtils;
 	ComPtr<IDxcIncludeHandler> mDxcIncludeHandler;
     D3D_SHADER_MODEL MaxSupportedShaderModel;
+    std::wstring mAdapterName;
 
     std::string GetShaderTargetForModel(const std::string& shaderType);
     void InitializeDXC();

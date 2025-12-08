@@ -72,6 +72,7 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 	mdxgiFactory->EnumAdapterByLuid(deviceLuid, IID_PPV_ARGS(&currentAdapter));
 	DXGI_ADAPTER_DESC adapterDesc;
 	currentAdapter->GetDesc(&adapterDesc);
+	mAdapterName = adapterDesc.Description;
 	OutputDebugStringA("\n\n");
 	OutputDebugStringW(adapterDesc.Description);
 	OutputDebugStringA("\n\n");
@@ -829,6 +830,7 @@ void RenderingSystem::RegisterScenePanels() {
 				ImGui::Text("UI Clipped Resolution: %dx%d", (int)(mSceneImgRectMax.x - mSceneImgRectMin.x), (int)(mSceneImgRectMax.y - mSceneImgRectMin.y));
 				ImGui::Text("RayTracing Support: %s", RTSupport ? "ACTIVE" : "INACTIVE");
 				ImGui::Text("Max Supported Shader Model: %d.%d", (MaxSupportedShaderModel >> 4) & 0xF, MaxSupportedShaderModel & 0xF);
+				ImGui::Text("GPU: %ws", mAdapterName.c_str());
 			}
 			ImGui::End();
 			};
