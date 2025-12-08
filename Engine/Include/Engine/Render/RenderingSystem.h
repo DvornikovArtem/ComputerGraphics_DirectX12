@@ -417,6 +417,15 @@ protected:
     void InitializeDXC();
     ComPtr<ID3DBlob> DXCCompileShader(const std::wstring& filename, const D3D_SHADER_MACRO* defines, const std::string& entrypoint, const std::string& shaderType);
 // =================================================================================================
+
+// For Mesh Pipeline ===============================================================================
+private:
+    bool mMeshShadersSupported = false;
+
+public:
+    void BuildMeshPipelinePSO();
+    void DrawMeshPipelineTest();
+// =================================================================================================
 };
 
 

@@ -278,6 +278,9 @@ void StencilApp::LoadShaders()
         ShaderDesc("TerrainVS", SHADERS_ENGINE_DIR "Terrain.hlsl", "VS", nullptr, "vs"),
         ShaderDesc("TerrainPS", SHADERS_ENGINE_DIR "Terrain.hlsl", "PS", nullptr, "ps"),
         ShaderDesc("TerrainGS", SHADERS_ENGINE_DIR "Terrain.hlsl", "GS", nullptr, "gs"),
+
+        ShaderDesc("MeshHeavyMS", SHADERS_ENGINE_DIR "MeshHeavy.hlsl", "MeshMain", nullptr, "ms"),
+        ShaderDesc("MeshHeavyPS", SHADERS_ENGINE_DIR "MeshHeavy.hlsl", "MeshPS", nullptr, "ps"),
     };
 
     mRenderingSystem->BuildShaders(ShaderDescs);

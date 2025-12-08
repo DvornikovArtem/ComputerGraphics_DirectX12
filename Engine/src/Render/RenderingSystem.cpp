@@ -114,6 +114,21 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 		}
 	}
 
+
+	D3D12_FEATURE_DATA_D3D12_OPTIONS7 options7 = {};
+	if (SUCCEEDED(md3dDevice->CheckFeatureSupport(
+		D3D12_FEATURE_D3D12_OPTIONS7,
+		&options7,
+		sizeof(options7))))
+	{
+		mMeshShadersSupported = options7.MeshShaderTier != D3D12_MESH_SHADER_TIER_NOT_SUPPORTED;
+	}
+	else
+	{
+		mMeshShadersSupported = false;
+	}
+
+
 	ThrowIfFailed(md3dDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&mFence)));
 
 	mRtvDescriptorSize = md3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
@@ -609,6 +624,8 @@ void RenderingSystem::Render()
 	mGBuffer->TransitToTonemappingState(mCommandList);
 	PostProcessingPass();
 
+	DrawMeshPipelineTest();
+
 	if (mShowBounds && mOctTree) mOctTree->Draw(mDebugDrawer);
 
 	// Draw debug primitives
@@ -831,6 +848,7 @@ void RenderingSystem::RegisterScenePanels() {
 				ImGui::Text("RayTracing Support: %s", RTSupport ? "ACTIVE" : "INACTIVE");
 				ImGui::Text("Max Supported Shader Model: %d.%d", (MaxSupportedShaderModel >> 4) & 0xF, MaxSupportedShaderModel & 0xF);
 				ImGui::Text("GPU: %ws", mAdapterName.c_str());
+				ImGui::Text("Mesh Shaders Supported: %s", mMeshShadersSupported ? "true" : "false");
 			}
 			ImGui::End();
 			};
@@ -2414,6 +2432,38 @@ void RenderingSystem::BuildRootSignatures()
 		serializedRootSig->GetBufferSize(),
 		IID_PPV_ARGS(RootSignatures["Default"].GetAddressOf())));
 
+	// ===== Mesh Pipeline root signature =====
+	{
+		CD3DX12_ROOT_PARAMETER rootParams[1];
+		rootParams[0].InitAsConstants(16, 0, 0, D3D12_SHADER_VISIBILITY_ALL);
+
+		CD3DX12_ROOT_SIGNATURE_DESC meshRootSigDesc(
+			1, rootParams,
+			0, nullptr,
+			D3D12_ROOT_SIGNATURE_FLAG_NONE);
+
+		ComPtr<ID3DBlob> serializedMeshRootSig = nullptr;
+		ComPtr<ID3DBlob> errorBlobMesh = nullptr;
+
+		HRESULT hrMesh = D3D12SerializeRootSignature(
+			&meshRootSigDesc,
+			D3D_ROOT_SIGNATURE_VERSION_1,
+			serializedMeshRootSig.GetAddressOf(),
+			errorBlobMesh.GetAddressOf());
+
+		if (errorBlobMesh != nullptr)
+		{
+			::OutputDebugStringA((char*)errorBlobMesh->GetBufferPointer());
+		}
+		ThrowIfFailed(hrMesh);
+
+		ThrowIfFailed(md3dDevice->CreateRootSignature(
+			0,
+			serializedMeshRootSig->GetBufferPointer(),
+			serializedMeshRootSig->GetBufferSize(),
+			IID_PPV_ARGS(&RootSignatures["MeshPipeline"])));
+	}
+
 
 	// for deferred light pass
 
@@ -3388,6 +3438,7 @@ void RenderingSystem::BuildMaterials(std::vector<MaterialDesc>& MaterialDescs)
 		mMaterials[t->Name] = t;
 	}
 	BuildGlobalPSOs();
+	BuildMeshPipelinePSO();
 }
 
 void RenderingSystem::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems, std::string PSOName)
@@ -4567,3 +4618,108 @@ std::array<const CD3DX12_STATIC_SAMPLER_DESC, 6> RenderingSystem::GetStaticSampl
 		linearWrap, linearClamp,
 		anisotropicWrap, anisotropicClamp };
 }
+
+
+void RenderingSystem::BuildMeshPipelinePSO()
+{
+	if (!mMeshShadersSupported)
+		return;
+
+	if (mShaders.find("MeshHeavyMS") == mShaders.end() ||
+		mShaders.find("MeshHeavyPS") == mShaders.end())
+	{
+		OutputDebugStringA("MeshHeavyMS or MeshHeavyPS shader not found. Did you call LoadShaders()?\n");
+		return;
+	}
+
+	D3D12_SHADER_BYTECODE msBytecode = {
+		reinterpret_cast<BYTE*>(mShaders["MeshHeavyMS"]->GetBufferPointer()),
+		mShaders["MeshHeavyMS"]->GetBufferSize()
+	};
+
+	D3D12_SHADER_BYTECODE psBytecode = {
+		reinterpret_cast<BYTE*>(mShaders["MeshHeavyPS"]->GetBufferPointer()),
+		mShaders["MeshHeavyPS"]->GetBufferSize()
+	};
+
+	D3D12_RT_FORMAT_ARRAY rtvFormats = {};
+	rtvFormats.NumRenderTargets = 1;
+	rtvFormats.RTFormats[0] = mBackBufferFormat;
+
+	struct MeshPipelineStream
+	{
+		CD3DX12_PIPELINE_STATE_STREAM_ROOT_SIGNATURE        RootSignature;
+		CD3DX12_PIPELINE_STATE_STREAM_MS                    MS;
+		CD3DX12_PIPELINE_STATE_STREAM_PS                    PS;
+		CD3DX12_PIPELINE_STATE_STREAM_BLEND_DESC            BlendState;
+		CD3DX12_PIPELINE_STATE_STREAM_RASTERIZER            RasterizerState;
+		CD3DX12_PIPELINE_STATE_STREAM_DEPTH_STENCIL         DepthStencilState;
+		CD3DX12_PIPELINE_STATE_STREAM_PRIMITIVE_TOPOLOGY    PrimitiveTopologyType;
+		CD3DX12_PIPELINE_STATE_STREAM_RENDER_TARGET_FORMATS RTVFormats;
+		CD3DX12_PIPELINE_STATE_STREAM_SAMPLE_DESC           SampleDesc;
+		CD3DX12_PIPELINE_STATE_STREAM_DEPTH_STENCIL_FORMAT  DSVFormat;
+	} stream;
+
+	stream.RootSignature = RootSignatures["MeshPipeline"].Get();
+	stream.MS = msBytecode;
+	stream.PS = psBytecode;
+	stream.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+	stream.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+	stream.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+	stream.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	stream.RTVFormats = rtvFormats;
+	stream.SampleDesc = DXGI_SAMPLE_DESC{ 1, 0 };
+	stream.DSVFormat = mDepthStencilFormat;
+
+	D3D12_PIPELINE_STATE_STREAM_DESC streamDesc = {};
+	streamDesc.pPipelineStateSubobjectStream = &stream;
+	streamDesc.SizeInBytes = sizeof(stream);
+
+	ComPtr<ID3D12PipelineState> pso;
+	ThrowIfFailed(md3dDevice->CreatePipelineState(&streamDesc, IID_PPV_ARGS(&pso)));
+
+	GlobalPSOs["MeshPipeline"] = pso;
+}
+
+void RenderingSystem::DrawMeshPipelineTest()
+{
+	if (!mMeshShadersSupported)
+		return;
+
+	auto it = GlobalPSOs.find("MeshPipeline");
+	if (it == GlobalPSOs.end())
+		return;
+
+	using namespace DirectX;
+
+	XMMATRIX view = XMLoadFloat4x4(&mMainPassCB.View);
+	XMMATRIX proj = XMLoadFloat4x4(&mMainPassCB.Proj);
+	XMMATRIX viewProj = XMMatrixMultiply(view, proj);
+
+	XMFLOAT4X4 viewProjT;
+	XMStoreFloat4x4(&viewProjT, XMMatrixTranspose(viewProj));
+
+	mCommandList->RSSetViewports(1, &mScreenViewport);
+	mCommandList->RSSetScissorRects(1, &mScissorRect);
+
+	auto dsv = DepthStencilView();
+	mCommandList->OMSetRenderTargets(1, &mSceneColorRTV, FALSE, &dsv);
+
+	mCommandList->SetGraphicsRootSignature(RootSignatures["MeshPipeline"].Get());
+	mCommandList->SetPipelineState(it->second.Get());
+
+	mCommandList->SetGraphicsRoot32BitConstants(0, 16, &viewProjT, 0);
+
+	Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList6> cmdList6;
+	HRESULT hr = mCommandList->QueryInterface(IID_PPV_ARGS(&cmdList6));
+	if (FAILED(hr) || !cmdList6)
+	{
+		OutputDebugStringA(
+			"MeshPipeline: failed to QueryInterface ID3D12GraphicsCommandList6, mesh shader not executed.\n");
+		return;
+	}
+
+	const UINT GRID_SIZE = 128;
+	cmdList6->DispatchMesh(GRID_SIZE, GRID_SIZE, 1);
+}
+
