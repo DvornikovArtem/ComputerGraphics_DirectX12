@@ -4652,9 +4652,13 @@ void RenderingSystem::BuildMeshPipelinePSO()
 	stream.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
 	stream.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
 	stream.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
-	stream.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+	/*stream.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
 	stream.DepthStencilState.DepthEnable = FALSE;
-	stream.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
+	stream.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;*/
+	stream.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+	stream.DepthStencilState.DepthEnable = TRUE;
+	stream.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
+	stream.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
 	//stream.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 	stream.NumRenderTargets = 1;
 	stream.RTVFormats[0] = mBackBufferFormat;
@@ -4689,7 +4693,7 @@ void RenderingSystem::DrawMeshPipelineTest()
 	XMMATRIX view = mCamera.GetView();
 	XMMATRIX proj = mCamera.GetProj();
 
-	XMMATRIX world = XMMatrixScaling(1.0f, 1.0f, 1.0f) * XMMatrixTranslation(0.0f, 0.0f, 0.0f);
+	XMMATRIX world = XMMatrixScaling(0.1f, 0.1f, 0.1f) * XMMatrixTranslation(-20.0f, 0.0f, 0.0f);
 
 	XMMATRIX worldView = world * view;
 	XMMATRIX worldViewProj = worldView * proj;

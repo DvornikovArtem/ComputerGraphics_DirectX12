@@ -350,6 +350,8 @@
     <ClInclude Include="Extern\imgui\imstb_truetype.h" />
     <ClInclude Include="Extern\imgui\misc\cpp\imgui_stdlib.h" />
     <ClInclude Include="Extern\imgui\misc\single_file\imgui_single_file.h" />
+    <ClInclude Include="Extern\MeshletGenerator\Generation.h" />
+    <ClInclude Include="Extern\MeshletGenerator\Utilities.h" />
     <ClInclude Include="Extern\MeshletRender\Model.h" />
     <ClInclude Include="Extern\MeshletRender\Span.h" />
     <ClInclude Include="Extern\minhook\include\MinHook.h" />
@@ -423,6 +425,8 @@
     <ClCompile Include="Extern\imgui\imgui_widgets.cpp" />
     <ClCompile Include="Extern\imgui\misc\cpp\imgui_stdlib.cpp" />
     <ClCompile Include="Extern\imgui\misc\fonts\binary_to_compressed_c.cpp" />
+    <ClCompile Include="Extern\MeshletGenerator\Generation.cpp" />
+    <ClCompile Include="Extern\MeshletGenerator\Utilities.cpp" />
     <ClCompile Include="Extern\MeshletRender\Model.cpp" />
     <ClCompile Include="Extern\minhook\src\buffer.c" />
     <ClCompile Include="Extern\minhook\src\hde\hde32.c" />
@@ -555,7 +559,7 @@
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>$(ProjectDir)Extern\assimp\include;$(ProjectDir)Include;$(ProjectDir)Extern\DirectXTex\include;$(ProjectDir)Extern\FideltyFX\ffx-api\include;$(ProjectDir)Extern\FideltyFX\sdk\include;$(ProjectDir)Extern\imgui;$(ProjectDir)Extern\imgui\backends;$(ProjectDir)Extern\minhook\include;$(ProjectDir)Extern\Dxil\inc;$(ProjectDir)Extern\MeshletRender;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)Extern\assimp\include;$(ProjectDir)Include;$(ProjectDir)Extern\DirectXTex\include;$(ProjectDir)Extern\FideltyFX\ffx-api\include;$(ProjectDir)Extern\FideltyFX\sdk\include;$(ProjectDir)Extern\imgui;$(ProjectDir)Extern\imgui\backends;$(ProjectDir)Extern\minhook\include;$(ProjectDir)Extern\Dxil\inc;$(ProjectDir)Extern\MeshletRender;$(ProjectDir)Extern\MeshletGenerator;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <UndefinePreprocessorDefinitions>%(UndefinePreprocessorDefinitions)</UndefinePreprocessorDefinitions>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>

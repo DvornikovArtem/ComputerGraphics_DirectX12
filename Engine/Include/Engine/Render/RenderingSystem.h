@@ -50,6 +50,7 @@
 #include <dxil/d3d12shader.h>
 
 #include <Model.h>
+#include <Generation.h>
 
 #pragma comment(lib,"d3dcompiler.lib")
 #pragma comment(lib, "D3D12.lib")

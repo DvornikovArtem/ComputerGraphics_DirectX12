@@ -1155,6 +1155,12 @@
     <ClInclude Include="Extern\MeshletRender\Span.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Extern\MeshletGenerator\Generation.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Extern\MeshletGenerator\Utilities.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="Include\Engine\Math\SimpleMath.inl">
@@ -1316,6 +1322,12 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Extern\MeshletRender\Model.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Extern\MeshletGenerator\Generation.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Extern\MeshletGenerator\Utilities.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
