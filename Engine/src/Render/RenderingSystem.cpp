@@ -2852,10 +2852,9 @@ void RenderingSystem::UpdateLightCBs(const GameTimer& gt)
 	}
 }
 
-std::vector<MeshParsingResult> RenderingSystem::BuildMeshGeometry(std::string Name, const std::string& filename)
+std::vector<MeshParsingResult> RenderingSystem::BuildMeshGeometry(std::string Name, const std::string& filename, MeshDesc::ImportType meshType)
 {
 	Assimp::Importer importer;
-
 
 	//select texture types we're looking for
 	const std::vector<aiTextureType> textureTypes =
@@ -2876,167 +2875,320 @@ std::vector<MeshParsingResult> RenderingSystem::BuildMeshGeometry(std::string Na
 		return res;
 	}
 
-	std::vector<Vertex> vertices;
-	std::vector<std::int32_t> indices;
-
 	auto geo = new MeshGeometry;
 	geo->Name = Name;
 
-	for (unsigned int i = 0; i < scene->mNumMeshes; i++)
+	std::vector<Vertex> vertices;
+	std::vector<std::int32_t> indices;
+	XMFLOAT3 vMinSingle = { FLT_MAX, FLT_MAX, FLT_MAX };
+	XMFLOAT3 vMaxSingle = { -FLT_MAX, -FLT_MAX, -FLT_MAX };
+	UINT totalIndexCount = 0;
+
+	switch (meshType)
 	{
-		aiMesh* mesh = scene->mMeshes[i];
-		UINT baseVertexLocation = (UINT)vertices.size();
-		UINT startIndexLocation = (UINT)indices.size();
+	case MeshDesc::ImportType::LODed:
+	{
+		std::vector<Vertex> lodVertices;
+		std::vector<std::int32_t> lodIndices;
 
-		XMFLOAT3 vMin = { FLT_MAX, FLT_MAX, FLT_MAX };
-		XMFLOAT3 vMax = { -FLT_MAX, -FLT_MAX, -FLT_MAX };
-
-		//read diffuse texture from first submesh
-		if (i == 0)
+		for (unsigned int i = 0; i < scene->mNumMeshes; i++)
 		{
-			res[0].GeneratedMaterial.Name = Name + "_" + mesh->mName.C_Str();
-			aiMaterial* material = scene->mMaterials[mesh->mMaterialIndex];
-			for (auto& texType : textureTypes) {
-				if (material->GetTextureCount(texType) > 0)
-				{
-					aiString texturePath;
-					aiTexture* embeddedTexture;
-					if (material->GetTexture(texType, 0, &texturePath) == AI_SUCCESS)
+			aiMesh* mesh = scene->mMeshes[i];
+			UINT baseVertexLocation = (UINT)lodVertices.size();
+			UINT startIndexLocation = (UINT)lodIndices.size();
+
+			XMFLOAT3 vMin = { FLT_MAX, FLT_MAX, FLT_MAX };
+			XMFLOAT3 vMax = { -FLT_MAX, -FLT_MAX, -FLT_MAX };
+
+			//read diffuse texture from first submesh
+			if (i == 0)
+			{
+				res[0].GeneratedMaterial.Name = Name + "_" + mesh->mName.C_Str();
+				aiMaterial* material = scene->mMaterials[mesh->mMaterialIndex];
+				for (auto& texType : textureTypes) {
+					if (material->GetTextureCount(texType) > 0)
 					{
-						for (unsigned int i = 0; i < scene->mNumTextures; ++i) {
-							if (scene->mTextures[i]->mFilename == texturePath) {
-								embeddedTexture = scene->mTextures[i];
+						aiString texturePath;
+						aiTexture* embeddedTexture;
+						if (material->GetTexture(texType, 0, &texturePath) == AI_SUCCESS)
+						{
+							for (unsigned int i = 0; i < scene->mNumTextures; ++i) {
+								if (scene->mTextures[i]->mFilename == texturePath) {
+									embeddedTexture = scene->mTextures[i];
+									break;
+								}
+							}
+
+							//Get texture name
+							std::string TextureName = std::string(texturePath.C_Str());
+							size_t lastSlash = TextureName.find_last_of("\\/");
+							if (lastSlash != std::string::npos) { TextureName = TextureName.substr(lastSlash + 1); }
+							size_t dotPos = TextureName.find_last_of('.');
+							if (dotPos != std::string::npos) { TextureName = TextureName.substr(0, dotPos); }
+
+							ProcessEmbeddedTexture(embeddedTexture, TextureName);
+
+							switch (texType)
+							{
+							case aiTextureType_DIFFUSE:
+								res[0].DiffuseTextureName = TextureName;
+								res[0].GeneratedMaterial.DiffuseTexName = TextureName;
+								break;
+							case aiTextureType_NORMALS:
+								res[0].NormalMapName = TextureName;
+								//res[0].GeneratedMaterial.NormalMapName = TextureName;
+								break;
+							case aiTextureType_DIFFUSE_ROUGHNESS:
+								res[0].RoughnessMapName = TextureName;
 								break;
 							}
-						}
-
-						//Get texture name
-						std::string TextureName = std::string(texturePath.C_Str());
-						size_t lastSlash = TextureName.find_last_of("\\/");
-						if (lastSlash != std::string::npos) { TextureName = TextureName.substr(lastSlash + 1); }
-						size_t dotPos = TextureName.find_last_of('.');
-						if (dotPos != std::string::npos) { TextureName = TextureName.substr(0, dotPos); }
-
-						ProcessEmbeddedTexture(embeddedTexture, TextureName);
-
-						switch (texType)
-						{
-						case aiTextureType_DIFFUSE:
-							res[0].DiffuseTextureName = TextureName;
-							res[0].GeneratedMaterial.DiffuseTexName = TextureName;
-							break;
-						case aiTextureType_NORMALS:
-							res[0].NormalMapName = TextureName;
-							//res[0].GeneratedMaterial.NormalMapName = TextureName;
-							break;
-						case aiTextureType_DIFFUSE_ROUGHNESS:
-							res[0].RoughnessMapName = TextureName;
-							break;
 						}
 					}
 				}
 			}
+
+			for (unsigned int j = 0; j < mesh->mNumVertices; j++) {
+				Vertex vertex;
+
+				vertex.Pos.x = mesh->mVertices[j].x;
+				vertex.Pos.y = mesh->mVertices[j].y;
+				vertex.Pos.z = mesh->mVertices[j].z;
+
+				vMin.x = std::min(vMin.x, vertex.Pos.x);
+				vMin.y = std::min(vMin.y, vertex.Pos.y);
+				vMin.z = std::min(vMin.z, vertex.Pos.z);
+
+				vMax.x = (((vMax.x) > (vertex.Pos.x)) ? (vMax.x) : (vertex.Pos.x));
+				vMax.y = (((vMax.y) > (vertex.Pos.y)) ? (vMax.y) : (vertex.Pos.y));
+				vMax.z = (((vMax.z) > (vertex.Pos.z)) ? (vMax.z) : (vertex.Pos.z));
+
+				if (mesh->HasNormals()) {
+					vertex.Normal.x = mesh->mNormals[j].x;
+					vertex.Normal.y = mesh->mNormals[j].y;
+					vertex.Normal.z = mesh->mNormals[j].z;
+				}
+
+				if (mesh->HasTextureCoords(0)) {
+					vertex.TexC.x = mesh->mTextureCoords[0][j].x;
+					vertex.TexC.y = mesh->mTextureCoords[0][j].y;
+				}
+				else {
+					vertex.TexC.x = 0.0f;
+					vertex.TexC.y = 0.0f;
+				}
+
+				if (mesh->HasTangentsAndBitangents()) {
+					vertex.Tangent.x = mesh->mTangents[j].x;
+					vertex.Tangent.y = mesh->mTangents[j].y;
+					vertex.Tangent.z = mesh->mTangents[j].z;
+				}
+
+				lodVertices.push_back(vertex);
+			}
+
+			for (unsigned int f = 0; f < mesh->mNumFaces; ++f) {
+				const aiFace& face = mesh->mFaces[f];
+				for (unsigned int k = 0; k < face.mNumIndices; ++k) {
+					lodIndices.push_back(static_cast<std::int32_t>(face.mIndices[k] + baseVertexLocation));
+				}
+			}
+
+			SubmeshGeometry submesh;
+			submesh.IndexCount = (UINT)lodIndices.size() - startIndexLocation;
+			submesh.StartIndexLocation = startIndexLocation;
+			submesh.BaseVertexLocation = 0;
+
+			// create bounding box
+			XMFLOAT3 center = {
+			  0.5f * (vMin.x + vMax.x),
+			  0.5f * (vMin.y + vMax.y),
+			  0.5f * (vMin.z + vMax.z)
+			};
+			XMFLOAT3 extents = {
+			  0.5f * (vMax.x - vMin.x),
+			  0.5f * (vMax.y - vMin.y),
+			  0.5f * (vMax.z - vMin.z)
+			};
+
+			BoundingBox box(center, extents);
+			submesh.Bounds = box;
+
+			std::string submeshName = "LOD" + std::to_string(i);
+			geo->DrawArgs[submeshName] = submesh;
 		}
 
-		for (unsigned int j = 0; j < mesh->mNumVertices; j++) {
-			Vertex vertex;
+		const UINT vbByteSize = (UINT)lodVertices.size() * sizeof(Vertex);
+		const UINT ibByteSize = (UINT)lodIndices.size() * sizeof(std::int32_t);
 
-			vertex.Pos.x = mesh->mVertices[j].x;
-			vertex.Pos.y = mesh->mVertices[j].y;
-			vertex.Pos.z = mesh->mVertices[j].z;
+		ThrowIfFailed(D3DCreateBlob(vbByteSize, &geo->VertexBufferCPU));
+		CopyMemory(geo->VertexBufferCPU->GetBufferPointer(), lodVertices.data(), vbByteSize);
 
+		ThrowIfFailed(D3DCreateBlob(ibByteSize, &geo->IndexBufferCPU));
+		CopyMemory(geo->IndexBufferCPU->GetBufferPointer(), lodIndices.data(), ibByteSize);
 
+		geo->VertexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(),
+			mCommandList.Get(), lodVertices.data(), vbByteSize, geo->VertexBufferUploader);
 
-			vMin.x = std::min(vMin.x, vertex.Pos.x);
-			vMin.y = std::min(vMin.y, vertex.Pos.y);
-			vMin.z = std::min(vMin.z, vertex.Pos.z);
+		geo->IndexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(),
+			mCommandList.Get(), lodIndices.data(), ibByteSize, geo->IndexBufferUploader);
 
-			vMax.x = (((vMax.x) > (vertex.Pos.x)) ? (vMax.x) : (vertex.Pos.x));
-			vMax.y = (((vMax.y) > (vertex.Pos.y)) ? (vMax.y) : (vertex.Pos.y));
-			vMax.z = (((vMax.z) > (vertex.Pos.z)) ? (vMax.z) : (vertex.Pos.z));
+		geo->VertexByteStride = sizeof(Vertex);
+		geo->VertexBufferByteSize = vbByteSize;
+		geo->IndexFormat = DXGI_FORMAT_R32_UINT;
+		geo->IndexBufferByteSize = ibByteSize;
 
+		break;
+	}
 
+	case MeshDesc::ImportType::SingleMesh:
+	{
+		for (unsigned int i = 0; i < scene->mNumMeshes; i++)
+		{
+			aiMesh* mesh = scene->mMeshes[i];
+			UINT baseVertexLocation = (UINT)vertices.size();
+			UINT startIndexLocation = (UINT)indices.size();
 
-			if (mesh->HasNormals()) {
-				vertex.Normal.x = mesh->mNormals[j].x;
-				vertex.Normal.y = mesh->mNormals[j].y;
-				vertex.Normal.z = mesh->mNormals[j].z;
+			if (i == 0)
+			{
+				res[0].GeneratedMaterial.Name = Name + "_" + mesh->mName.C_Str();
+				aiMaterial* material = scene->mMaterials[mesh->mMaterialIndex];
+				for (auto& texType : textureTypes) {
+					if (material->GetTextureCount(texType) > 0)
+					{
+						aiString texturePath;
+						aiTexture* embeddedTexture;
+						if (material->GetTexture(texType, 0, &texturePath) == AI_SUCCESS)
+						{
+							for (unsigned int i = 0; i < scene->mNumTextures; ++i) {
+								if (scene->mTextures[i]->mFilename == texturePath) {
+									embeddedTexture = scene->mTextures[i];
+									break;
+								}
+							}
+
+							//Get texture name
+							std::string TextureName = std::string(texturePath.C_Str());
+							size_t lastSlash = TextureName.find_last_of("\\/");
+							if (lastSlash != std::string::npos) { TextureName = TextureName.substr(lastSlash + 1); }
+							size_t dotPos = TextureName.find_last_of('.');
+							if (dotPos != std::string::npos) { TextureName = TextureName.substr(0, dotPos); }
+
+							ProcessEmbeddedTexture(embeddedTexture, TextureName);
+
+							switch (texType)
+							{
+							case aiTextureType_DIFFUSE:
+								res[0].DiffuseTextureName = TextureName;
+								res[0].GeneratedMaterial.DiffuseTexName = TextureName;
+								break;
+							case aiTextureType_NORMALS:
+								res[0].NormalMapName = TextureName;
+								//res[0].GeneratedMaterial.NormalMapName = TextureName;
+								break;
+							case aiTextureType_DIFFUSE_ROUGHNESS:
+								res[0].RoughnessMapName = TextureName;
+								break;
+							}
+						}
+					}
+				}
 			}
 
-			if (mesh->HasTextureCoords(0)) {
-				vertex.TexC.x = mesh->mTextureCoords[0][j].x;
-				vertex.TexC.y = mesh->mTextureCoords[0][j].y;
-			}
-			else {
-				vertex.TexC.x = 0.0f;
-				vertex.TexC.y = 0.0f;
+			for (unsigned int j = 0; j < mesh->mNumVertices; j++) {
+				Vertex vertex;
+
+				vertex.Pos.x = mesh->mVertices[j].x;
+				vertex.Pos.y = mesh->mVertices[j].y;
+				vertex.Pos.z = mesh->mVertices[j].z;
+
+				vMinSingle.x = std::min(vMinSingle.x, vertex.Pos.x);
+				vMinSingle.y = std::min(vMinSingle.y, vertex.Pos.y);
+				vMinSingle.z = std::min(vMinSingle.z, vertex.Pos.z);
+
+				vMaxSingle.x = (((vMaxSingle.x) > (vertex.Pos.x)) ? (vMaxSingle.x) : (vertex.Pos.x));
+				vMaxSingle.y = (((vMaxSingle.y) > (vertex.Pos.y)) ? (vMaxSingle.y) : (vertex.Pos.y));
+				vMaxSingle.z = (((vMaxSingle.z) > (vertex.Pos.z)) ? (vMaxSingle.z) : (vertex.Pos.z));
+
+				if (mesh->HasNormals()) {
+					vertex.Normal.x = mesh->mNormals[j].x;
+					vertex.Normal.y = mesh->mNormals[j].y;
+					vertex.Normal.z = mesh->mNormals[j].z;
+				}
+
+				if (mesh->HasTextureCoords(0)) {
+					vertex.TexC.x = mesh->mTextureCoords[0][j].x;
+					vertex.TexC.y = mesh->mTextureCoords[0][j].y;
+				}
+				else {
+					vertex.TexC.x = 0.0f;
+					vertex.TexC.y = 0.0f;
+				}
+
+				if (mesh->HasTangentsAndBitangents()) {
+					vertex.Tangent.x = mesh->mTangents[j].x;
+					vertex.Tangent.y = mesh->mTangents[j].y;
+					vertex.Tangent.z = mesh->mTangents[j].z;
+				}
+
+				vertices.push_back(vertex);
 			}
 
-			if (mesh->HasTangentsAndBitangents()) {
-				vertex.Tangent.x = mesh->mTangents[j].x;
-				vertex.Tangent.y = mesh->mTangents[j].y;
-				vertex.Tangent.z = mesh->mTangents[j].z;
+			for (unsigned int f = 0; f < mesh->mNumFaces; ++f) {
+				const aiFace& face = mesh->mFaces[f];
+				for (unsigned int k = 0; k < face.mNumIndices; ++k) {
+					indices.push_back(static_cast<std::int32_t>(face.mIndices[k] + baseVertexLocation));
+				}
 			}
 
-			vertices.push_back(vertex);
-		}
-
-		for (unsigned int f = 0; f < mesh->mNumFaces; ++f) {
-			const aiFace& face = mesh->mFaces[f];
-			for (unsigned int k = 0; k < face.mNumIndices; ++k) {
-				indices.push_back(static_cast<std::int32_t>(face.mIndices[k] + baseVertexLocation));
-			}
+			totalIndexCount += (UINT)indices.size() - startIndexLocation;
 		}
 
 		SubmeshGeometry submesh;
-		submesh.IndexCount = (UINT)indices.size() - startIndexLocation;
-		submesh.StartIndexLocation = startIndexLocation;
+		submesh.IndexCount = totalIndexCount;  
+		submesh.StartIndexLocation = 0;        
 		submesh.BaseVertexLocation = 0;
 
-		// create bounding box
 		XMFLOAT3 center = {
-		  0.5f * (vMin.x + vMax.x),
-		  0.5f * (vMin.y + vMax.y),
-		  0.5f * (vMin.z + vMax.z)
+		  0.5f * (vMinSingle.x + vMaxSingle.x),
+		  0.5f * (vMinSingle.y + vMaxSingle.y),
+		  0.5f * (vMinSingle.z + vMaxSingle.z)
 		};
 		XMFLOAT3 extents = {
-		  0.5f * (vMax.x - vMin.x),
-		  0.5f * (vMax.y - vMin.y),
-		  0.5f * (vMax.z - vMin.z)
+		  0.5f * (vMaxSingle.x - vMinSingle.x),
+		  0.5f * (vMaxSingle.y - vMinSingle.y),
+		  0.5f * (vMaxSingle.z - vMinSingle.z)
 		};
 
 		BoundingBox box(center, extents);
 		submesh.Bounds = box;
 
-		std::string submeshName = "LOD" + std::to_string(i);
+		geo->DrawArgs["LOD0"] = submesh;
 
-		geo->DrawArgs[submeshName] = submesh;
+		const UINT vbByteSize = (UINT)vertices.size() * sizeof(Vertex);
+		const UINT ibByteSize = (UINT)indices.size() * sizeof(std::int32_t);
 
+		ThrowIfFailed(D3DCreateBlob(vbByteSize, &geo->VertexBufferCPU));
+		CopyMemory(geo->VertexBufferCPU->GetBufferPointer(), vertices.data(), vbByteSize);
+
+		ThrowIfFailed(D3DCreateBlob(ibByteSize, &geo->IndexBufferCPU));
+		CopyMemory(geo->IndexBufferCPU->GetBufferPointer(), indices.data(), ibByteSize);
+
+		geo->VertexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(),
+			mCommandList.Get(), vertices.data(), vbByteSize, geo->VertexBufferUploader);
+
+		geo->IndexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(),
+			mCommandList.Get(), indices.data(), ibByteSize, geo->IndexBufferUploader);
+
+		geo->VertexByteStride = sizeof(Vertex);
+		geo->VertexBufferByteSize = vbByteSize;
+		geo->IndexFormat = DXGI_FORMAT_R32_UINT;
+		geo->IndexBufferByteSize = ibByteSize;
+
+		break;
+	}
 	}
 
-	const UINT vbByteSize = (UINT)vertices.size() * sizeof(Vertex);
-	const UINT ibByteSize = (UINT)indices.size() * sizeof(std::int32_t);
-
-	ThrowIfFailed(D3DCreateBlob(vbByteSize, &geo->VertexBufferCPU));
-	CopyMemory(geo->VertexBufferCPU->GetBufferPointer(), vertices.data(), vbByteSize);
-
-	ThrowIfFailed(D3DCreateBlob(ibByteSize, &geo->IndexBufferCPU));
-	CopyMemory(geo->IndexBufferCPU->GetBufferPointer(), indices.data(), ibByteSize);
-
-	geo->VertexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(),
-		mCommandList.Get(), vertices.data(), vbByteSize, geo->VertexBufferUploader);
-
-	geo->IndexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(),
-		mCommandList.Get(), indices.data(), ibByteSize, geo->IndexBufferUploader);
-
-
-	geo->VertexByteStride = sizeof(Vertex);
-	geo->VertexBufferByteSize = vbByteSize;
-	geo->IndexFormat = DXGI_FORMAT_R32_UINT;
-	geo->IndexBufferByteSize = ibByteSize;
-
 	mGeometries[geo->Name] = geo;
-
 	res[0].GeometryName = Name;
 	return res;
 }
@@ -3047,7 +3199,7 @@ std::vector<MeshParsingResult> RenderingSystem::LoadMesh(MeshDesc& meshDesc, boo
 
 	std::vector<MeshParsingResult> res;
 
-	res = BuildMeshGeometry(meshDesc.Name, meshDesc.Path);
+	res = BuildMeshGeometry(meshDesc.Name, meshDesc.Path, meshDesc.importType);
 
 	for (auto& i : res) i.GenerateMaterial = GenerateMaterial;
 

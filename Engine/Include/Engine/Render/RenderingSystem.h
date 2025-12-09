@@ -95,7 +95,7 @@ public:
 
     void UpdateRenderItems(std::vector<DrawableObject*>& mAllObjectsToUpdate);
 
-    std::vector<MeshParsingResult> BuildMeshGeometry(std::string Name, const std::string& filename);
+    std::vector<MeshParsingResult> BuildMeshGeometry(std::string Name, const std::string& filename, MeshDesc::ImportType importType);
     std::vector<MeshParsingResult> LoadMesh(MeshDesc& meshDesc, bool GenerateMaterial);
     void BuildPSOs(MaterialDesc& MDesc, std::unordered_map<std::string, ComPtr<ID3D12PipelineState>>& mPSOs);
     void BuildGlobalPSOs();

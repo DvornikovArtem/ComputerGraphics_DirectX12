@@ -56,7 +56,7 @@ struct MaterialDesc
 {
     MaterialDesc() {}
 
-    MaterialDesc(std::string Name, std::string VertexShaderName, std::string PixelShaderName, std::string HullShaderName, std::string DomainShaderName, std::string DiffuseTexName, std::string NormalMapName, std::string HeightMapName, XMFLOAT4 DiffuseAlbedo, XMFLOAT3 FresnelR0, float Roughness, float Metallic, bool UseTesselation)
+    MaterialDesc(std::string Name, std::string VertexShaderName, std::string PixelShaderName, std::string HullShaderName, std::string DomainShaderName, std::string DiffuseTexName, std::string NormalMapName, std::string HeightMapName, float Roughness, float Metallic, bool UseTesselation)
     {
         this->Name = Name;
         this->VertexShaderName = VertexShaderName;
@@ -94,7 +94,7 @@ struct MaterialDesc
 
 struct MeshDesc
 {
-    enum ImportType { LODed, Complex };
+    enum ImportType { SingleMesh, LODed, Complex };
 
     MeshDesc() {}
 

@@ -304,9 +304,10 @@ void StencilApp::LoadMeshes()
 
     //FOR NOW UNABLE TO LOAD DDS TEXTURES FROM MESHES (use manual texture import)
 
-    MeshParsingResults["Head"] = mRenderingSystem->LoadMesh(MeshDesc("Head", "assets/models/african_head.obj", MeshDesc::ImportType::LODed), false);
+    MeshParsingResults["Head"] = mRenderingSystem->LoadMesh(MeshDesc("Head", "assets/models/african_head.obj", MeshDesc::ImportType::SingleMesh), false);
     MeshParsingResults["PatrickStar"] = mRenderingSystem->LoadMesh(MeshDesc("PatrickStar", "assets/models/patrickstarW5LODs.fbx", MeshDesc::ImportType::LODed), false);
-    MeshParsingResults["Svidetel"] = mRenderingSystem->LoadMesh(MeshDesc("Svidetel", "assets/models/Svidetel.fbx", MeshDesc::ImportType::LODed), true);
+    MeshParsingResults["Svidetel"] = mRenderingSystem->LoadMesh(MeshDesc("Svidetel", "assets/models/Svidetel.fbx", MeshDesc::ImportType::SingleMesh), true);
+    MeshParsingResults["Statue"] = mRenderingSystem->LoadMesh(MeshDesc("Statue", "assets/models/Statue.fbx", MeshDesc::ImportType::SingleMesh), true);
 }
 
 void StencilApp::LoadTextures()
@@ -350,14 +351,15 @@ void StencilApp::MakeMaterials()
     //You can modify Mesh Parsing Result materials here, before they are fully initialized
     std::vector<MaterialDesc> MaterialDescs =
     {
-        MaterialDesc("bricks", "standardVS", "standardPS",  "", "", "bricksTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.25f, 0.f, false),
-        MaterialDesc("Bricks_DecalTesting", "standardVS", "standardPS", "", "", "bricksTex", "ShinyStones_NormalMap", "ShinyStones_HeightMap", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, 0.f, false),
-        MaterialDesc("AH", "standardVS", "standardPS", "", "", "AH_Diffuse", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.99f, 0.f, false),
-        MaterialDesc("woodCrate", "standardVS", "RotatingTilesPS", "", "", "woodCrateTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.2f, 0.05f, false),
-        MaterialDesc("PatrickMat", "standardVS", "standardPS", "", "", "PatrickTex", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, 0.f, false),
-        MaterialDesc("Semechki", "standardVS", "standardPS", "standardHS", "standardDS", "Semechki_Diffuse", "Semechki_NormalMap", "Semechki_HeightMap", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, 0.f, true),
-        MaterialDesc("ShinyStones", "standardVS", "standardPS", "standardHS", "standardDS", "ShinyStones_Diffuse", "ShinyStones_NormalMap", "ShinyStones_HeightMap", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.05f, 0.05f, 0.05f), 0.3f, 0.f, true),
-        MaterialDesc("SkyBox", "SkyBoxVS", "SkyBoxPS",  "", "", "SkyPref", "", "", XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f), XMFLOAT3(0.1f, 0.1f, 0.1f), 1.f, 0.f, false),
+        MaterialDesc("bricks", "standardVS", "standardPS",  "", "", "bricksTex", "", "", 0.25f, 0.f, false),
+        MaterialDesc("Bricks_DecalTesting", "standardVS", "standardPS", "", "", "bricksTex", "ShinyStones_NormalMap", "ShinyStones_HeightMap", 0.3f, 0.f, false),
+        MaterialDesc("AH", "standardVS", "standardPS", "", "", "AH_Diffuse", "", "", 0.99f, 0.f, false),
+        MaterialDesc("woodCrate", "standardVS", "RotatingTilesPS", "", "", "woodCrateTex", "", "", 0.2f, 0.05f, false),
+        MaterialDesc("PatrickMat", "standardVS", "standardPS", "", "", "PatrickTex", "", "", 0.3f, 0.f, false),
+        MaterialDesc("Semechki", "standardVS", "standardPS", "standardHS", "standardDS", "Semechki_Diffuse", "Semechki_NormalMap", "Semechki_HeightMap", 0.3f, 0.f, true),
+        MaterialDesc("ShinyStones", "standardVS", "standardPS", "standardHS", "standardDS", "ShinyStones_Diffuse", "ShinyStones_NormalMap", "ShinyStones_HeightMap", 0.3f, 0.f, true),
+        MaterialDesc("SkyBox", "SkyBoxVS", "SkyBoxPS",  "", "", "SkyPref", "", "", 1.f, 0.f, false),
+        MaterialDesc("MetallicYellow", "standardVS", "standardPS", "", "", "yellow1x1Tex", "", "", 0.3f, 0.8f, false)
     };
 
     MeshParsingResults["Svidetel"][0].GeneratedMaterial.Roughness = 0.99f;
@@ -381,10 +383,8 @@ void StencilApp::MakeMaterials()
                 "standardVS",
                 "standardPS",
                 "", "",
-                "yellow1x1Tex",
+                "white1x1Tex",
                 "", "",
-                XMFLOAT4(1, 1, 1, 1),            // Albedo
-                XMFLOAT3(0.05f, 0.05f, 0.05f),  // FresnelR0
                 roughness,
                 metallic,
                 false
@@ -412,6 +412,19 @@ void StencilApp::MakeDrawableObjects()
     Svidetel->OutlineColor = { 1.f, 0.53f, 0.f };
 
     mAllDrawableObjects[Svidetel->Name] = Svidetel;
+
+    DrawableObject* Statue = new DrawableObject();
+    Statue->Name = "Statue";
+    Statue->GeometryName = MeshParsingResults["Statue"][0].GeometryName;
+    Statue->MaterialName = "MetallicYellow";
+    Statue->renderLayer = RenderLayer::Opaque;
+    Statue->WorldLocation = XMFLOAT3(-15.f, 0.5f, -10.f);
+    Statue->WorldRotation = XMFLOAT3(0.f, DirectX::XM_PI / 4, DirectX::XM_PI);
+    Statue->Scale = XMFLOAT3(0.1f, 0.1f, 0.1f);
+    Statue->HasOutline = true;
+    Statue->OutlineColor = { 1.f, 0.f, 0.f };
+
+    mAllDrawableObjects[Statue->Name] = Statue;
 
     DrawableObject* SkyBoxSphere = new DrawableObject();
     SkyBoxSphere->Name = "SkyBoxSphere";
