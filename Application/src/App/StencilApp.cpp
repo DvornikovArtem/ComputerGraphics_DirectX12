@@ -281,6 +281,9 @@ void StencilApp::LoadShaders()
 
         ShaderDesc("MeshHeavyMS", SHADERS_ENGINE_DIR "MeshHeavy.hlsl", "MeshMain", nullptr, "ms"),
         ShaderDesc("MeshHeavyPS", SHADERS_ENGINE_DIR "MeshHeavy.hlsl", "MeshPS", nullptr, "ps"),
+
+        ShaderDesc("MeshletMS", SHADERS_ENGINE_DIR "MeshletMS.hlsl", "main", nullptr, "ms"),
+        ShaderDesc("MeshletPS", SHADERS_ENGINE_DIR "MeshletPS.hlsl", "main", nullptr, "ps"),
     };
 
     mRenderingSystem->BuildShaders(ShaderDescs);

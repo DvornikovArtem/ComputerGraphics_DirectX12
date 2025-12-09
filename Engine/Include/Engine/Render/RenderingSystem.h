@@ -49,6 +49,8 @@
 #include <dxil/dxcapi.h>
 #include <dxil/d3d12shader.h>
 
+#include <Model.h>
+
 #pragma comment(lib,"d3dcompiler.lib")
 #pragma comment(lib, "D3D12.lib")
 #pragma comment(lib, "dxgi.lib")
@@ -422,7 +424,24 @@ protected:
 private:
     bool mMeshShadersSupported = false;
 
+    struct MeshletSceneConstantBuffer
+    {
+        DirectX::XMFLOAT4X4 World;
+        DirectX::XMFLOAT4X4 WorldView;
+        DirectX::XMFLOAT4X4 WorldViewProj;
+        UINT DrawMeshlets;
+        DirectX::XMFLOAT3 _Padding;
+    };
+
+    bool mMeshletInitialized = false;
+    Model mMeshletModel;
+
+    Microsoft::WRL::ComPtr<ID3D12Resource> mMeshletSceneCB;
+    UINT8* mMeshletSceneCBMapped = nullptr;
+    UINT   mMeshletSceneCBSize = 0;
+
 public:
+    void InitMeshletResources();
     void BuildMeshPipelinePSO();
     void DrawMeshPipelineTest();
 // =================================================================================================

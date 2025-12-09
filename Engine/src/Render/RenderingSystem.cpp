@@ -171,6 +171,7 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 	BuildBasicGeometry();
 	BuildSceneGrid();
 	//BuildTerrain();
+	InitMeshletResources();
 
 
 	// Execute the initialization commands.
@@ -2432,13 +2433,24 @@ void RenderingSystem::BuildRootSignatures()
 		serializedRootSig->GetBufferSize(),
 		IID_PPV_ARGS(RootSignatures["Default"].GetAddressOf())));
 
-	// ===== Mesh Pipeline root signature =====
+	// MeshPipeline
 	{
-		CD3DX12_ROOT_PARAMETER rootParams[1];
-		rootParams[0].InitAsConstants(16, 0, 0, D3D12_SHADER_VISIBILITY_ALL);
+		CD3DX12_ROOT_PARAMETER rootParams[6];
+
+		// 0: Scene constant buffer (b0)
+		rootParams[0].InitAsConstantBufferView(0, 0, D3D12_SHADER_VISIBILITY_ALL);
+
+		// 1: 2 x uint32 root constants (b1) - IndexSize & MeshletSubsetsOffset
+		rootParams[1].InitAsConstants(2, 1, 0, D3D12_SHADER_VISIBILITY_ALL);
+
+		// 2..5: SRV root descriptors (t0..t3)
+		rootParams[2].InitAsShaderResourceView(0, 0, D3D12_SHADER_VISIBILITY_ALL); // index buffer
+		rootParams[3].InitAsShaderResourceView(1, 0, D3D12_SHADER_VISIBILITY_ALL); // meshlet buffer
+		rootParams[4].InitAsShaderResourceView(2, 0, D3D12_SHADER_VISIBILITY_ALL); // unique vertex indices
+		rootParams[5].InitAsShaderResourceView(3, 0, D3D12_SHADER_VISIBILITY_ALL); // primitive indices
 
 		CD3DX12_ROOT_SIGNATURE_DESC meshRootSigDesc(
-			1, rootParams,
+			_countof(rootParams), rootParams,
 			0, nullptr,
 			D3D12_ROOT_SIGNATURE_FLAG_NONE);
 
@@ -4622,58 +4634,40 @@ std::array<const CD3DX12_STATIC_SAMPLER_DESC, 6> RenderingSystem::GetStaticSampl
 
 void RenderingSystem::BuildMeshPipelinePSO()
 {
-	if (!mMeshShadersSupported)
-		return;
+	if (!mMeshShadersSupported) return;
 
-	if (mShaders.find("MeshHeavyMS") == mShaders.end() ||
-		mShaders.find("MeshHeavyPS") == mShaders.end())
+	D3DX12_MESH_SHADER_PIPELINE_STATE_DESC stream = {};
+
+	stream.pRootSignature = RootSignatures["MeshPipeline"].Get();
+	stream.MS =
 	{
-		OutputDebugStringA("MeshHeavyMS or MeshHeavyPS shader not found. Did you call LoadShaders()?\n");
-		return;
-	}
-
-	D3D12_SHADER_BYTECODE msBytecode = {
-		reinterpret_cast<BYTE*>(mShaders["MeshHeavyMS"]->GetBufferPointer()),
-		mShaders["MeshHeavyMS"]->GetBufferSize()
+		reinterpret_cast<BYTE*>(mShaders["MeshletMS"]->GetBufferPointer()),
+		mShaders["MeshletMS"]->GetBufferSize()
 	};
-
-	D3D12_SHADER_BYTECODE psBytecode = {
-		reinterpret_cast<BYTE*>(mShaders["MeshHeavyPS"]->GetBufferPointer()),
-		mShaders["MeshHeavyPS"]->GetBufferSize()
-	};
-
-	D3D12_RT_FORMAT_ARRAY rtvFormats = {};
-	rtvFormats.NumRenderTargets = 1;
-	rtvFormats.RTFormats[0] = mBackBufferFormat;
-
-	struct MeshPipelineStream
+	stream.PS =
 	{
-		CD3DX12_PIPELINE_STATE_STREAM_ROOT_SIGNATURE        RootSignature;
-		CD3DX12_PIPELINE_STATE_STREAM_MS                    MS;
-		CD3DX12_PIPELINE_STATE_STREAM_PS                    PS;
-		CD3DX12_PIPELINE_STATE_STREAM_BLEND_DESC            BlendState;
-		CD3DX12_PIPELINE_STATE_STREAM_RASTERIZER            RasterizerState;
-		CD3DX12_PIPELINE_STATE_STREAM_DEPTH_STENCIL         DepthStencilState;
-		CD3DX12_PIPELINE_STATE_STREAM_PRIMITIVE_TOPOLOGY    PrimitiveTopologyType;
-		CD3DX12_PIPELINE_STATE_STREAM_RENDER_TARGET_FORMATS RTVFormats;
-		CD3DX12_PIPELINE_STATE_STREAM_SAMPLE_DESC           SampleDesc;
-		CD3DX12_PIPELINE_STATE_STREAM_DEPTH_STENCIL_FORMAT  DSVFormat;
-	} stream;
-
-	stream.RootSignature = RootSignatures["MeshPipeline"].Get();
-	stream.MS = msBytecode;
-	stream.PS = psBytecode;
+		reinterpret_cast<BYTE*>(mShaders["MeshletPS"]->GetBufferPointer()),
+		mShaders["MeshletPS"]->GetBufferSize()
+	};
 	stream.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
 	stream.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+	stream.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
 	stream.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
-	stream.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-	stream.RTVFormats = rtvFormats;
-	stream.SampleDesc = DXGI_SAMPLE_DESC{ 1, 0 };
+	stream.DepthStencilState.DepthEnable = FALSE;
+	stream.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
+	//stream.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	stream.NumRenderTargets = 1;
+	stream.RTVFormats[0] = mBackBufferFormat;
+	//stream.SampleDesc = DXGI_SAMPLE_DESC{ 1, 0 };
+	stream.SampleDesc = DefaultSampleDesc();
+	stream.SampleMask = UINT_MAX;
 	stream.DSVFormat = mDepthStencilFormat;
 
+	auto psoStream = CD3DX12_PIPELINE_MESH_STATE_STREAM(stream);
+
 	D3D12_PIPELINE_STATE_STREAM_DESC streamDesc = {};
-	streamDesc.pPipelineStateSubobjectStream = &stream;
-	streamDesc.SizeInBytes = sizeof(stream);
+	streamDesc.pPipelineStateSubobjectStream = &psoStream;
+	streamDesc.SizeInBytes = sizeof(psoStream);
 
 	ComPtr<ID3D12PipelineState> pso;
 	ThrowIfFailed(md3dDevice->CreatePipelineState(&streamDesc, IID_PPV_ARGS(&pso)));
@@ -4681,10 +4675,10 @@ void RenderingSystem::BuildMeshPipelinePSO()
 	GlobalPSOs["MeshPipeline"] = pso;
 }
 
+
 void RenderingSystem::DrawMeshPipelineTest()
 {
-	if (!mMeshShadersSupported)
-		return;
+	if (!mMeshShadersSupported || !mMeshletInitialized) return;
 
 	auto it = GlobalPSOs.find("MeshPipeline");
 	if (it == GlobalPSOs.end())
@@ -4692,34 +4686,116 @@ void RenderingSystem::DrawMeshPipelineTest()
 
 	using namespace DirectX;
 
-	XMMATRIX view = XMLoadFloat4x4(&mMainPassCB.View);
-	XMMATRIX proj = XMLoadFloat4x4(&mMainPassCB.Proj);
-	XMMATRIX viewProj = XMMatrixMultiply(view, proj);
+	XMMATRIX view = mCamera.GetView();
+	XMMATRIX proj = mCamera.GetProj();
 
-	XMFLOAT4X4 viewProjT;
-	XMStoreFloat4x4(&viewProjT, XMMatrixTranspose(viewProj));
+	XMMATRIX world = XMMatrixScaling(1.0f, 1.0f, 1.0f) * XMMatrixTranslation(0.0f, 0.0f, 0.0f);
+
+	XMMATRIX worldView = world * view;
+	XMMATRIX worldViewProj = worldView * proj;
+
+	MeshletSceneConstantBuffer cbData{};
+	XMStoreFloat4x4(&cbData.World, XMMatrixTranspose(world));
+	XMStoreFloat4x4(&cbData.WorldView, XMMatrixTranspose(worldView));
+	XMStoreFloat4x4(&cbData.WorldViewProj, XMMatrixTranspose(worldViewProj));
+	cbData.DrawMeshlets = true;
+
+	const UINT frameIndex = mCurrFrameResourceIndex;
+	const UINT cbOffset = frameIndex * mMeshletSceneCBSize;
+
+	std::memcpy(mMeshletSceneCBMapped + cbOffset, &cbData, sizeof(cbData));
+
 
 	mCommandList->RSSetViewports(1, &mScreenViewport);
 	mCommandList->RSSetScissorRects(1, &mScissorRect);
 
-	auto dsv = DepthStencilView();
-	mCommandList->OMSetRenderTargets(1, &mSceneColorRTV, FALSE, &dsv);
+	mCommandList->OMSetRenderTargets(1, &mSceneColorRTV, FALSE, &DepthStencilView());
 
 	mCommandList->SetGraphicsRootSignature(RootSignatures["MeshPipeline"].Get());
 	mCommandList->SetPipelineState(it->second.Get());
 
-	mCommandList->SetGraphicsRoot32BitConstants(0, 16, &viewProjT, 0);
+	mCommandList->SetGraphicsRootConstantBufferView(0, mMeshletSceneCB->GetGPUVirtualAddress() + cbOffset);
 
 	Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList6> cmdList6;
 	HRESULT hr = mCommandList->QueryInterface(IID_PPV_ARGS(&cmdList6));
 	if (FAILED(hr) || !cmdList6)
 	{
-		OutputDebugStringA(
-			"MeshPipeline: failed to QueryInterface ID3D12GraphicsCommandList6, mesh shader not executed.\n");
+		OutputDebugStringA("MeshPipeline: failed to QueryInterface ID3D12GraphicsCommandList6, mesh shader not executed.\n");
 		return;
 	}
 
-	const UINT GRID_SIZE = 128;
-	cmdList6->DispatchMesh(GRID_SIZE, GRID_SIZE, 1);
+	const Mesh& mesh = mMeshletModel.GetMesh(0);
+	if (mesh.VertexResources.empty()) return;
+
+	cmdList6->SetGraphicsRoot32BitConstant(1, mesh.IndexSize, 0);
+
+	cmdList6->SetGraphicsRootShaderResourceView(2, mesh.VertexResources[0]->GetGPUVirtualAddress());
+	cmdList6->SetGraphicsRootShaderResourceView(3, mesh.MeshletResource->GetGPUVirtualAddress());
+	cmdList6->SetGraphicsRootShaderResourceView(4, mesh.UniqueVertexIndexResource->GetGPUVirtualAddress());
+	cmdList6->SetGraphicsRootShaderResourceView(5, mesh.PrimitiveIndexResource->GetGPUVirtualAddress());
+
+	const uint32_t MAX_MESHLET_NUM_THREADS = 128;
+
+	for (uint32_t subsetIndex = 0; subsetIndex < mesh.MeshletSubsets.size(); ++subsetIndex)
+	{
+		const Subset& subset = mesh.MeshletSubsets[subsetIndex];
+
+		cmdList6->SetGraphicsRoot32BitConstant(1, subset.Offset, 1);
+
+		cmdList6->DispatchMesh(subset.Count, 1, 1);
+	}
 }
 
+
+void RenderingSystem::InitMeshletResources()
+{
+	if (!mMeshShadersSupported || mMeshletInitialized)
+		return;
+
+	HRESULT hr = mMeshletModel.LoadFromFile(L"assets/meshlets/Dragon_LOD0.bin");
+	if (FAILED(hr))
+	{
+		OutputDebugStringA("Meshlets: failed to load Dragon_LOD0.bin\n");
+		return;
+	}
+	else OutputDebugStringA("Meshlets: successfully loaded Dragon_LOD0.bin\n");
+
+	ComPtr<ID3D12CommandAllocator> uploadAlloc;
+	ComPtr<ID3D12GraphicsCommandList> uploadList;
+
+	ThrowIfFailed(md3dDevice->CreateCommandAllocator(
+		D3D12_COMMAND_LIST_TYPE_DIRECT,
+		IID_PPV_ARGS(&uploadAlloc)));
+
+	ThrowIfFailed(md3dDevice->CreateCommandList(
+		0,
+		D3D12_COMMAND_LIST_TYPE_DIRECT,
+		uploadAlloc.Get(),
+		nullptr,
+		IID_PPV_ARGS(&uploadList)));
+
+	ThrowIfFailed(uploadList->Close());
+
+	ThrowIfFailed(mMeshletModel.UploadGpuResources(
+		md3dDevice.Get(),
+		mCommandQueue.Get(),
+		uploadAlloc.Get(),
+		uploadList.Get()));
+
+	const UINT cbStride = d3dUtil::CalcConstantBufferByteSize(sizeof(MeshletSceneConstantBuffer));
+	mMeshletSceneCBSize = cbStride;
+	const UINT bufferSize = cbStride * gNumFrameResources;
+
+	ThrowIfFailed(md3dDevice->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Buffer(bufferSize),
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(&mMeshletSceneCB)));
+
+	CD3DX12_RANGE readRange(0, 0);
+	ThrowIfFailed(mMeshletSceneCB->Map(0, &readRange, reinterpret_cast<void**>(&mMeshletSceneCBMapped)));
+
+	mMeshletInitialized = true;
+}
