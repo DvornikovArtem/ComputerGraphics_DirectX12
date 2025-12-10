@@ -956,6 +956,9 @@ void RenderingSystem::RegisterScenePanels() {
 					ImGui::EndCombo();
 				}
 
+				ImGui::SeparatorText("Mesh Shaders");
+				ImGui::Checkbox("Draw Meshlets", &mDrawMeshlets);
+
 				if (ImGui::Button("Print Debug Text")) {
 					Engine::UI::DebugConsole::Get().Info("%s", "It is information");
 					Engine::UI::DebugConsole::Get().Warn("%s", "It is warning");
@@ -4693,7 +4696,8 @@ void RenderingSystem::DrawMeshPipelineTest()
 	XMMATRIX view = mCamera.GetView();
 	XMMATRIX proj = mCamera.GetProj();
 
-	XMMATRIX world = XMMatrixScaling(0.1f, 0.1f, 0.1f) * XMMatrixTranslation(-20.0f, 0.0f, 0.0f);
+	//XMMATRIX world = XMMatrixScaling(0.1f, 0.1f, 0.1f) * XMMatrixTranslation(-20.0f, 0.0f, 0.0f);
+	XMMATRIX world = XMMatrixScaling(1.0f, 1.0f, 1.0f) * XMMatrixTranslation(0.0f, 5.0f, 0.0f);
 
 	XMMATRIX worldView = world * view;
 	XMMATRIX worldViewProj = worldView * proj;
@@ -4702,7 +4706,7 @@ void RenderingSystem::DrawMeshPipelineTest()
 	XMStoreFloat4x4(&cbData.World, XMMatrixTranspose(world));
 	XMStoreFloat4x4(&cbData.WorldView, XMMatrixTranspose(worldView));
 	XMStoreFloat4x4(&cbData.WorldViewProj, XMMatrixTranspose(worldViewProj));
-	cbData.DrawMeshlets = true;
+	cbData.DrawMeshlets = mDrawMeshlets;
 
 	const UINT frameIndex = mCurrFrameResourceIndex;
 	const UINT cbOffset = frameIndex * mMeshletSceneCBSize;
@@ -4756,7 +4760,8 @@ void RenderingSystem::InitMeshletResources()
 	if (!mMeshShadersSupported || mMeshletInitialized)
 		return;
 
-	HRESULT hr = mMeshletModel.LoadFromFile(L"assets/meshlets/Dragon_LOD0.bin");
+	//HRESULT hr = mMeshletModel.LoadFromFile(L"assets/meshlets/Dragon_LOD0.bin");
+	HRESULT hr = mMeshletModel.LoadFromFile(L"assets/meshlets/stadium2.bin");
 	if (FAILED(hr))
 	{
 		OutputDebugStringA("Meshlets: failed to load Dragon_LOD0.bin\n");

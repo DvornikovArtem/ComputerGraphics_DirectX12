@@ -441,6 +441,8 @@ private:
     UINT8* mMeshletSceneCBMapped = nullptr;
     UINT   mMeshletSceneCBSize = 0;
 
+    bool mDrawMeshlets = true;
+
 public:
     void InitMeshletResources();
     void BuildMeshPipelinePSO();
