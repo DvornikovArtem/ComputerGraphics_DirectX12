@@ -625,8 +625,6 @@ void RenderingSystem::Render()
 	mGBuffer->TransitToTonemappingState(mCommandList);
 	PostProcessingPass();
 
-	DrawMeshPipelineTest();
-
 	if (mShowBounds && mOctTree) mOctTree->Draw(mDebugDrawer);
 
 	// Draw debug primitives
@@ -3531,6 +3529,8 @@ void RenderingSystem::GBufferGeometryPass()
 
 	//DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Landscape], "GBufferGeometryPass");
 	DrawRenderItems(mCommandList.Get(), mVisibleTerrainRitems, psoName);
+
+	DrawMeshPipeline();
 }
 
 void RenderingSystem::GBufferLightPass()
@@ -4663,8 +4663,13 @@ void RenderingSystem::BuildMeshPipelinePSO()
 	stream.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
 	stream.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
 	//stream.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-	stream.NumRenderTargets = 1;
-	stream.RTVFormats[0] = mBackBufferFormat;
+	stream.NumRenderTargets = 6;
+	stream.RTVFormats[0] = mGBuffer->Diffuse.Format;
+	stream.RTVFormats[1] = mGBuffer->DepthStencils.Format;
+	stream.RTVFormats[2] = mGBuffer->Normal.Format;
+	stream.RTVFormats[3] = mGBuffer->MatFresnelRoughness.Format;
+	stream.RTVFormats[4] = mGBuffer->VelocityBuffer.Format;
+	stream.RTVFormats[5] = mGBuffer->ObjectOutlines.Format;
 	//stream.SampleDesc = DXGI_SAMPLE_DESC{ 1, 0 };
 	stream.SampleDesc = DefaultSampleDesc();
 	stream.SampleMask = UINT_MAX;
@@ -4683,22 +4688,14 @@ void RenderingSystem::BuildMeshPipelinePSO()
 }
 
 
-void RenderingSystem::DrawMeshPipelineTest()
+void RenderingSystem::DrawMeshPipeline()
 {
 	if (!mMeshShadersSupported || !mMeshletInitialized) return;
-
-	auto it = GlobalPSOs.find("MeshPipeline");
-	if (it == GlobalPSOs.end())
-		return;
-
-	using namespace DirectX;
 
 	XMMATRIX view = mCamera.GetView();
 	XMMATRIX proj = mCamera.GetProj();
 
-	//XMMATRIX world = XMMatrixScaling(0.1f, 0.1f, 0.1f) * XMMatrixTranslation(-20.0f, 0.0f, 0.0f);
 	XMMATRIX world = XMMatrixScaling(1.0f, 1.0f, 1.0f) * XMMatrixTranslation(0.0f, 5.0f, 0.0f);
-
 	XMMATRIX worldView = world * view;
 	XMMATRIX worldViewProj = worldView * proj;
 
@@ -4710,21 +4707,13 @@ void RenderingSystem::DrawMeshPipelineTest()
 
 	const UINT frameIndex = mCurrFrameResourceIndex;
 	const UINT cbOffset = frameIndex * mMeshletSceneCBSize;
-
 	std::memcpy(mMeshletSceneCBMapped + cbOffset, &cbData, sizeof(cbData));
 
-
-	mCommandList->RSSetViewports(1, &mScreenViewport);
-	mCommandList->RSSetScissorRects(1, &mScissorRect);
-
-	mCommandList->OMSetRenderTargets(1, &mSceneColorRTV, FALSE, &DepthStencilView());
-
 	mCommandList->SetGraphicsRootSignature(RootSignatures["MeshPipeline"].Get());
-	mCommandList->SetPipelineState(it->second.Get());
-
+	mCommandList->SetPipelineState(GlobalPSOs["MeshPipeline"].Get());
 	mCommandList->SetGraphicsRootConstantBufferView(0, mMeshletSceneCB->GetGPUVirtualAddress() + cbOffset);
 
-	Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList6> cmdList6;
+	ComPtr<ID3D12GraphicsCommandList6> cmdList6;
 	HRESULT hr = mCommandList->QueryInterface(IID_PPV_ARGS(&cmdList6));
 	if (FAILED(hr) || !cmdList6)
 	{
@@ -4736,38 +4725,56 @@ void RenderingSystem::DrawMeshPipelineTest()
 	if (mesh.VertexResources.empty()) return;
 
 	cmdList6->SetGraphicsRoot32BitConstant(1, mesh.IndexSize, 0);
-
 	cmdList6->SetGraphicsRootShaderResourceView(2, mesh.VertexResources[0]->GetGPUVirtualAddress());
 	cmdList6->SetGraphicsRootShaderResourceView(3, mesh.MeshletResource->GetGPUVirtualAddress());
 	cmdList6->SetGraphicsRootShaderResourceView(4, mesh.UniqueVertexIndexResource->GetGPUVirtualAddress());
 	cmdList6->SetGraphicsRootShaderResourceView(5, mesh.PrimitiveIndexResource->GetGPUVirtualAddress());
 
-	const uint32_t MAX_MESHLET_NUM_THREADS = 128;
-
+	const uint32_t MaxDispatchGroups = 65535u;
 	for (uint32_t subsetIndex = 0; subsetIndex < mesh.MeshletSubsets.size(); ++subsetIndex)
 	{
 		const Subset& subset = mesh.MeshletSubsets[subsetIndex];
 
-		cmdList6->SetGraphicsRoot32BitConstant(1, subset.Offset, 1);
+		uint32_t remaining = subset.Count;
+		uint32_t currentOffset = subset.Offset;
 
-		cmdList6->DispatchMesh(subset.Count, 1, 1);
+		while (remaining > 0)
+		{
+			uint32_t batchCount = (remaining > MaxDispatchGroups) ? MaxDispatchGroups : remaining;
+
+			cmdList6->SetGraphicsRoot32BitConstant(1, currentOffset, 1);
+
+			cmdList6->DispatchMesh(batchCount, 1, 1);
+
+			remaining -= batchCount;
+			currentOffset += batchCount;
+		}
 	}
 }
 
 
 void RenderingSystem::InitMeshletResources()
 {
-	if (!mMeshShadersSupported || mMeshletInitialized)
-		return;
+	if (!mMeshShadersSupported || mMeshletInitialized) return;
 
-	//HRESULT hr = mMeshletModel.LoadFromFile(L"assets/meshlets/Dragon_LOD0.bin");
-	HRESULT hr = mMeshletModel.LoadFromFile(L"assets/meshlets/stadium2.bin");
+	const wchar_t* filename = L"assets/meshlets/stadium2.bin"; //assets/meshlets/Dragon_LOD0.bin
+	HRESULT hr = mMeshletModel.LoadFromFile(filename);
+	std::wstring msg = L"Meshlets: ";
 	if (FAILED(hr))
 	{
-		OutputDebugStringA("Meshlets: failed to load Dragon_LOD0.bin\n");
+		msg += L"failed to load ";
+		msg += filename;
+		msg += L"\n";
+		OutputDebugStringW(msg.c_str());
 		return;
 	}
-	else OutputDebugStringA("Meshlets: successfully loaded Dragon_LOD0.bin\n");
+	else
+	{
+		msg += L"successfully loaded ";
+		msg += filename;
+		msg += L"\n";
+		OutputDebugStringW(msg.c_str());
+	}
 
 	ComPtr<ID3D12CommandAllocator> uploadAlloc;
 	ComPtr<ID3D12GraphicsCommandList> uploadList;

@@ -439,14 +439,14 @@ private:
 
     Microsoft::WRL::ComPtr<ID3D12Resource> mMeshletSceneCB;
     UINT8* mMeshletSceneCBMapped = nullptr;
-    UINT   mMeshletSceneCBSize = 0;
+    UINT mMeshletSceneCBSize = 0;
 
     bool mDrawMeshlets = true;
 
 public:
     void InitMeshletResources();
     void BuildMeshPipelinePSO();
-    void DrawMeshPipelineTest();
+    void DrawMeshPipeline();
 // =================================================================================================
 };
 
