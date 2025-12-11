@@ -77,12 +77,6 @@ struct PSOut
     float4 ObjectOutlines       : SV_Target5;
 };
 
-float3 EncodeNormalTo01(float3 n)
-{
-    // [-1..1] -> [0..1]
-    return n * 0.5f + 0.5f;
-}
-
 PSOut main(VertexOut input)
 {
     PSOut o;
@@ -107,8 +101,7 @@ PSOut main(VertexOut input)
     float linearDepth = -input.PositionVS.z;
     o.DepthStencils = float4(linearDepth, linearDepth, linearDepth, 1.0f);
     
-    float3 n = normalize(input.Normal);
-    o.Normal = float4(EncodeNormalTo01(n), 1.0f);
+    o.Normal = float4(normalize(input.Normal), 1.0f);
     
     float3 F0 = float3(0.04f, 0.04f, 0.04f);
     float roughness = 0.5f;

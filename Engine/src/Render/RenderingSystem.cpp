@@ -4757,7 +4757,7 @@ void RenderingSystem::InitMeshletResources()
 {
 	if (!mMeshShadersSupported || mMeshletInitialized) return;
 
-	const wchar_t* filename = L"assets/meshlets/stadium2.bin"; //assets/meshlets/Dragon_LOD0.bin
+	const wchar_t* filename = L"assets/meshlets/stadium3.bin"; //assets/meshlets/Dragon_LOD0.bin
 	HRESULT hr = mMeshletModel.LoadFromFile(filename);
 	std::wstring msg = L"Meshlets: ";
 	if (FAILED(hr))
