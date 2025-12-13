@@ -62,10 +62,14 @@ struct VertexOut
     float4 PositionHS   : SV_Position;
     float3 PositionVS   : POSITION0;
     float3 Normal       : NORMAL0;
+    float2 TexC         : TEXCOORD0;
     uint MeshletIndex   : COLOR0;
 };
 
 ConstantBuffer<Constants> Globals : register(b0);
+
+Texture2D gDiffuseMap : register(t4);
+SamplerState gSampler : register(s0);
 
 struct PSOut
 {
@@ -93,7 +97,9 @@ PSOut main(VertexOut input)
     }
     else
     {
-        diffuseColor = float3(0.8f, 0.8f, 0.8f);
+        //diffuseColor = float3(0.8f, 0.8f, 0.8f);
+        float4 tex = gDiffuseMap.Sample(gSampler, input.TexC);
+        diffuseColor = tex.rgb;
     }
     
     o.Diffuse = float4(diffuseColor, 1.0f);

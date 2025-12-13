@@ -14,7 +14,9 @@
                   SRV(t0), \
                   SRV(t1), \
                   SRV(t2), \
-                  SRV(t3)"
+                  SRV(t3), \
+                  DescriptorTable(SRV(t4)), \
+                  StaticSampler(s0, filter=FILTER_MIN_MAG_MIP_LINEAR)"
 
 struct Constants
 {
@@ -41,6 +43,7 @@ struct VertexOut
     float4 PositionHS   : SV_Position;
     float3 PositionVS   : POSITION0;
     float3 Normal       : NORMAL0;
+    float2 TexC         : TEXCOORD0;
     uint   MeshletIndex : COLOR0;
 };
 
@@ -100,12 +103,16 @@ uint GetVertexIndex(Meshlet m, uint localIndex)
 VertexOut GetVertexAttributes(uint meshletIndex, uint vertexIndex)
 {
     Vertex v = Vertices[vertexIndex];
+    
+    float3 worldPos = mul(float4(v.Position, 1), Globals.World).xyz;
 
     VertexOut vout;
     vout.PositionVS = mul(float4(v.Position, 1), Globals.WorldView).xyz;
     vout.PositionHS = mul(float4(v.Position, 1), Globals.WorldViewProj);
     vout.Normal = mul(float4(v.Normal, 0), Globals.World).xyz;
     vout.MeshletIndex = meshletIndex;
+    float uvScale = 0.1;
+    vout.TexC = frac(worldPos.xz * uvScale);
 
     return vout;
 }

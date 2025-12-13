@@ -2436,7 +2436,7 @@ void RenderingSystem::BuildRootSignatures()
 
 	// MeshPipeline
 	{
-		CD3DX12_ROOT_PARAMETER rootParams[6];
+		CD3DX12_ROOT_PARAMETER rootParams[7];
 
 		// 0: Scene constant buffer (b0)
 		rootParams[0].InitAsConstantBufferView(0, 0, D3D12_SHADER_VISIBILITY_ALL);
@@ -2450,9 +2450,22 @@ void RenderingSystem::BuildRootSignatures()
 		rootParams[4].InitAsShaderResourceView(2, 0, D3D12_SHADER_VISIBILITY_ALL); // unique vertex indices
 		rootParams[5].InitAsShaderResourceView(3, 0, D3D12_SHADER_VISIBILITY_ALL); // primitive indices
 
+		// 6: Descriptor table for diffuse texture SRV(t4)
+		CD3DX12_DESCRIPTOR_RANGE texTable;
+		texTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 4); // t4
+		rootParams[6].InitAsDescriptorTable(1, &texTable, D3D12_SHADER_VISIBILITY_PIXEL);
+
+		CD3DX12_STATIC_SAMPLER_DESC samp0(
+			0, // s0
+			D3D12_FILTER_MIN_MAG_MIP_LINEAR,
+			D3D12_TEXTURE_ADDRESS_MODE_WRAP,
+			D3D12_TEXTURE_ADDRESS_MODE_WRAP,
+			D3D12_TEXTURE_ADDRESS_MODE_WRAP
+		);
+
 		CD3DX12_ROOT_SIGNATURE_DESC meshRootSigDesc(
 			_countof(rootParams), rootParams,
-			0, nullptr,
+			1, &samp0,
 			D3D12_ROOT_SIGNATURE_FLAG_NONE);
 
 		ComPtr<ID3DBlob> serializedMeshRootSig = nullptr;
@@ -4692,6 +4705,9 @@ void RenderingSystem::DrawMeshPipeline()
 {
 	if (!mMeshShadersSupported || !mMeshletInitialized) return;
 
+	ID3D12DescriptorHeap* heaps[] = { mSrvDescriptorHeap.Get() };
+	mCommandList->SetDescriptorHeaps(_countof(heaps), heaps);
+
 	XMMATRIX view = mCamera.GetView();
 	XMMATRIX proj = mCamera.GetProj();
 
@@ -4729,6 +4745,8 @@ void RenderingSystem::DrawMeshPipeline()
 	cmdList6->SetGraphicsRootShaderResourceView(3, mesh.MeshletResource->GetGPUVirtualAddress());
 	cmdList6->SetGraphicsRootShaderResourceView(4, mesh.UniqueVertexIndexResource->GetGPUVirtualAddress());
 	cmdList6->SetGraphicsRootShaderResourceView(5, mesh.PrimitiveIndexResource->GetGPUVirtualAddress());
+	int texIndex = mTextures["PatrickTex"]->srvHeapIndex;
+	cmdList6->SetGraphicsRootDescriptorTable(6, GetGpuSrv(texIndex));
 
 	const uint32_t MaxDispatchGroups = 65535u;
 	for (uint32_t subsetIndex = 0; subsetIndex < mesh.MeshletSubsets.size(); ++subsetIndex)
