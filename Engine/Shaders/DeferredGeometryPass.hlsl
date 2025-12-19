@@ -53,18 +53,21 @@ DS_VS_OUTPUT_PS_INPUT VS(VS_INPUT vin)
     
     vout.Tangent = normalize(mul(vin.Tangent, (float3x3) cbObject.World));
 
-    vout.PosCS = mul(posW, cbMainPass.ViewProj);
+    vout.PosCS = mul(posW, cbMainPass.ViewProjNoJitter);
+    vout.PosCS.xy += cbMainPass.CameraJitter * vout.PosCS.w;
 	
     float4 texC = mul(float4(vin.TexC, 0.0f, 1.0f), cbObject.TexTransform);
     vout.TexC = mul(texC, cbMaterial.MatTransform).xy;
     
     float4 prevPosW = mul(float4(vin.Pos, 1.0f), cbObject.PrevWorld);
     vout.PrevPosCS = mul(prevPosW, cbMainPass.PrevViewProj);
+    vout.PrevPosCS.xy += cbMainPass.CameraJitter * vout.PrevPosCS.w;
     
     vout.CurrPosCS = vout.PosCS;
     
     vout.CurrPosCSNoJitter = mul(posW, cbMainPass.ViewProjNoJitter);
     vout.PrevPosCSNoJitter = mul(prevPosW, cbMainPass.PrevViewProjNoJitter);
+    
     return vout;
 }
 
