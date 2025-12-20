@@ -1184,6 +1184,7 @@
     <None Include="Extern\DirectXTex\include\DirectXTex\DirectXTex.inl">
       <Filter>Header Files</Filter>
     </None>
+    <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Core\d3dUtil.cpp">

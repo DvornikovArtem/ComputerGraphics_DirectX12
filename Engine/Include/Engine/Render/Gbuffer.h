@@ -6,6 +6,7 @@
 
 
 #include "../Core/d3dUtil.h"
+#include "pix3.h"
 
 using Microsoft::WRL::ComPtr;
 

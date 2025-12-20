@@ -89,7 +89,9 @@ void Gbuffer::TransitSRVToCommon(ComPtr<ID3D12GraphicsCommandList4>& cmdList)
 
 void Gbuffer::Clear(ComPtr<ID3D12GraphicsCommandList4>& cmdList)
 {
+    PIXBeginEvent(cmdList.Get(), 0x00FF00, "Clear GBuffer");
     for (GBufferChannel* i : ChannelPTRs) cmdList->ClearRenderTargetView(i->RTV, i->ClearValue.Color, 0, nullptr);
+    PIXEndEvent(cmdList.Get());
 }
 
 void Gbuffer::Resize(int width, int height)
