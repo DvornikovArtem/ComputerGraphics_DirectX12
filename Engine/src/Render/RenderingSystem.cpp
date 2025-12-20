@@ -2154,8 +2154,9 @@ ComPtr<ID3DBlob> RenderingSystem::DXCCompileShader(const std::wstring& filename,
 	arguments.push_back(L"-I");
 	arguments.push_back(L"../");
 
+	arguments.push_back(L"-Zi");    // Generate debug information
+
 	//in case we need no optimization
-	//arguments.push_back(L"-Zi");
 	//arguments.push_back(L"-Qembed_debug");
 	//arguments.push_back(L"-Od");
 
@@ -2216,6 +2217,20 @@ ComPtr<ID3DBlob> RenderingSystem::DXCCompileShader(const std::wstring& filename,
 			OutputDebugStringA(errors->GetStringPointer());
 		}
 		ThrowIfFailed(compileStatus);
+	}
+
+	//save .pdb file for debugging
+	ComPtr<IDxcBlob> pdbBlob;
+	ComPtr<IDxcBlobWide> pdbName;
+	results->GetOutput(DXC_OUT_PDB, IID_PPV_ARGS(&pdbBlob), &pdbName);
+	const wchar_t* pdbNameStr = pdbName->GetStringPointer();
+	std::wstring pdbFilePath = std::wstring(SHADERS_ENGINE_DIR) + L"/PDBs/" + pdbNameStr;
+	std::ofstream pdbFile(pdbFilePath, std::ios::binary);
+	if (pdbFile.is_open())
+	{
+		pdbFile.write(static_cast<const char*>(pdbBlob->GetBufferPointer()),
+			pdbBlob->GetBufferSize());
+		pdbFile.close();
 	}
 
 	//IDxcBlob to ID3DBlob conversion because im lazy to convert everything to IDxcBlob
