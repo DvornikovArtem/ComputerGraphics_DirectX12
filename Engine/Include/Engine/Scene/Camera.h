@@ -67,10 +67,6 @@ public:
 	void Walk(float d);
 	void VerticalMove(float d);
 
-	// World-space moves
-	void MoveWorld(const DirectX::XMFLOAT3& deltaWorld);
-	void ElevateWorld(float dy);
-
 	// Rotate the camera.
 	void Pitch(float angle);
 	void RotateY(float angle);

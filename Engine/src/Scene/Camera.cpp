@@ -206,26 +206,7 @@ void Camera::Walk(float d)
 
 void Camera::VerticalMove(float d)
 {
-	// mPosition += d * mUp
-	XMVECTOR s = XMVectorReplicate(d);
-	XMVECTOR u = XMLoadFloat3(&mUp);
-	XMVECTOR p = XMLoadFloat3(&mPosition);
-	XMStoreFloat3(&mPosition, XMVectorMultiplyAdd(s, u, p));
-
-	mViewDirty = true;
-}
-
-void Camera::MoveWorld(const XMFLOAT3& deltaWorld)
-{
-	mPosition.x += deltaWorld.x;
-	mPosition.y += deltaWorld.y;
-	mPosition.z += deltaWorld.z;
-	mViewDirty = true;
-}
-
-void Camera::ElevateWorld(float dy)
-{
-	mPosition.y += dy;
+	mPosition.y += d;
 	mViewDirty = true;
 }
 
