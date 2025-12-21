@@ -185,7 +185,7 @@ public:
     void SetShowBounds(bool v) { mShowBounds = v; }
 
 protected:
-    bool mVSync = true;
+    bool mVSync = false;
     bool mWireframe = false;
     bool mShowBounds = false;
 
