@@ -731,7 +731,7 @@ void RenderingSystem::RegisterScenePanels() {
 	using Engine::UI::PanelEntry;
 	using Engine::UI::UILayerKind;
 
-	// Dockspace — the earliest one (order = -1000)
+	// Dockspace - the earliest one (order = -1000)
 	{
 		PanelEntry p{};
 		p.id = "MainDockspaceHost";
@@ -2891,8 +2891,28 @@ std::vector<MeshParsingResult> RenderingSystem::BuildMeshGeometry(std::string Na
 	std::vector<MeshParsingResult> res;
 	res.resize(1);
 
-	const aiScene* scene = importer.ReadFile(filename,
-		aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_GenNormals | aiProcess_CalcTangentSpace);
+	// Use DirectStorage to load mesh data into memory
+	std::wstring wFilename(filename.begin(), filename.end());
+	std::vector<std::uint8_t> fileData;
+	try {
+		mDirectStorage.ReadFileToMemory(wFilename, fileData);
+	}
+	catch (const std::exception& e) {
+		std::string err = "DirectStorage failed to load mesh: " + std::string(e.what());
+		MessageBoxA(0, err.c_str(), "DirectStorage Error", 0);
+		return res;
+	}
+
+	// Get extension for Assimp hint
+	std::string extension = "";
+	size_t dotPos = filename.find_last_of('.');
+	if (dotPos != std::string::npos) {
+		extension = filename.substr(dotPos);
+	}
+
+	const aiScene* scene = importer.ReadFileFromMemory(fileData.data(), fileData.size(),
+		aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_GenNormals | aiProcess_CalcTangentSpace,
+		extension.c_str());
 
 	if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
 		MessageBoxW(0, L"Model not found.", 0, 0);

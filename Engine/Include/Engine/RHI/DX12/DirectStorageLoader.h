@@ -9,7 +9,7 @@
 
 namespace DirectX
 {
-    class ResourceUploadBatch; // forward (у тебя он уже используется)
+    class ResourceUploadBatch;
 }
 
 class DirectStorageLoader
@@ -21,13 +21,10 @@ public:
     DirectStorageLoader(const DirectStorageLoader&) = delete;
     DirectStorageLoader& operator=(const DirectStorageLoader&) = delete;
 
-    // Вызывать один раз после создания md3dDevice
     void Initialize(ID3D12Device* device);
 
-    // Прочитать файл через DirectStorage в RAM (vector<byte>)
     void ReadFileToMemory(const std::wstring& path, std::vector<std::uint8_t>& outData);
 
-    // Хелпер для DDS: DirectStorage -> RAM -> CreateDDSTextureFromMemory
     void CreateDDSTextureFromFile_DS(
         ID3D12Device* device,
         DirectX::ResourceUploadBatch& upload,
@@ -40,9 +37,8 @@ private:
 private:
     Microsoft::WRL::ComPtr<ID3D12Device> mDevice;
 
-    // DirectStorage COM
-    Microsoft::WRL::ComPtr<IUnknown> mFactory; // будет QueryInterface в cpp на IDStorageFactory
-    Microsoft::WRL::ComPtr<IUnknown> mQueue;   // будет QueryInterface в cpp на IDStorageQueue
+    Microsoft::WRL::ComPtr<IUnknown> mFactory;
+    Microsoft::WRL::ComPtr<IUnknown> mQueue;
 
     Microsoft::WRL::ComPtr<ID3D12Fence> mFence;
     HANDLE mFenceEvent = nullptr;

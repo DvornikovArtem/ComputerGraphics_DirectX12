@@ -421,9 +421,9 @@ protected:
     ComPtr<ID3DBlob> DXCCompileShader(const std::wstring& filename, const D3D_SHADER_MACRO* defines, const std::string& entrypoint, const std::string& shaderType);
 // =================================================================================================
 
-// DirectStorage
+// DirectStorage ===================================================================================
     DirectStorageLoader mDirectStorage;
-//
+// =================================================================================================
 };
 
 

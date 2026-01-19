@@ -3,13 +3,13 @@
 #include <stdexcept>
 #include <Windows.h>
 
-#include <dstorage.h>          // из NuGet Microsoft.Direct3D.DirectStorage
-#include <Engine/RHI/DX12/DDSTextureLoader.h>  // DirectXTK (у теб€ уже используетс€ CreateDDSTextureFromFile)
+#include <dstorage.h>
+#include <Engine/RHI/DX12/DDSTextureLoader.h>
 
-#include <Engine/RHI/DX12/DirectXHelpers.h>    // если у теб€ есть; если нет Ч можно удалить
-#include <Engine/Math/MathHelper.h> // не об€зателен; просто пример
+#include <Engine/RHI/DX12/DirectXHelpers.h>
+#include <Engine/Math/MathHelper.h>
 
-#include <Engine/RHI/DX12/ResourceUploadBatch.h> // если у теб€ другой путь Ч оставь тот, что реально используетс€
+#include <Engine/RHI/DX12/ResourceUploadBatch.h>
 
 #pragma comment(lib, "dstorage.lib")
 
@@ -41,10 +41,14 @@ void DirectStorageLoader::Initialize(ID3D12Device* device)
     ComPtr<IDStorageFactory> factory;
     ThrowIfFailedHR(DStorageGetFactory(IID_PPV_ARGS(&factory)), "DStorageCreateFactory failed");
 
+    // Set staging buffer size to 128MB to handle large textures
+    // Default is 32MB, which is not enough for some of our DDS files
+    ThrowIfFailedHR(factory->SetStagingBufferSize(128 * 1024 * 1024), "IDStorageFactory::SetStagingBufferSize failed");
+
     // Queue
     DSTORAGE_QUEUE_DESC qdesc = {};
     qdesc.SourceType = DSTORAGE_REQUEST_SOURCE_FILE;
-    qdesc.Capacity = 1024; // достаточно дл€ пачки запросов
+    qdesc.Capacity = 1024;
     qdesc.Priority = DSTORAGE_PRIORITY_NORMAL;
     qdesc.Device = device;
     qdesc.Name = "Engine DirectStorage Queue";
@@ -66,7 +70,6 @@ void DirectStorageLoader::Initialize(ID3D12Device* device)
 
 void DirectStorageLoader::WaitForQueue()
 {
-    // ждЄм fenceValue
     if (mFence->GetCompletedValue() < mFenceValue)
     {
         ThrowIfFailedHR(mFence->SetEventOnCompletion(mFenceValue, mFenceEvent), "SetEventOnCompletion failed");
@@ -78,12 +81,17 @@ void DirectStorageLoader::ReadFileToMemory(const std::wstring& path, std::vector
 {
     if (!mInitialized) throw std::runtime_error("DirectStorageLoader not initialized");
 
-    // ѕолучаем размер файла обычным способом (это ок; чтение данных всЄ равно делает DirectStorage)
+    // Convert relative path to absolute path for DirectStorage
+    wchar_t fullPath[MAX_PATH];
+    if (GetFullPathNameW(path.c_str(), MAX_PATH, fullPath, nullptr) == 0)
+        throw std::runtime_error("GetFullPathNameW failed");
+
+    // Get file size
     LARGE_INTEGER fileSize = {};
     {
-        HANDLE h = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        HANDLE h = CreateFileW(fullPath, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
         if (h == INVALID_HANDLE_VALUE)
-            throw std::runtime_error("CreateFileW failed (file not found?)");
+            throw std::runtime_error("CreateFileW failed (file not found or path invalid)");
 
         BOOL ok = GetFileSizeEx(h, &fileSize);
         CloseHandle(h);
@@ -92,7 +100,7 @@ void DirectStorageLoader::ReadFileToMemory(const std::wstring& path, std::vector
     }
 
     const size_t sizeBytes = static_cast<size_t>(fileSize.QuadPart);
-    outData.resize(sizeBytes);
+    outData.assign(sizeBytes, 0);
 
     ComPtr<IDStorageFactory> factory;
     ThrowIfFailedHR(mFactory.As(&factory), "Factory As<IDStorageFactory> failed");
@@ -102,7 +110,7 @@ void DirectStorageLoader::ReadFileToMemory(const std::wstring& path, std::vector
 
     // Open DirectStorage file object
     ComPtr<IDStorageFile> dsFile;
-    ThrowIfFailedHR(factory->OpenFile(path.c_str(), IID_PPV_ARGS(&dsFile)), "IDStorageFactory::OpenFile failed");
+    ThrowIfFailedHR(factory->OpenFile(fullPath, IID_PPV_ARGS(&dsFile)), "IDStorageFactory::OpenFile failed");
 
     DSTORAGE_REQUEST req = {};
     req.Options.SourceType = DSTORAGE_REQUEST_SOURCE_FILE;
@@ -126,6 +134,16 @@ void DirectStorageLoader::ReadFileToMemory(const std::wstring& path, std::vector
 
     queue->Submit();
     WaitForQueue();
+
+    // Check for DirectStorage errors
+    DSTORAGE_ERROR_RECORD errorRecord = {};
+    queue->RetrieveErrorRecord(&errorRecord);
+    if (FAILED(errorRecord.FirstFailure.HResult))
+    {
+        char buf[512];
+        sprintf_s(buf, "DirectStorage request failed. HRESULT: 0x%08X", (unsigned)errorRecord.FirstFailure.HResult);
+        throw std::runtime_error(buf);
+    }
 }
 
 static inline void ThrowIfFailedHR2(HRESULT hr, const char* msg)
@@ -137,6 +155,7 @@ static inline void ThrowIfFailedHR2(HRESULT hr, const char* msg)
         throw std::runtime_error(buf);
     }
 }
+
 void DirectStorageLoader::CreateDDSTextureFromFile_DS(
     ID3D12Device* device,
     DirectX::ResourceUploadBatch& upload,
@@ -149,11 +168,9 @@ void DirectStorageLoader::CreateDDSTextureFromFile_DS(
     std::vector<std::uint8_t> bytes;
     ReadFileToMemory(ddsPath, bytes);
 
-    // магию ты уже проверил Ч оставь, она полезна
     if (bytes.size() < 4 || memcmp(bytes.data(), "DDS ", 4) != 0)
         throw std::runtime_error("Loaded data is not a DDS (missing 'DDS ' magic).");
 
-    // ¬ј∆Ќќ: используем overload под ResourceUploadBatch (как у теб€ раньше было закомментировано)
     HRESULT hr = DirectX::CreateDDSTextureFromMemory(
         device,
         upload,
