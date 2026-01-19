@@ -2953,7 +2953,7 @@ std::vector<MeshParsingResult> RenderingSystem::BuildMeshGeometry(std::string Na
 					if (material->GetTextureCount(texType) > 0)
 					{
 						aiString texturePath;
-						aiTexture* embeddedTexture;
+						aiTexture* embeddedTexture = nullptr;
 						if (material->GetTexture(texType, 0, &texturePath) == AI_SUCCESS)
 						{
 							for (unsigned int i = 0; i < scene->mNumTextures; ++i) {
@@ -3100,7 +3100,7 @@ std::vector<MeshParsingResult> RenderingSystem::BuildMeshGeometry(std::string Na
 					if (material->GetTextureCount(texType) > 0)
 					{
 						aiString texturePath;
-						aiTexture* embeddedTexture;
+						aiTexture* embeddedTexture = nullptr;
 						if (material->GetTexture(texType, 0, &texturePath) == AI_SUCCESS)
 						{
 							for (unsigned int i = 0; i < scene->mNumTextures; ++i) {
@@ -4365,7 +4365,11 @@ void RenderingSystem::ProcessEmbeddedTexture(const aiTexture* texture, std::stri
 		mCommandList->ResourceBarrier(1, &barrier);
 
 		MPRTextures.push_back(generatedTex);
-		stbi_image_free(imageData);
+		
+		if (texture->mHeight == 0)
+			stbi_image_free(imageData);
+		else
+			delete[] imageData;
 
 	}
 }
