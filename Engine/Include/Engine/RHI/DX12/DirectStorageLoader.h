@@ -25,10 +25,10 @@ public:
 
     void Initialize(ID3D12Device* device);
 
-    // Reading a file into memory: path - the file path, outData - the output buffer where the file bytes will be written
+    // Reads a file into memory: path - the file path, outData - the output buffer where the file bytes will be written
     void ReadFileToMemory(const std::wstring& path, std::vector<std::uint8_t>& outData);
-
-    void CreateDDSTextureFromFile_DS(ID3D12Device* device, DirectX::ResourceUploadBatch& upload, const std::wstring& ddsPath, ID3D12Resource** outTexture);
+    // Reads a DDS file into memory via DirectStorage, then creates a D3D12 texture resource from memory using a DDS loader
+    void CreateDDSTextureFromFile_DS(DirectX::ResourceUploadBatch& upload, const std::wstring& ddsPath, ID3D12Resource** outTexture);
 
 private:
     // Internal synchronization method

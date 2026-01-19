@@ -2891,13 +2891,18 @@ std::vector<MeshParsingResult> RenderingSystem::BuildMeshGeometry(std::string Na
 	std::vector<MeshParsingResult> res;
 	res.resize(1);
 
+	//const aiScene* scene = importer.ReadFile(filename, aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_GenNormals | aiProcess_CalcTangentSpace);
+
 	// Use DirectStorage to load mesh data into memory
 	std::wstring wFilename(filename.begin(), filename.end());
+	// A buffer into which the raw bytes of the file will be loaded
 	std::vector<std::uint8_t> fileData;
-	try {
+	try
+	{
 		mDirectStorage.ReadFileToMemory(wFilename, fileData);
 	}
-	catch (const std::exception& e) {
+	catch (const std::exception& e)
+	{
 		std::string err = "DirectStorage failed to load mesh: " + std::string(e.what());
 		MessageBoxA(0, err.c_str(), "DirectStorage Error", 0);
 		return res;
@@ -4001,7 +4006,7 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 	//	invalidTex->Filename.c_str(),
 	//	invalidTex->Resource.GetAddressOf()));
 
-	mDirectStorage.CreateDDSTextureFromFile_DS(md3dDevice.Get(), upload, invalidTex->Filename.c_str(), invalidTex->Resource.GetAddressOf());
+	mDirectStorage.CreateDDSTextureFromFile_DS(upload, invalidTex->Filename.c_str(), invalidTex->Resource.GetAddressOf());
 
 	mTextures[invalidTex->Name] = invalidTex;
 
@@ -4018,7 +4023,7 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 		//	t->Filename.c_str(),
 		//	t->Resource.GetAddressOf()));
 
-		mDirectStorage.CreateDDSTextureFromFile_DS(md3dDevice.Get(), upload, t->Filename.c_str(), t->Resource.GetAddressOf());
+		mDirectStorage.CreateDDSTextureFromFile_DS(upload, t->Filename.c_str(), t->Resource.GetAddressOf());
 
 		mTextures[t->Name] = t;
 	}
@@ -4044,7 +4049,7 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 		//	t->Filename.c_str(),
 		//	t->Resource.GetAddressOf()));
 
-		mDirectStorage.CreateDDSTextureFromFile_DS(md3dDevice.Get(), upload, t->Filename.c_str(), t->Resource.GetAddressOf());
+		mDirectStorage.CreateDDSTextureFromFile_DS(upload, t->Filename.c_str(), t->Resource.GetAddressOf());
 
 		mTextures[t->Name] = t;
 	}

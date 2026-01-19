@@ -53,12 +53,13 @@ void DirectStorageLoader::Initialize(ID3D12Device* device)
 
     // Queue
     DSTORAGE_QUEUE_DESC qdesc = {};
-    qdesc.SourceType = DSTORAGE_REQUEST_SOURCE_FILE;
-    qdesc.Capacity = 1024;
+    qdesc.SourceType = DSTORAGE_REQUEST_SOURCE_FILE; // The queue will process requests whose source is a file
+    qdesc.Capacity = 1024; // The queue can hold up to 1024 requests (and signals) before submission/execution
     qdesc.Priority = DSTORAGE_PRIORITY_NORMAL;
     qdesc.Device = device;
-    qdesc.Name = "Engine DirectStorage Queue";
+    qdesc.Name = "Engine DirectStorage Queue"; // Debug name of the queue
 
+    // Create the queue via the factory
     ComPtr<IDStorageQueue> queue;
     ThrowIfFailedHR(factory->CreateQueue(&qdesc, IID_PPV_ARGS(&queue)), "IDStorageFactory::CreateQueue failed");
 
@@ -74,6 +75,7 @@ void DirectStorageLoader::Initialize(ID3D12Device* device)
     mInitialized = true;
 }
 
+
 void DirectStorageLoader::WaitForQueue()
 {
     if (mFence->GetCompletedValue() < mFenceValue)
@@ -83,6 +85,7 @@ void DirectStorageLoader::WaitForQueue()
     }
 }
 
+
 void DirectStorageLoader::ReadFileToMemory(const std::wstring& path, std::vector<std::uint8_t>& outData)
 {
     if (!mInitialized) throw std::runtime_error("DirectStorageLoader not initialized");
@@ -90,34 +93,39 @@ void DirectStorageLoader::ReadFileToMemory(const std::wstring& path, std::vector
     // Convert relative path to absolute path for DirectStorage
     wchar_t fullPath[MAX_PATH];
     if (GetFullPathNameW(path.c_str(), MAX_PATH, fullPath, nullptr) == 0)
+    {
         throw std::runtime_error("GetFullPathNameW failed");
+    }
 
     // Get file size
     LARGE_INTEGER fileSize = {};
     {
+        // Open the file using CreateFileW
         HANDLE h = CreateFileW(fullPath, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
         if (h == INVALID_HANDLE_VALUE)
+        {
             throw std::runtime_error("CreateFileW failed (file not found or path invalid)");
+        }
 
+        // GetFileSizeEx retrieves the file size
         BOOL ok = GetFileSizeEx(h, &fileSize);
         CloseHandle(h);
         if (!ok || fileSize.QuadPart <= 0)
+        {
             throw std::runtime_error("GetFileSizeEx failed");
+        }
     }
 
+    // Allocating a buffer in a std::vector
     const size_t sizeBytes = static_cast<size_t>(fileSize.QuadPart);
     outData.assign(sizeBytes, 0);
 
-    ComPtr<IDStorageFactory> factory;
-    ThrowIfFailedHR(mFactory.As(&factory), "Factory As<IDStorageFactory> failed");
-
-    ComPtr<IDStorageQueue> queue;
-    ThrowIfFailedHR(mQueue.As(&queue), "Queue As<IDStorageQueue> failed");
-
-    // Open DirectStorage file object
+    // Open DirectStorage file object (DirectStorage does not work directly with file paths, but with IDStorageFile. OpenFile creates such an object for a file)
     ComPtr<IDStorageFile> dsFile;
-    ThrowIfFailedHR(factory->OpenFile(fullPath, IID_PPV_ARGS(&dsFile)), "IDStorageFactory::OpenFile failed");
+    ThrowIfFailedHR(mFactory->OpenFile(fullPath, IID_PPV_ARGS(&dsFile)), "IDStorageFactory::OpenFile failed");
 
+
+    // Forming a read request (DSTORAGE_REQUEST)
     DSTORAGE_REQUEST req = {};
     req.Options.SourceType = DSTORAGE_REQUEST_SOURCE_FILE;
     req.Options.DestinationType = DSTORAGE_REQUEST_DESTINATION_MEMORY;
@@ -132,18 +140,23 @@ void DirectStorageLoader::ReadFileToMemory(const std::wstring& path, std::vector
 
     req.UncompressedSize = static_cast<UINT32>(sizeBytes);
 
-    queue->EnqueueRequest(&req);
+    // Enqueue the request (but it is not necessarily executed yet)
+    mQueue->EnqueueRequest(&req);
 
-    // signal fence
+    // Signal fence
     ++mFenceValue;
-    queue->EnqueueSignal(mFence.Get(), mFenceValue);
+    // Tell the queue: "when you reach this point in the queue, signal the fence with this value"
+    mQueue->EnqueueSignal(mFence.Get(), mFenceValue);
 
-    queue->Submit();
+    // Submit the accumulated commands/requests for execution
+    mQueue->Submit();
+    // Wait until the fence reaches mFenceValue, i.e., until the read operation completes
     WaitForQueue();
 
-    // Check for DirectStorage errors
+
+    // Check for DirectStorage errors (DirectStorage stores failure information. RetrieveErrorRecord retrieves a structure containing data about the first error)
     DSTORAGE_ERROR_RECORD errorRecord = {};
-    queue->RetrieveErrorRecord(&errorRecord);
+    mQueue->RetrieveErrorRecord(&errorRecord);
     if (FAILED(errorRecord.FirstFailure.HResult))
     {
         char buf[512];
@@ -152,27 +165,26 @@ void DirectStorageLoader::ReadFileToMemory(const std::wstring& path, std::vector
     }
 }
 
-void DirectStorageLoader::CreateDDSTextureFromFile_DS(
-    ID3D12Device* device,
-    DirectX::ResourceUploadBatch& upload,
-    const std::wstring& ddsPath,
-    ID3D12Resource** outTexture)
-{
-    if (!device || !outTexture)
-        throw std::runtime_error("CreateDDSTextureFromFile_DS: bad args");
 
+void DirectStorageLoader::CreateDDSTextureFromFile_DS(DirectX::ResourceUploadBatch& upload, const std::wstring& ddsPath, ID3D12Resource** outTexture)
+{
+    if (!mDevice || !outTexture)
+    {
+        throw std::runtime_error("CreateDDSTextureFromFile_DS: bad args");
+    }
+
+    // Create a vector to hold the file contents
     std::vector<std::uint8_t> bytes;
+    // Read the entire file into RAM
     ReadFileToMemory(ddsPath, bytes);
 
+    // A DDS file starts with the ASCII magic "DDS " (4 bytes).
+    // If the file is too small or the magic does not match, it is not a DDS file
     if (bytes.size() < 4 || memcmp(bytes.data(), "DDS ", 4) != 0)
+    {
         throw std::runtime_error("Loaded data is not a DDS (missing 'DDS ' magic).");
+    }
 
-    HRESULT hr = DirectX::CreateDDSTextureFromMemory(
-        device,
-        upload,
-        bytes.data(),
-        bytes.size(),
-        outTexture);
-
-    ThrowIfFailedHR(hr, "CreateDDSTextureFromMemory(ResourceUploadBatch) failed");
+    // Create a texture from a DDS file in memory
+    ThrowIfFailedHR(DirectX::CreateDDSTextureFromMemory(mDevice.Get(), upload, bytes.data(), bytes.size(), outTexture), "CreateDDSTextureFromMemory(ResourceUploadBatch) failed");
 }
