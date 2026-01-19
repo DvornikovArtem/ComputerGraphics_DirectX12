@@ -13,13 +13,18 @@
 
 #pragma comment(lib, "dstorage.lib")
 
+
 using Microsoft::WRL::ComPtr;
+
 
 static inline void ThrowIfFailedHR(HRESULT hr, const char* msg)
 {
     if (FAILED(hr))
+    {
         throw std::runtime_error(msg);
+    }
 }
+
 
 DirectStorageLoader::~DirectStorageLoader()
 {
@@ -29,6 +34,7 @@ DirectStorageLoader::~DirectStorageLoader()
         mFenceEvent = nullptr;
     }
 }
+
 
 void DirectStorageLoader::Initialize(ID3D12Device* device)
 {
@@ -146,16 +152,6 @@ void DirectStorageLoader::ReadFileToMemory(const std::wstring& path, std::vector
     }
 }
 
-static inline void ThrowIfFailedHR2(HRESULT hr, const char* msg)
-{
-    if (FAILED(hr))
-    {
-        char buf[256];
-        sprintf_s(buf, "%s (hr=0x%08X)", msg, (unsigned)hr);
-        throw std::runtime_error(buf);
-    }
-}
-
 void DirectStorageLoader::CreateDDSTextureFromFile_DS(
     ID3D12Device* device,
     DirectX::ResourceUploadBatch& upload,
@@ -178,5 +174,5 @@ void DirectStorageLoader::CreateDDSTextureFromFile_DS(
         bytes.size(),
         outTexture);
 
-    ThrowIfFailedHR2(hr, "CreateDDSTextureFromMemory(ResourceUploadBatch) failed");
+    ThrowIfFailedHR(hr, "CreateDDSTextureFromMemory(ResourceUploadBatch) failed");
 }

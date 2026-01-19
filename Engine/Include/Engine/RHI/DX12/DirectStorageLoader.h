@@ -6,6 +6,7 @@
 
 #include <wrl/client.h>
 #include <d3d12.h>
+#include <dstorage.h>
 
 namespace DirectX
 {
@@ -18,27 +19,28 @@ public:
     DirectStorageLoader() = default;
     ~DirectStorageLoader();
 
+    // Forbid copying to avoid double free and the multiplication of owners
     DirectStorageLoader(const DirectStorageLoader&) = delete;
     DirectStorageLoader& operator=(const DirectStorageLoader&) = delete;
 
     void Initialize(ID3D12Device* device);
 
+    // Reading a file into memory: path - the file path, outData - the output buffer where the file bytes will be written
     void ReadFileToMemory(const std::wstring& path, std::vector<std::uint8_t>& outData);
 
-    void CreateDDSTextureFromFile_DS(
-        ID3D12Device* device,
-        DirectX::ResourceUploadBatch& upload,
-        const std::wstring& ddsPath,
-        ID3D12Resource** outTexture);
+    void CreateDDSTextureFromFile_DS(ID3D12Device* device, DirectX::ResourceUploadBatch& upload, const std::wstring& ddsPath, ID3D12Resource** outTexture);
 
 private:
+    // Internal synchronization method
     void WaitForQueue();
 
 private:
     Microsoft::WRL::ComPtr<ID3D12Device> mDevice;
 
-    Microsoft::WRL::ComPtr<IUnknown> mFactory;
-    Microsoft::WRL::ComPtr<IUnknown> mQueue;
+    // Factory - is a DirectStorage's resource manager
+    Microsoft::WRL::ComPtr<IDStorageFactory> mFactory;
+    // Queue - is an IO request queue (it accepts IO requests, orders their execution, transfers data to RAM or directly to GPU memory (VRAM), and signals completion)
+    Microsoft::WRL::ComPtr<IDStorageQueue> mQueue;
 
     Microsoft::WRL::ComPtr<ID3D12Fence> mFence;
     HANDLE mFenceEvent = nullptr;
