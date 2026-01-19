@@ -67,6 +67,8 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 		ThrowIfFailed(D3D12CreateDevice(pWarpAdapter.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&md3dDevice)));
 	}
 
+	mDirectStorage.Initialize(md3dDevice.Get());
+
 	IDXGIAdapter* currentAdapter;
 	LUID deviceLuid = md3dDevice->GetAdapterLuid();
 	mdxgiFactory->EnumAdapterByLuid(deviceLuid, IID_PPV_ARGS(&currentAdapter));
@@ -3973,11 +3975,13 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 	invalidTex->Name = "INVALID";
 	invalidTex->Filename = L"assets/textures/INVALID.dds";
 
-	ThrowIfFailed(DirectX::CreateDDSTextureFromFile(
-		md3dDevice.Get(),
-		upload,
-		invalidTex->Filename.c_str(),
-		invalidTex->Resource.GetAddressOf()));
+	//ThrowIfFailed(DirectX::CreateDDSTextureFromFile(
+	//	md3dDevice.Get(),
+	//	upload,
+	//	invalidTex->Filename.c_str(),
+	//	invalidTex->Resource.GetAddressOf()));
+
+	mDirectStorage.CreateDDSTextureFromFile_DS(md3dDevice.Get(), upload, invalidTex->Filename.c_str(), invalidTex->Resource.GetAddressOf());
 
 	mTextures[invalidTex->Name] = invalidTex;
 
@@ -3988,11 +3992,13 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 		t->Name = TexDescs[i].Name;
 		t->Filename = TexDescs[i].Path;
 
-		ThrowIfFailed(DirectX::CreateDDSTextureFromFile(
-			md3dDevice.Get(),
-			upload,
-			t->Filename.c_str(),
-			t->Resource.GetAddressOf()));
+		//ThrowIfFailed(DirectX::CreateDDSTextureFromFile(
+		//	md3dDevice.Get(),
+		//	upload,
+		//	t->Filename.c_str(),
+		//	t->Resource.GetAddressOf()));
+
+		mDirectStorage.CreateDDSTextureFromFile_DS(md3dDevice.Get(), upload, t->Filename.c_str(), t->Resource.GetAddressOf());
 
 		mTextures[t->Name] = t;
 	}
@@ -4012,11 +4018,13 @@ void RenderingSystem::LoadTextures(std::vector<TextureDesc>& TexDescs)
 		t->Name = MPRTerrainTextures[i].Name;
 		t->Filename = MPRTerrainTextures[i].Path;
 
-		ThrowIfFailed(DirectX::CreateDDSTextureFromFile(
-			md3dDevice.Get(),
-			upload,
-			t->Filename.c_str(),
-			t->Resource.GetAddressOf()));
+		//ThrowIfFailed(DirectX::CreateDDSTextureFromFile(
+		//	md3dDevice.Get(),
+		//	upload,
+		//	t->Filename.c_str(),
+		//	t->Resource.GetAddressOf()));
+
+		mDirectStorage.CreateDDSTextureFromFile_DS(md3dDevice.Get(), upload, t->Filename.c_str(), t->Resource.GetAddressOf());
 
 		mTextures[t->Name] = t;
 	}

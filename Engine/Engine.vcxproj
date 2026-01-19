@@ -379,6 +379,7 @@
     <ClInclude Include="Include\Engine\RHI\DX12\d3dx12.h" />
     <ClInclude Include="Include\Engine\RHI\DX12\DDS.h" />
     <ClInclude Include="Include\Engine\RHI\DX12\DDSTextureLoader.h" />
+    <ClInclude Include="Include\Engine\RHI\DX12\DirectStorageLoader.h" />
     <ClInclude Include="Include\Engine\RHI\DX12\DirectXHelpers.h" />
     <ClInclude Include="Include\Engine\RHI\DX12\FrameResource.h" />
     <ClInclude Include="Include\Engine\RHI\DX12\GraphicsMemory.h" />
@@ -440,6 +441,7 @@
     <ClCompile Include="src\Render\RenderingSystem.cpp" />
     <ClCompile Include="src\Render\ShadowMap.cpp" />
     <ClCompile Include="src\RHI\DX12\DDSTextureLoader.cpp" />
+    <ClCompile Include="src\RHI\DX12\DirectStorageLoader.cpp" />
     <ClCompile Include="src\RHI\DX12\DirectXHelpers.cpp" />
     <ClCompile Include="src\RHI\DX12\FrameResource.cpp" />
     <ClCompile Include="src\RHI\DX12\GraphicsMemory.cpp" />
@@ -588,11 +590,13 @@
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
     <Import Project="..\Application\packages\WinPixEventRuntime.1.0.240308001\build\WinPixEventRuntime.targets" Condition="Exists('..\Application\packages\WinPixEventRuntime.1.0.240308001\build\WinPixEventRuntime.targets')" />
+    <Import Project="..\Application\packages\Microsoft.Direct3D.DirectStorage.1.3.0\build\native\targets\Microsoft.Direct3D.DirectStorage.targets" Condition="Exists('..\Application\packages\Microsoft.Direct3D.DirectStorage.1.3.0\build\native\targets\Microsoft.Direct3D.DirectStorage.targets')" />
   </ImportGroup>
   <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
     <PropertyGroup>
       <ErrorText>This project references NuGet package(s) that are missing on this computer. Use NuGet Package Restore to download them.  For more information, see http://go.microsoft.com/fwlink/?LinkID=322105. The missing file is {0}.</ErrorText>
     </PropertyGroup>
     <Error Condition="!Exists('..\Application\packages\WinPixEventRuntime.1.0.240308001\build\WinPixEventRuntime.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\Application\packages\WinPixEventRuntime.1.0.240308001\build\WinPixEventRuntime.targets'))" />
+    <Error Condition="!Exists('..\Application\packages\Microsoft.Direct3D.DirectStorage.1.3.0\build\native\targets\Microsoft.Direct3D.DirectStorage.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\Application\packages\Microsoft.Direct3D.DirectStorage.1.3.0\build\native\targets\Microsoft.Direct3D.DirectStorage.targets'))" />
   </Target>
 </Project>

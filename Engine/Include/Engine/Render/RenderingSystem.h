@@ -30,6 +30,7 @@
 #include <Engine/RHI/DX12/ResourceUploadBatch.h>
 #include <Engine/RHI/DX12/FrameResource.h>
 #include <Engine/RHI/DX12/UploadBuffer.h>
+#include <Engine/RHI/DX12/DirectStorageLoader.h>
 
 #include <Engine/Terrain/TerrainRenderer.h>
 
@@ -419,6 +420,10 @@ protected:
     void InitializeDXC();
     ComPtr<ID3DBlob> DXCCompileShader(const std::wstring& filename, const D3D_SHADER_MACRO* defines, const std::string& entrypoint, const std::string& shaderType);
 // =================================================================================================
+
+// DirectStorage
+    DirectStorageLoader mDirectStorage;
+//
 };
 
 
