@@ -68,7 +68,7 @@ float4 PS(VertexOut pin) : SV_Target
     float2 PrevTexelCoord = TexelCoord + MotionVector;
     float4 CurrFrameColor = CurrFrame.Load(int3(TexelCoord, 0));
     float4 PrevFrameColor = CurrFrameColor;
-    
+
     bool IsPrevUVValid = all(PrevTexelCoord >= 0) && all(PrevTexelCoord < cbMainPass.RenderTargetSize);
     if (IsPrevUVValid)
     {

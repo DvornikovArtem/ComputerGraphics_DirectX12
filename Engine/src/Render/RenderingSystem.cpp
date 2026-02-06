@@ -1914,11 +1914,11 @@ void RenderingSystem::SaveFrameAsPrevious()
 		D3D12_RESOURCE_STATE_COPY_DEST));
 	
 	mCommandList2->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
-		mDevice2AccBuffer.Get(),
+		mDevice2ResolvedAccBuffer.Get(),
 		D3D12_RESOURCE_STATE_COMMON,
 		D3D12_RESOURCE_STATE_COPY_SOURCE));
 
-	mCommandList2->CopyResource(mDevice2PrevFrame.Get(), mDevice2AccBuffer.Get());
+	mCommandList2->CopyResource(mDevice2PrevFrame.Get(), mDevice2ResolvedAccBuffer.Get());
 
 	mCommandList2->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
 		mDevice2PrevFrame.Get(),
@@ -1926,7 +1926,7 @@ void RenderingSystem::SaveFrameAsPrevious()
 		D3D12_RESOURCE_STATE_COMMON));
 
 	mCommandList2->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
-		mDevice2AccBuffer.Get(),
+		mDevice2ResolvedAccBuffer.Get(),
 		D3D12_RESOURCE_STATE_COPY_SOURCE,
 		D3D12_RESOURCE_STATE_COMMON));
 	PIXEndEvent(mCommandList2.Get());

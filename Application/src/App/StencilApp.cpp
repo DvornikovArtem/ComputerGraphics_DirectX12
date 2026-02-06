@@ -187,10 +187,10 @@ void StencilApp::OnMouseWheelMove(WPARAM btnState)
  
 void StencilApp::OnKeyboardInput(const GameTimer& gt)
 {
-    if (!mRenderingSystem->IsSceneInputActive()) {
-        mRenderingSystem->mCamera.UpdateViewMatrix();
-        return;
-    }
+    //if (!mRenderingSystem->IsSceneInputActive()) {
+    //    mRenderingSystem->mCamera.UpdateViewMatrix();
+    //    return;
+    //}
 
     const float dt = gt.DeltaTime();
     const float speed = mRenderingSystem->mCamera.GetMoveSpeed();
