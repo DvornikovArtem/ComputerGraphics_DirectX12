@@ -449,12 +449,20 @@ protected:
     ComPtr<ID3D12Resource> mDevice2AccBuffer;
     ComPtr<ID3D12Resource> mDevice2VelocityBuffer;
     ComPtr<ID3D12Resource> mDevice2PrevFrame;
+    ComPtr<ID3D12Resource> mDevice2ResolvedAccBuffer;
 
     ComPtr<ID3D12DescriptorHeap> mSrvHeapDevice2;
 
     int mDevice2AccBufferSRVIndex = -1;
     int mDevice2VelocityBufferSRVIndex = -1;
     int mDevice2PrevFrameSRVIndex = -1;
+    int mDevice2ResolvedAccBufferSRVIndex = -1;
+
+    ComPtr<ID3D12DescriptorHeap> mRtvHeapDevice2;
+    int mDevice2ResolvedAccBufferRTVIndex = -1;
+
+    std::unordered_map<std::string, Microsoft::WRL::ComPtr<ID3D12PipelineState>> GlobalPSOs2;
+    std::unordered_map<std::string, Microsoft::WRL::ComPtr<ID3D12RootSignature>> RootSignatures2;
 // =================================================================================================
 };
 

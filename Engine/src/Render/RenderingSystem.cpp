@@ -715,10 +715,16 @@ void RenderingSystem::Render()
 			D3D12_RESOURCE_STATE_PRESENT,
 			D3D12_RESOURCE_STATE_RENDER_TARGET));
 
-	mCommandList2->ClearRenderTargetView(CurrentBackBufferView(), reinterpret_cast<const float*>(&ClearValue), 0, nullptr);
+	mCommandList2->ClearRenderTargetView(CurrentBackBufferView(), reinterpret_cast<FLOAT*>(&ClearValue), 0, nullptr);
+
+	SaveFrameAsPrevious();
 
 	mSharedAccBuffer.CopyToSecondaryDevice(mCommandList2.Get(), mDevice2AccBuffer.Get());
 	mSharedVelocityBuffer.CopyToSecondaryDevice(mCommandList2.Get(), mDevice2VelocityBuffer.Get());
+
+	TAAResolve();
+
+	PostProcessingPass();
 
 	mCommandList2->ResourceBarrier(1,
 		&CD3DX12_RESOURCE_BARRIER::Transition(
@@ -1901,29 +1907,29 @@ void RenderingSystem::PreRender()
 
 void RenderingSystem::SaveFrameAsPrevious()
 {
-	PIXBeginEvent(mCommandList.Get(), 0x00FF00, "Saving Previous Frame");
-	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
-		mPrevFrameTex.Get(),
+	PIXBeginEvent(mCommandList2.Get(), 0x00FF00, "Saving Previous Frame");
+	mCommandList2->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+		mDevice2PrevFrame.Get(),
 		D3D12_RESOURCE_STATE_COMMON,
 		D3D12_RESOURCE_STATE_COPY_DEST));
 	
-	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
-		mTAAResolvedAccBuffer.Get(),
+	mCommandList2->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+		mDevice2AccBuffer.Get(),
 		D3D12_RESOURCE_STATE_COMMON,
 		D3D12_RESOURCE_STATE_COPY_SOURCE));
 
-	mCommandList->CopyResource(mPrevFrameTex.Get(), mTAAResolvedAccBuffer.Get());
+	mCommandList2->CopyResource(mDevice2PrevFrame.Get(), mDevice2AccBuffer.Get());
 
-	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
-		mPrevFrameTex.Get(),
+	mCommandList2->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+		mDevice2PrevFrame.Get(),
 		D3D12_RESOURCE_STATE_COPY_DEST,
 		D3D12_RESOURCE_STATE_COMMON));
 
-	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
-		mTAAResolvedAccBuffer.Get(),
+	mCommandList2->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+		mDevice2AccBuffer.Get(),
 		D3D12_RESOURCE_STATE_COPY_SOURCE,
 		D3D12_RESOURCE_STATE_COMMON));
-	PIXEndEvent(mCommandList.Get());
+	PIXEndEvent(mCommandList2.Get());
 }
 
 void RenderingSystem::CalculateJitter()
@@ -1957,54 +1963,60 @@ void RenderingSystem::CalculateJitter()
 
 void RenderingSystem::TAAResolve()
 {
-	PIXBeginEvent(mCommandList.Get(), 0x00FF00, "TAA Resolve Pass");
+	PIXBeginEvent(mCommandList2.Get(), 0x00FF00, "TAA Resolve Pass");
 	CD3DX12_RESOURCE_BARRIER barriers[3];
 	barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
-		mGBuffer->Accumulation.Resource.Get(),
-		D3D12_RESOURCE_STATE_RENDER_TARGET,
-		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-	barriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(mTAAResolvedAccBuffer.Get(),
-		D3D12_RESOURCE_STATE_COMMON, 
-		D3D12_RESOURCE_STATE_RENDER_TARGET);
-	barriers[2] = CD3DX12_RESOURCE_BARRIER::Transition(mPrevFrameTex.Get(),
+		mDevice2AccBuffer.Get(),
 		D3D12_RESOURCE_STATE_COMMON,
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-	mCommandList->ResourceBarrier(3, barriers);
+	barriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(mDevice2ResolvedAccBuffer.Get(),
+		D3D12_RESOURCE_STATE_COMMON, 
+		D3D12_RESOURCE_STATE_RENDER_TARGET);
+	barriers[2] = CD3DX12_RESOURCE_BARRIER::Transition(mDevice2PrevFrame.Get(),
+		D3D12_RESOURCE_STATE_COMMON,
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+	mCommandList2->ResourceBarrier(3, barriers);
+	mCommandList2->RSSetViewports(1, &mScreenViewport);
+	mCommandList2->RSSetScissorRects(1, &mScissorRect);
+	mCommandList2->SetGraphicsRootSignature(RootSignatures2["TAAResolve"].Get());
+	mCommandList2->OMSetRenderTargets(1, &CD3DX12_CPU_DESCRIPTOR_HANDLE(mRtvHeapDevice2->GetCPUDescriptorHandleForHeapStart(), 
+		mDevice2ResolvedAccBufferRTVIndex, mRtvDescriptorSize2), FALSE, nullptr);
+	mCommandList2->SetPipelineState(GlobalPSOs2["TAAResolve"].Get());
+	mCommandList2->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-	mCommandList->SetGraphicsRootSignature(RootSignatures["TAAResolve"].Get());
-	mCommandList->OMSetRenderTargets(1, &CD3DX12_CPU_DESCRIPTOR_HANDLE(mRtvHeap->GetCPUDescriptorHandleForHeapStart(), mResolvedAccBufferRTVHeapIndex, mRtvDescriptorSize), 
-		FALSE, &DepthStencilView());
-	mCommandList->SetPipelineState(GlobalPSOs["TAAResolve"].Get());
-	mCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	//UINT passCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(PassConstants));
+	//auto passCB = mCurrFrameResource->PassCB->Resource();
+	//mCommandList2->SetGraphicsRootConstantBufferView(0, passCB->GetGPUVirtualAddress());
 
-	UINT passCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(PassConstants));
-	auto passCB = mCurrFrameResource->PassCB->Resource();
+	ID3D12DescriptorHeap* descriptorHeaps[] = { mSrvHeapDevice2.Get() };
+	mCommandList2->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
 
-	ID3D12DescriptorHeap* descriptorHeaps[] = { mSrvDescriptorHeap.Get() };
-	mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
+	mCommandList2->SetGraphicsRootDescriptorTable(1, 
+		CD3DX12_GPU_DESCRIPTOR_HANDLE(mSrvHeapDevice2->GetGPUDescriptorHandleForHeapStart(),
+		mDevice2AccBufferSRVIndex, mCbvSrvDescriptorSize2));
+	mCommandList2->SetGraphicsRootDescriptorTable(2, 
+		CD3DX12_GPU_DESCRIPTOR_HANDLE(mSrvHeapDevice2->GetGPUDescriptorHandleForHeapStart(),
+		mDevice2PrevFrameSRVIndex, mCbvSrvDescriptorSize2));
+	//mCommandList2->SetGraphicsRootDescriptorTable(3, GetGpuSrv(mGBuffer->DepthStencils.SRVHeapIndex));
+	mCommandList2->SetGraphicsRootDescriptorTable(4, 
+		CD3DX12_GPU_DESCRIPTOR_HANDLE(mSrvHeapDevice2->GetGPUDescriptorHandleForHeapStart(),
+		mDevice2VelocityBufferSRVIndex, mCbvSrvDescriptorSize2));
 
-	mCommandList->SetGraphicsRootConstantBufferView(0, passCB->GetGPUVirtualAddress());
-
-	mCommandList->SetGraphicsRootDescriptorTable(1, GetGpuSrv(mGBuffer->Accumulation.SRVHeapIndex));
-	mCommandList->SetGraphicsRootDescriptorTable(2, GetGpuSrv(mPrevFrameSRVHeapIndex));
-	mCommandList->SetGraphicsRootDescriptorTable(3, GetGpuSrv(mGBuffer->DepthStencils.SRVHeapIndex));
-	mCommandList->SetGraphicsRootDescriptorTable(4, GetGpuSrv(mGBuffer->VelocityBuffer.SRVHeapIndex));
-
-	mCommandList->DrawInstanced(6, 1, 0, 0);
+	mCommandList2->DrawInstanced(6, 1, 0, 0);
 
 	CD3DX12_RESOURCE_BARRIER antibarriers[3];
 	antibarriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
-		mGBuffer->Accumulation.Resource.Get(),
+		mDevice2AccBuffer.Get(),
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
-		D3D12_RESOURCE_STATE_RENDER_TARGET);
-	antibarriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(mTAAResolvedAccBuffer.Get(),
+		D3D12_RESOURCE_STATE_COMMON);
+	antibarriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(mDevice2ResolvedAccBuffer.Get(),
 		D3D12_RESOURCE_STATE_RENDER_TARGET,
-		D3D12_RESOURCE_STATE_COMMON);
-	antibarriers[2] = CD3DX12_RESOURCE_BARRIER::Transition(mPrevFrameTex.Get(),
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+	antibarriers[2] = CD3DX12_RESOURCE_BARRIER::Transition(mDevice2PrevFrame.Get(),
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
 		D3D12_RESOURCE_STATE_COMMON);
-	mCommandList->ResourceBarrier(3, antibarriers);
-	PIXEndEvent(mCommandList.Get());
+	mCommandList2->ResourceBarrier(3, antibarriers);
+	PIXEndEvent(mCommandList2.Get());
 }
 
 void RenderingSystem::BuildBLASForGeometries()
@@ -2543,9 +2555,17 @@ void RenderingSystem::InitializeSharedResources()
 		&clearValue2,
 		IID_PPV_ARGS(&mDevice2VelocityBuffer));
 
+	md3dDevice2->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R16G16B16A16_FLOAT, mClientWidth, mClientHeight, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
+		D3D12_RESOURCE_STATE_COMMON,
+		&clearValue,
+		IID_PPV_ARGS(&mDevice2ResolvedAccBuffer));
+
 	//Create SRV Heap for Device2
 	D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
-	srvHeapDesc.NumDescriptors = 3;
+	srvHeapDesc.NumDescriptors = 4;
 	srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 	srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	srvHeapDesc.NodeMask = 0;
@@ -2557,6 +2577,7 @@ void RenderingSystem::InitializeSharedResources()
 	mDevice2AccBufferSRVIndex = 0;
 	mDevice2VelocityBufferSRVIndex = 1;
 	mDevice2PrevFrameSRVIndex = 2;
+	mDevice2ResolvedAccBufferSRVIndex = 3;
 
 	CD3DX12_CPU_DESCRIPTOR_HANDLE hDescriptor(mSrvHeapDevice2->GetCPUDescriptorHandleForHeapStart());
 
@@ -2578,6 +2599,30 @@ void RenderingSystem::InitializeSharedResources()
 
 	srvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
 	md3dDevice2->CreateShaderResourceView(mDevice2PrevFrame.Get(), &srvDesc, hDescriptor);
+	hDescriptor.Offset(1, mCbvSrvDescriptorSize2);
+
+	srvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	md3dDevice2->CreateShaderResourceView(mDevice2ResolvedAccBuffer.Get(), &srvDesc, hDescriptor);
+
+	//RTV Heap on Device 2
+	D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc = {};
+	rtvHeapDesc.NumDescriptors = 1;
+	rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+	rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+	rtvHeapDesc.NodeMask = 0;
+
+	ThrowIfFailed(md3dDevice2->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(&mRtvHeapDevice2)));
+
+	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(mRtvHeapDevice2->GetCPUDescriptorHandleForHeapStart());
+
+	D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
+	rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
+	rtvDesc.Texture2D.MipSlice = 0;
+	rtvDesc.Texture2D.PlaneSlice = 0;
+
+	mDevice2ResolvedAccBufferRTVIndex = 0;
+	rtvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	md3dDevice2->CreateRenderTargetView(mDevice2ResolvedAccBuffer.Get(), &rtvDesc, rtvHandle);
 }
 
 CD3DX12_CPU_DESCRIPTOR_HANDLE RenderingSystem::GetCpuSrv(int index)const
@@ -2768,6 +2813,11 @@ void RenderingSystem::BuildRootSignatures()
 		serializedPProotSig->GetBufferPointer(),
 		serializedPProotSig->GetBufferSize(),
 		IID_PPV_ARGS(RootSignatures["PostProcessing"].GetAddressOf())));
+	ThrowIfFailed(md3dDevice2->CreateRootSignature(
+		0,
+		serializedPProotSig->GetBufferPointer(),
+		serializedPProotSig->GetBufferSize(),
+		IID_PPV_ARGS(RootSignatures2["PostProcessing"].GetAddressOf())));
 
 	CD3DX12_ROOT_PARAMETER TAASlotRootParameter[5];
 
@@ -2797,6 +2847,11 @@ void RenderingSystem::BuildRootSignatures()
 		serializedTAArootSig->GetBufferPointer(),
 		serializedTAArootSig->GetBufferSize(),
 		IID_PPV_ARGS(RootSignatures["TAAResolve"].GetAddressOf())));
+	ThrowIfFailed(md3dDevice2->CreateRootSignature(
+		0,
+		serializedTAArootSig->GetBufferPointer(),
+		serializedTAArootSig->GetBufferSize(),
+		IID_PPV_ARGS(RootSignatures2["TAAResolve"].GetAddressOf())));
 
 }
 
@@ -3735,6 +3790,9 @@ void RenderingSystem::BuildGlobalPSOs()
 	};
 	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&PPPsoDesc, IID_PPV_ARGS(&GlobalPSOs["PostProcessing"])));
 
+	PPPsoDesc.pRootSignature = RootSignatures2["PostProcessing"].Get();
+	ThrowIfFailed(md3dDevice2->CreateGraphicsPipelineState(&PPPsoDesc, IID_PPV_ARGS(&GlobalPSOs2["PostProcessing"])));
+
 	PPPsoDesc.pRootSignature = RootSignatures["TAAResolve"].Get();
 	PPPsoDesc.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
 	PPPsoDesc.VS =
@@ -3748,6 +3806,10 @@ void RenderingSystem::BuildGlobalPSOs()
 		mShaders["TAAResolvePS"]->GetBufferSize()
 	};
 	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&PPPsoDesc, IID_PPV_ARGS(&GlobalPSOs["TAAResolve"])));
+
+	PPPsoDesc.pRootSignature = RootSignatures2["TAAResolve"].Get();
+	ThrowIfFailed(md3dDevice2->CreateGraphicsPipelineState(&PPPsoDesc, IID_PPV_ARGS(&GlobalPSOs2["TAAResolve"])));
+
 
 }
 
@@ -4118,27 +4180,32 @@ void RenderingSystem::DrawShadowMaps()
 
 void RenderingSystem::PostProcessingPass()
 {
-	PIXBeginEvent(mCommandList.Get(), 0x00FF00, "Post Processing Pass");
+	PIXBeginEvent(mCommandList2.Get(), 0x00FF00, "Post Processing Pass");
+	mCommandList2->RSSetViewports(1, &mScreenViewport);
+	mCommandList2->RSSetScissorRects(1, &mScissorRect);
+	mCommandList2->SetGraphicsRootSignature(RootSignatures2["PostProcessing"].Get());
+	mCommandList2->OMSetRenderTargets(1, &CurrentBackBufferView(), false, nullptr);
+	mCommandList2->SetPipelineState(GlobalPSOs2["PostProcessing"].Get());
+	mCommandList2->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-	mCommandList->SetGraphicsRootSignature(RootSignatures["PostProcessing"].Get());
-	mCommandList->OMSetRenderTargets(1, &CurrentBackBufferView(), false, &DepthStencilView());
-	//mCommandList->OMSetRenderTargets(1, &mSceneColorRTV, FALSE, &DepthStencilView());
-	mCommandList->SetPipelineState(GlobalPSOs["PostProcessing"].Get());
-	mCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-
-	UINT passCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(PassConstants));
 	auto passCB = mCurrFrameResource->PassCB->Resource();
 
-	ID3D12DescriptorHeap* descriptorHeaps[] = { mSrvDescriptorHeap.Get() };
-	mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
+	ID3D12DescriptorHeap* descriptorHeaps[] = { mSrvHeapDevice2.Get() };
+	mCommandList2->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
 
-	mCommandList->SetGraphicsRootConstantBufferView(0, passCB->GetGPUVirtualAddress());
+	mCommandList2->SetGraphicsRootDescriptorTable(1, 
+		CD3DX12_GPU_DESCRIPTOR_HANDLE(mSrvHeapDevice2->GetGPUDescriptorHandleForHeapStart(),
+		mDevice2ResolvedAccBufferSRVIndex, mCbvSrvDescriptorSize2));
 
-	mCommandList->SetGraphicsRootDescriptorTable(1, GetGpuSrv(mResolvedAccBufferSRVHeapIndex));
 
+	mCommandList2->DrawInstanced(6, 1, 0, 0);
 
-	mCommandList->DrawInstanced(6, 1, 0, 0);
-	PIXEndEvent(mCommandList.Get());
+	mCommandList2->ResourceBarrier(1,
+		&CD3DX12_RESOURCE_BARRIER::Transition(
+			mDevice2ResolvedAccBuffer.Get(),
+			D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+			D3D12_RESOURCE_STATE_COMMON));
+	PIXEndEvent(mCommandList2.Get());
 }
 
 void RenderingSystem::UpdateMaterialCBs(const GameTimer& gt)

@@ -231,7 +231,6 @@ float4 PS(VertexOut pin) : SV_Target
 
     //Do your cool post-processing here
     
-    
     //gamma 2.2 correction
     Color.xyz = pow(saturate(Color.xyz), 1.0 / 2.2);
     return Color;
