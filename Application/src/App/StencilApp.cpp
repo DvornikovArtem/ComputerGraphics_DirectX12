@@ -112,34 +112,6 @@ void StencilApp::Update(const GameTimer& gt)
 {
     OnKeyboardInput(gt);
 
-
-    {
-        ImGuiIO& io = ImGui::GetIO();
-        if (mRenderingSystem->IsSceneInputActive())
-        {
-            if (io.MouseDown[1]) // Right mouse
-            {
-                if (!mRenderingSystem->IsMouseLookActive() || mRenderingSystem->GetMouseSkipFrames() == 0) {
-                    const float dx = XMConvertToRadians(0.25f * io.MouseDelta.x);
-                    const float dy = XMConvertToRadians(0.25f * io.MouseDelta.y);
-                    mRenderingSystem->mCamera.Pitch(dy);
-                    mRenderingSystem->mCamera.RotateY(dx);
-                    mRenderingSystem->mCamera.UpdateViewMatrix();
-                }
-            }
-
-            if (io.MouseWheel != 0.0f)
-            {
-                float speed = mRenderingSystem->mCamera.GetMoveSpeed();
-                if (io.MouseWheel > 0) speed = std::min(speed + 4.0f, mRenderingSystem->mCamera.GetMaxMoveSpeed());
-                if (io.MouseWheel < 0) speed = (std::max)(speed - 4.0f, mRenderingSystem->mCamera.GetMinMoveSpeed());
-                mRenderingSystem->mCamera.SetMoveSpeed(speed);
-            }
-        }
-    }
-
-    if (mRenderingSystem->IsMouseLookActive()) mRenderingSystem->UpdateMouseLook();
-
     //Set NeedsUpdate for every object that changes its values at runtime
 
     mAllDrawableObjects["Head"]->WorldRotation.y = gt.TotalTime();
@@ -163,23 +135,18 @@ void StencilApp::Draw(const GameTimer& gt)
 
 void StencilApp::OnMouseDown(WPARAM btnState, int x, int y)
 {
-    ImGuiIO& io = ImGui::GetIO();
-    if (io.WantCaptureMouse && !mRenderingSystem->IsSceneInputActive()) return;
-
-    if (!mRenderingSystem->IsSceneInputActive()) return;
-
-    //SetCapture(mhMainWnd);
+    SetCapture(mhMainWnd);
 }
 
 void StencilApp::OnMouseUp(WPARAM btnState, int x, int y)
 {
-    //if (GetCapture() == mhMainWnd) ReleaseCapture();
+    if (GetCapture() == mhMainWnd) ReleaseCapture();
 }
 
 void StencilApp::OnMouseMove(WPARAM btnState, int x, int y)
 {
-    ImGuiIO& io = ImGui::GetIO();
-    if (io.WantCaptureMouse && !mRenderingSystem->IsSceneInputActive()) return;
+    /*ImGuiIO& io = ImGui::GetIO();
+    if (io.WantCaptureMouse && !mRenderingSystem->IsSceneInputActive()) return;*/
 
     //if (!mRenderingSystem->IsSceneInputActive())
     //{
@@ -188,15 +155,15 @@ void StencilApp::OnMouseMove(WPARAM btnState, int x, int y)
     //    return;
     //}
 
-    //if ((btnState & MK_RBUTTON) != 0)
-    //{
-    //    // Make each pixel correspond to a quarter of a degree.
-    //    float dx = XMConvertToRadians(0.25f * static_cast<float>(x - mLastMousePos.x));
-    //    float dy = XMConvertToRadians(0.25f * static_cast<float>(y - mLastMousePos.y));
+    if ((btnState & MK_RBUTTON) != 0)
+    {
+        // Make each pixel correspond to a quarter of a degree.
+        float dx = XMConvertToRadians(0.25f * static_cast<float>(x - mLastMousePos.x));
+        float dy = XMConvertToRadians(0.25f * static_cast<float>(y - mLastMousePos.y));
 
-    //    mRenderingSystem->mCamera.Pitch(dy);
-    //    mRenderingSystem->mCamera.RotateY(dx);
-    //}
+        mRenderingSystem->mCamera.Pitch(dy);
+        mRenderingSystem->mCamera.RotateY(dx);
+    }
 
     mLastMousePos.x = x;
     mLastMousePos.y = y;
@@ -204,10 +171,10 @@ void StencilApp::OnMouseMove(WPARAM btnState, int x, int y)
 
 void StencilApp::OnMouseWheelMove(WPARAM btnState)
 {
-    ImGuiIO& io = ImGui::GetIO();
-    if (io.WantCaptureMouse && !mRenderingSystem->IsSceneInputActive()) return;
+    //ImGuiIO& io = ImGui::GetIO();
+    //if (io.WantCaptureMouse && !mRenderingSystem->IsSceneInputActive()) return;
 
-    if (!mRenderingSystem->IsSceneInputActive()) return;
+    //if (!mRenderingSystem->IsSceneInputActive()) return;
 
     short wheelDelta = GET_WHEEL_DELTA_WPARAM(btnState);
 
@@ -221,7 +188,7 @@ void StencilApp::OnMouseWheelMove(WPARAM btnState)
 void StencilApp::OnKeyboardInput(const GameTimer& gt)
 {
     if (!mRenderingSystem->IsSceneInputActive()) {
-        //mRenderingSystem->mCamera.UpdateViewMatrix();
+        mRenderingSystem->mCamera.UpdateViewMatrix();
         return;
     }
 

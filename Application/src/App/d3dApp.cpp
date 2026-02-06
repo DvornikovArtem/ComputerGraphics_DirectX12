@@ -40,7 +40,7 @@ D3DApp::~D3DApp()
 	if (mRenderingSystem->getd3dDevice() != nullptr) {
 		mRenderingSystem->FlushCommandQueue();
 	}
-	mImGuiLayer->Shutdown();
+	//mImGuiLayer->Shutdown();
 }
 
 HINSTANCE D3DApp::AppInst()const
@@ -79,7 +79,7 @@ int D3DApp::Run()
 
 			if( !mAppPaused )
 			{
-				mImGuiLayer->NewFrame();
+				//mImGuiLayer->NewFrame();
 
 				CalculateFrameStats();
 				Update(mTimer);	
@@ -100,18 +100,6 @@ bool D3DApp::Initialize()
 	if (!InitMainWindow()) return false;
 
 	mRenderingSystem->Initialize(mhMainWnd, mhAppInst, &mTimer);
-
-	mImGuiLayer = std::make_unique<Engine::UI::ImGuiLayer>();
-	Engine::UI::ImGuiLayer::Desc uiDesc{};
-	uiDesc.hwnd = mhMainWnd;
-	uiDesc.device = mRenderingSystem->getd3dDevice().Get();
-	uiDesc.cmdQueue = mRenderingSystem->GetCommandQueue().Get();
-	uiDesc.framesInFlight = gNumFrameResources;
-	uiDesc.rtvFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
-	mImGuiLayer->Initialize(uiDesc);
-
-	mRenderingSystem->SetImGuiLayer(mImGuiLayer.get());
-	mRenderingSystem->RegisterScenePanels();
 
 	return true;
 }

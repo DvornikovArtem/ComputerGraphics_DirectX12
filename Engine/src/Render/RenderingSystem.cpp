@@ -170,7 +170,7 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 void RenderingSystem::FinishInitialize()
 {
 	CreateRtvAndDsvDescriptorHeaps();
-	CreateOrResizeSceneColor(mClientWidth, mClientHeight);
+	//CreateOrResizeSceneColor(mClientWidth, mClientHeight);
 
 	mGBuffer->Channel0SRVHeapIndex = static_cast<int>(TexDescsLength + MPRTextures.size() + MPRTerrainTextures.size() + 1);
 	for (int i = 0; i < mGBuffer->ChannelPTRs.size(); i++) mGBuffer->ChannelPTRs[i]->SRVHeapIndex = mGBuffer->Channel0SRVHeapIndex + i;
@@ -230,7 +230,7 @@ void RenderingSystem::FinishInitialize()
 		BuildTLAS();
 	}
 
-	mGbufferImguiSlots.resize(mGBuffer->NumBuffers);
+	/*mGbufferImguiSlots.resize(mGBuffer->NumBuffers);
 	for (int i = 0; i < mGBuffer->NumBuffers; ++i) {
 		D3D12_CPU_DESCRIPTOR_HANDLE dummyCPU{};
 		D3D12_GPU_DESCRIPTOR_HANDLE slotGPU{};
@@ -244,7 +244,7 @@ void RenderingSystem::FinishInitialize()
 		D3D12_CPU_DESCRIPTOR_HANDLE src = gbCPU;
 		src.ptr += SIZE_T(i) * stride;
 		mImGui->CopySrvIntoSlot(mGbufferImguiSlots[i], src);
-	}
+	}*/
 
 	for (ParticleSystem* particleSystem : mAllParticleSystems)
 	{
@@ -567,7 +567,7 @@ void RenderingSystem::CreateOrResizeSceneColor(int width, int height)
 	mSceneColorRTV = sceneRTV;
 
 	//mSceneColorSRV = mImGui->CreateTextureSRV(mSceneColor.Get(), mBackBufferFormat);
-	mSceneColorSRV = mImGui->CreateOrOverwriteTextureSRV(mSceneColor.Get(), mBackBufferFormat, mSceneColorSRV);
+	//mSceneColorSRV = mImGui->CreateOrOverwriteTextureSRV(mSceneColor.Get(), mBackBufferFormat, mSceneColorSRV);
 }
 
 void RenderingSystem::Render()
@@ -583,12 +583,12 @@ void RenderingSystem::Render()
 	if (mTAAEnabled) SaveFrameAsPrevious();
 
 	PIXBeginEvent(mCommandList.Get(), 0x00FF00, "Clear Back Buffer");
-	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mSceneColor.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_RENDER_TARGET));
+	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_RENDER_TARGET));
 
-	mCommandList->ClearRenderTargetView(mSceneColorRTV, reinterpret_cast<FLOAT*>(&ClearValue), 0, nullptr);
+	mCommandList->ClearRenderTargetView(CurrentBackBufferView(), reinterpret_cast<FLOAT*>(&ClearValue), 0, nullptr);
 	mCommandList->ClearDepthStencilView(DepthStencilView(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
 
-	mCommandList->OMSetRenderTargets(1, &mSceneColorRTV, FALSE, &DepthStencilView());
+	mCommandList->OMSetRenderTargets(1, &CurrentBackBufferView(), FALSE, &DepthStencilView());
 	PIXEndEvent(mCommandList.Get());
 
 	DrawShadowMaps();
@@ -606,21 +606,13 @@ void RenderingSystem::Render()
 
 	if (mTAAEnabled) TAAResolve();
 
-	if (mFSREnabled) FSRUpscale();
-
 	mGBuffer->TransitToTonemappingState(mCommandList);
 	PostProcessingPass();
 
-	if (mShowBounds && mOctTree) mOctTree->Draw(mDebugDrawer);
-
-	// Draw debug primitives
-	PIXBeginEvent(mCommandList.Get(), 0x00FF00, "UI&Debug Pass");
-	mDebugDrawer->Draw(mCommandQueue, mCommandList, &mScreenViewport, &mScissorRect, this, mCurrFrameResourceIndex);
-	mDebugDrawer->Clear();
-	//DrawSceneGrid();
 	mGBuffer->TransitSRVToCommon(mCommandList);
-	DrawUI();
-	PIXEndEvent(mCommandList.Get());
+
+	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
+		D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
 
 	// Done recording commands.
 	ThrowIfFailed(mCommandList->Close());
@@ -3898,16 +3890,10 @@ void RenderingSystem::DrawShadowMaps()
 void RenderingSystem::PostProcessingPass()
 {
 	PIXBeginEvent(mCommandList.Get(), 0x00FF00, "Post Processing Pass");
-	if (mFSREnabled)
-	{
-		mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mFSROutput.Get(),
-			D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
-		mCommandList->RSSetViewports(1, &mScreenViewport);
-		mCommandList->RSSetScissorRects(1, &mScissorRect);
-	}
+
 	mCommandList->SetGraphicsRootSignature(RootSignatures["PostProcessing"].Get());
-	//mCommandList->OMSetRenderTargets(1, &CurrentBackBufferView(), false, &DepthStencilView());
-	mCommandList->OMSetRenderTargets(1, &mSceneColorRTV, FALSE, &DepthStencilView());
+	mCommandList->OMSetRenderTargets(1, &CurrentBackBufferView(), false, &DepthStencilView());
+	//mCommandList->OMSetRenderTargets(1, &mSceneColorRTV, FALSE, &DepthStencilView());
 	mCommandList->SetPipelineState(GlobalPSOs["PostProcessing"].Get());
 	mCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
@@ -3919,15 +3905,10 @@ void RenderingSystem::PostProcessingPass()
 
 	mCommandList->SetGraphicsRootConstantBufferView(0, passCB->GetGPUVirtualAddress());
 
-	mCommandList->SetGraphicsRootDescriptorTable(1, GetGpuSrv(mFSREnabled ? mFSROutputSRVHeapIndex : (mTAAEnabled ? mResolvedAccBufferSRVHeapIndex :  mGBuffer->Accumulation.SRVHeapIndex)));
-	mCommandList->SetGraphicsRootDescriptorTable(2, GetGpuSrv(mGBuffer->DepthStencils.SRVHeapIndex));
-	mCommandList->SetGraphicsRootDescriptorTable(3, GetGpuSrv(mGBuffer->Normal.SRVHeapIndex));
-	mCommandList->SetGraphicsRootDescriptorTable(4, GetGpuSrv(mGBuffer->ObjectOutlines.SRVHeapIndex));
+	mCommandList->SetGraphicsRootDescriptorTable(1, GetGpuSrv(mResolvedAccBufferSRVHeapIndex));
 
 
 	mCommandList->DrawInstanced(6, 1, 0, 0);
-	if (mFSREnabled) mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mFSROutput.Get(),
-		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON));
 	PIXEndEvent(mCommandList.Get());
 }
 

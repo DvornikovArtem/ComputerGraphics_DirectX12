@@ -231,19 +231,6 @@ float4 PS(VertexOut pin) : SV_Target
 
     //Do your cool post-processing here
     
-    Color += DrawOutlines(TexelCoord, UV);
-   
-    float4 effects = 0;
-
-    effects = ChromaticAbberation(UV);
-    effects = DepthOfField(ScreenDepth, TexelCoord, effects);
-    effects += GodRays(UV, WorldPosition, ScreenDepth);
-    // effects += bloom(...);
-    // effects += lensDirt(...);
-
-    effects *= cbMainPass.postEffectsExposure;
-
-    Color += effects;
     
     //gamma 2.2 correction
     Color.xyz = pow(saturate(Color.xyz), 1.0 / 2.2);
