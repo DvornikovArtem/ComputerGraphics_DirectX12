@@ -233,6 +233,7 @@ protected:
     int mCurrFrameResourceIndex = 0;
 
     UINT mCbvSrvDescriptorSize = 0;
+    UINT mCbvSrvDescriptorSize2 = 0;
 
     ComPtr<ID3D12DescriptorHeap> mSrvDescriptorHeap = nullptr;
 
@@ -441,8 +442,19 @@ protected:
     Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> mRtvHeap2;
 
     SharedTexture mSharedAccBuffer;
+    SharedTexture mSharedVelocityBuffer;
     void InitializeSharedResources();
 
+    //Secondary Device Textures
+    ComPtr<ID3D12Resource> mDevice2AccBuffer;
+    ComPtr<ID3D12Resource> mDevice2VelocityBuffer;
+    ComPtr<ID3D12Resource> mDevice2PrevFrame;
+
+    ComPtr<ID3D12DescriptorHeap> mSrvHeapDevice2;
+
+    int mDevice2AccBufferSRVIndex = -1;
+    int mDevice2VelocityBufferSRVIndex = -1;
+    int mDevice2PrevFrameSRVIndex = -1;
 // =================================================================================================
 };
 

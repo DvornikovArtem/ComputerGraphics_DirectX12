@@ -6,6 +6,7 @@ SharedTexture::SharedTexture()
     , mHeight(0)
     , mFormat(DXGI_FORMAT_UNKNOWN)
     , mInitialized(false)
+    , mHeapSize(0)
 {
 }
 
@@ -31,8 +32,9 @@ void SharedTexture::Initialize(
     mFormat = format;
     mName = name;
 
-    CreateSharedTexture();
-    CreateAndShareHandle();
+    CreateSharedHeap();
+    CreatePlacedResources();
+    ShareResources();
     SetDebugNames();
 
     mInitialized = true;
@@ -44,26 +46,65 @@ void SharedTexture::Resize(
     UINT width,
     UINT height)
 {
+    if (!mInitialized) return;
+
     Release();
     Initialize(primaryDevice, secondaryDevice, width, height, mFormat, mName);
 }
 
 void SharedTexture::Release()
 {
-    mSharedFrameTextureOnDevice2.Reset();
-    mSharedFrameTexture.Reset();
+    mSharedTextureSecondary.Reset();
+    mSharedTexturePrimary.Reset();
+    mSharedHeap.Reset();
     mSecondaryDevice.Reset();
     mPrimaryDevice.Reset();
+
+    mWidth = 0;
+    mHeight = 0;
+    mFormat = DXGI_FORMAT_UNKNOWN;
+    mName.clear();
     mInitialized = false;
+    mHeapSize = 0;
 }
 
 D3D12_RESOURCE_DESC SharedTexture::GetDesc() const
 {
     if (!mInitialized) throw std::runtime_error("SharedTexture is not initialized");
-    return mSharedFrameTexture->GetDesc();
+
+    return mSharedTexturePrimary->GetDesc();
 }
 
-void SharedTexture::CreateSharedTexture()
+UINT64 SharedTexture::GetSizeInBytes() const
+{
+    if (!mInitialized) return 0;
+
+    D3D12_RESOURCE_DESC desc = GetDesc();
+
+    D3D12_PLACED_SUBRESOURCE_FOOTPRINT layout;
+    UINT numRows;
+    UINT64 rowSizeInBytes;
+    UINT64 totalBytes;
+
+    mPrimaryDevice->GetCopyableFootprints(
+        &desc,
+        0, 1, 0,
+        &layout,
+        &numRows,
+        &rowSizeInBytes,
+        &totalBytes);
+
+    return totalBytes;
+}
+
+UINT64 SharedTexture::CalculateHeapSize(const D3D12_RESOURCE_DESC& desc) const
+{
+    D3D12_RESOURCE_ALLOCATION_INFO allocInfo = mPrimaryDevice->GetResourceAllocationInfo(0, 1, &desc);
+
+    return allocInfo.SizeInBytes;
+}
+
+void SharedTexture::CreateSharedHeap()
 {
     D3D12_RESOURCE_DESC desc = {};
     desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
@@ -72,133 +113,188 @@ void SharedTexture::CreateSharedTexture()
     desc.Height = mHeight;
     desc.DepthOrArraySize = 1;
     desc.MipLevels = 1;
-    desc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+    desc.Format = mFormat;
+    desc.SampleDesc.Count = 1;
+    desc.SampleDesc.Quality = 0;
+    desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+    desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_CROSS_ADAPTER;
+
+    mHeapSize = CalculateHeapSize(desc);
+
+    D3D12_HEAP_DESC heapDesc = {};
+    heapDesc.SizeInBytes = mHeapSize;
+    heapDesc.Properties.Type = D3D12_HEAP_TYPE_DEFAULT;
+    heapDesc.Properties.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+    heapDesc.Properties.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+    heapDesc.Properties.CreationNodeMask = 1;
+    heapDesc.Properties.VisibleNodeMask = 1;
+    heapDesc.Alignment = D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT;
+    heapDesc.Flags = D3D12_HEAP_FLAG_SHARED | D3D12_HEAP_FLAG_SHARED_CROSS_ADAPTER;
+
+    ThrowIfFailed(mPrimaryDevice->CreateHeap(
+        &heapDesc,
+        IID_PPV_ARGS(&mSharedHeap)),
+        "Failed to create shared heap for cross-adapter texture");
+}
+
+void SharedTexture::CreatePlacedResources()
+{
+    D3D12_RESOURCE_DESC desc = {};
+    desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+    desc.Alignment = 0;
+    desc.Width = mWidth;
+    desc.Height = mHeight;
+    desc.DepthOrArraySize = 1;
+    desc.MipLevels = 1;
+    desc.Format = mFormat;
     desc.SampleDesc.Count = 1;
     desc.SampleDesc.Quality = 0;
     desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
     desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_CROSS_ADAPTER;
 
-    D3D12_HEAP_PROPERTIES heapProps = {};
-    heapProps.Type = D3D12_HEAP_TYPE_DEFAULT;
-    heapProps.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
-    heapProps.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
-    heapProps.CreationNodeMask = 1;
-    heapProps.VisibleNodeMask = 1;
-
-    ThrowIfFailed(mPrimaryDevice->CreateCommittedResource(
-        &heapProps,
-        D3D12_HEAP_FLAG_SHARED | D3D12_HEAP_FLAG_SHARED_CROSS_ADAPTER,
+    ThrowIfFailed(mPrimaryDevice->CreatePlacedResource(
+        mSharedHeap.Get(),
+        0,
         &desc,
         D3D12_RESOURCE_STATE_COMMON,
         nullptr,
-        IID_PPV_ARGS(&mSharedFrameTexture)));
+        IID_PPV_ARGS(&mSharedTexturePrimary)),
+        "Failed to create placed resource on primary device");
 }
 
-void SharedTexture::CreateAndShareHandle()
+void SharedTexture::ShareResources()
 {
-    HANDLE textureHandle = nullptr;
-
+    HANDLE heapHandle = nullptr;
     ThrowIfFailed(mPrimaryDevice->CreateSharedHandle(
-        mSharedFrameTexture.Get(),
+        mSharedHeap.Get(),
         nullptr,
         GENERIC_ALL,
         nullptr,
-        &textureHandle),
-        "Failed to create shared handle");
+        &heapHandle),
+        "Failed to create shared handle for heap");
 
-    if (!textureHandle)
-    {
-        throw std::runtime_error("Failed to create shared handle (handle is null)");
-    }
+    if (!heapHandle) throw std::runtime_error("Failed to create shared handle (handle is null)");
 
+    Microsoft::WRL::ComPtr<ID3D12Heap> sharedHeapOnSecondary;
     HRESULT hr = mSecondaryDevice->OpenSharedHandle(
-        textureHandle,
-        IID_PPV_ARGS(&mSharedFrameTextureOnDevice2));
+        heapHandle,
+        IID_PPV_ARGS(&sharedHeapOnSecondary));
 
-    CloseHandle(textureHandle);
+    CloseHandle(heapHandle);
+    ThrowIfFailed(hr, "Failed to open shared heap handle on secondary device");
 
-    ThrowIfFailed(hr, "Failed to open shared handle on secondary device");
+    D3D12_RESOURCE_DESC desc = {};
+    desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+    desc.Alignment = 0;
+    desc.Width = mWidth;
+    desc.Height = mHeight;
+    desc.DepthOrArraySize = 1;
+    desc.MipLevels = 1;
+    desc.Format = mFormat;
+    desc.SampleDesc.Count = 1;
+    desc.SampleDesc.Quality = 0;
+    desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+    desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_CROSS_ADAPTER;
+
+    ThrowIfFailed(mSecondaryDevice->CreatePlacedResource(
+        sharedHeapOnSecondary.Get(),
+        0,
+        &desc,
+        D3D12_RESOURCE_STATE_COMMON,
+        nullptr,
+        IID_PPV_ARGS(&mSharedTextureSecondary)),
+        "Failed to create placed resource on secondary device");
 }
 
 void SharedTexture::SetDebugNames()
 {
-    if (mSharedFrameTexture)
+    if (mSharedHeap)
+    {
+        std::wstring heapName = mName + L" Heap";
+        mSharedHeap->SetName(heapName.c_str());
+    }
+
+    if (mSharedTexturePrimary)
     {
         std::wstring primaryName = mName + L" (Primary)";
-        mSharedFrameTexture->SetName(primaryName.c_str());
+        mSharedTexturePrimary->SetName(primaryName.c_str());
     }
 
-    if (mSharedFrameTextureOnDevice2)
+    if (mSharedTextureSecondary)
     {
         std::wstring secondaryName = mName + L" (Secondary)";
-        mSharedFrameTextureOnDevice2->SetName(secondaryName.c_str());
+        mSharedTextureSecondary->SetName(secondaryName.c_str());
     }
 }
 
-void SharedTexture::PrepareForCopyFromPrimary(ID3D12GraphicsCommandList* commandList, ID3D12Resource* sourceResource)
+D3D12_RESOURCE_STATES SharedTexture::CopyFromPrimaryDevice(
+    ID3D12GraphicsCommandList* commandList,
+    ID3D12Resource* sourceResource,
+    D3D12_RESOURCE_STATES sourceState)
 {
-    if (!mInitialized || !commandList || !sourceResource)
-    {
-        throw std::invalid_argument("Invalid arguments for PrepareForCopyFromPrimary");
-    }
-
-    commandList->ResourceBarrier(1,
-        &CD3DX12_RESOURCE_BARRIER::Transition(
+    CD3DX12_RESOURCE_BARRIER preCopyBarriers[] = {
+        CD3DX12_RESOURCE_BARRIER::Transition(
             sourceResource,
+            sourceState,
+            D3D12_RESOURCE_STATE_COPY_SOURCE),
+        CD3DX12_RESOURCE_BARRIER::Transition(
+            mSharedTexturePrimary.Get(),
             D3D12_RESOURCE_STATE_COMMON,
-            D3D12_RESOURCE_STATE_COPY_SOURCE));
+            D3D12_RESOURCE_STATE_COPY_DEST)
+    };
 
-    commandList->ResourceBarrier(1,
-        &CD3DX12_RESOURCE_BARRIER::Transition(
-            mSharedFrameTexture.Get(),
-            D3D12_RESOURCE_STATE_COMMON,
-            D3D12_RESOURCE_STATE_COPY_DEST));
-}
+    commandList->ResourceBarrier(_countof(preCopyBarriers), preCopyBarriers);
+    commandList->CopyResource(mSharedTexturePrimary.Get(), sourceResource);
 
-void SharedTexture::FinishCopyOnPrimary(ID3D12GraphicsCommandList* commandList)
-{
-    if (!mInitialized || !commandList)
-    {
-        throw std::invalid_argument("Invalid arguments for FinishCopyOnPrimary");
-    }
-
-    commandList->ResourceBarrier(1,
-        &CD3DX12_RESOURCE_BARRIER::Transition(
-            mSharedFrameTexture.Get(),
+    CD3DX12_RESOURCE_BARRIER postCopyBarriers[] = {
+        CD3DX12_RESOURCE_BARRIER::Transition(
+            mSharedTexturePrimary.Get(),
             D3D12_RESOURCE_STATE_COPY_DEST,
-            D3D12_RESOURCE_STATE_COMMON));
-}
-
-void SharedTexture::PrepareForCopyToSecondary(ID3D12GraphicsCommandList* commandList, ID3D12Resource* destResource)
-{
-    if (!mInitialized || !commandList || !destResource)
-    {
-        throw std::invalid_argument("Invalid arguments for PrepareForCopyToSecondary");
-    }
-
-    commandList->ResourceBarrier(1,
-        &CD3DX12_RESOURCE_BARRIER::Transition(
-            destResource,
-            D3D12_RESOURCE_STATE_COMMON,
-            D3D12_RESOURCE_STATE_COPY_DEST));
-
-    commandList->ResourceBarrier(1,
-        &CD3DX12_RESOURCE_BARRIER::Transition(
-            mSharedFrameTextureOnDevice2.Get(),
-            D3D12_RESOURCE_STATE_COMMON,
-            D3D12_RESOURCE_STATE_COPY_SOURCE));
-}
-
-void SharedTexture::FinishCopyOnSecondary(ID3D12GraphicsCommandList* commandList)
-{
-    if (!mInitialized || !commandList)
-    {
-        throw std::invalid_argument("Invalid arguments for FinishCopyOnSecondary");
-    }
-
-    commandList->ResourceBarrier(1,
-        &CD3DX12_RESOURCE_BARRIER::Transition(
-            mSharedFrameTextureOnDevice2.Get(),
+            D3D12_RESOURCE_STATE_COMMON),
+        CD3DX12_RESOURCE_BARRIER::Transition(
+            sourceResource,
             D3D12_RESOURCE_STATE_COPY_SOURCE,
-            D3D12_RESOURCE_STATE_COMMON));
+            sourceState)
+    };
+
+    commandList->ResourceBarrier(_countof(postCopyBarriers), postCopyBarriers);
+
+    return sourceState;
+}
+
+D3D12_RESOURCE_STATES SharedTexture::CopyToSecondaryDevice(
+    ID3D12GraphicsCommandList* commandList,
+    ID3D12Resource* destResource,
+    D3D12_RESOURCE_STATES destState)
+{
+
+    CD3DX12_RESOURCE_BARRIER preCopyBarriers[] = {
+        CD3DX12_RESOURCE_BARRIER::Transition(
+            destResource,
+            destState,
+            D3D12_RESOURCE_STATE_COPY_DEST),
+        CD3DX12_RESOURCE_BARRIER::Transition(
+            mSharedTextureSecondary.Get(),
+            D3D12_RESOURCE_STATE_COMMON,
+            D3D12_RESOURCE_STATE_COPY_SOURCE)
+    };
+
+    commandList->ResourceBarrier(_countof(preCopyBarriers), preCopyBarriers);
+
+    commandList->CopyResource(destResource, mSharedTextureSecondary.Get());
+
+    CD3DX12_RESOURCE_BARRIER postCopyBarriers[] = {
+        CD3DX12_RESOURCE_BARRIER::Transition(
+            mSharedTextureSecondary.Get(),
+            D3D12_RESOURCE_STATE_COPY_SOURCE,
+            D3D12_RESOURCE_STATE_COMMON),
+        CD3DX12_RESOURCE_BARRIER::Transition(
+            destResource,
+            D3D12_RESOURCE_STATE_COPY_DEST,
+            destState)
+    };
+
+    commandList->ResourceBarrier(_countof(postCopyBarriers), postCopyBarriers);
+
+    return destState;
 }

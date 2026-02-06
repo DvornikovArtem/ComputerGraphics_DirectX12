@@ -229,6 +229,7 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 		// Get the increment size of a descriptor in this heap type.  This is hardware specific, 
 		// so we have to query this information.
 	mCbvSrvDescriptorSize = md3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	mCbvSrvDescriptorSize2 = md3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
 	BuildRootSignatures();
 	BuildInputLayout();
@@ -432,7 +433,7 @@ void RenderingSystem::OnResize() {
 	if (mRtvHeap) CreateOrResizeSceneColor(mClientWidth, mClientHeight);
 	if (md3dDevice2)
 	{
-		mSharedAccBuffer.Resize(md3dDevice.Get(), md3dDevice2.Get(), mClientWidth, mClientHeight);
+		InitializeSharedResources();
 	}
 
 	mScissorRect = { 0, 0, mClientWidth, mClientHeight };
@@ -681,10 +682,9 @@ void RenderingSystem::Render()
 	mGBuffer->TransitToTonemappingState(mCommandList);
 	mGBuffer->TransitSRVToCommon(mCommandList);
 
-	//Send Finished Frame to Secondary GPU
-	mSharedAccBuffer.PrepareForCopyFromPrimary(mCommandList.Get(), mGBuffer->Accumulation.Resource.Get());
-	mCommandList->CopyResource(mSharedAccBuffer.GetPrimaryResource(), mGBuffer->Accumulation.Resource.Get());
-	mSharedAccBuffer.FinishCopyOnPrimary(mCommandList.Get());
+	//Send Finished Frames to Secondary GPU
+	mSharedAccBuffer.CopyFromPrimaryDevice(mCommandList.Get(), mGBuffer->Accumulation.Resource.Get());
+	mSharedVelocityBuffer.CopyFromPrimaryDevice(mCommandList.Get(), mGBuffer->VelocityBuffer.Resource.Get());
 
 	// Done recording commands.
 	ThrowIfFailed(mCommandList->Close());
@@ -717,9 +717,8 @@ void RenderingSystem::Render()
 
 	mCommandList2->ClearRenderTargetView(CurrentBackBufferView(), reinterpret_cast<const float*>(&ClearValue), 0, nullptr);
 
-	mSharedAccBuffer.PrepareForCopyToSecondary(mCommandList2.Get(), CurrentBackBuffer());
-	mCommandList2->CopyResource(CurrentBackBuffer(), mSharedAccBuffer.GetSecondaryResource());
-	mSharedAccBuffer.FinishCopyOnSecondary(mCommandList2.Get());
+	mSharedAccBuffer.CopyToSecondaryDevice(mCommandList2.Get(), mDevice2AccBuffer.Get());
+	mSharedVelocityBuffer.CopyToSecondaryDevice(mCommandList2.Get(), mDevice2VelocityBuffer.Get());
 
 	mCommandList2->ResourceBarrier(1,
 		&CD3DX12_RESOURCE_BARRIER::Transition(
@@ -2500,6 +2499,85 @@ void RenderingSystem::InitializeSharedResources()
 		mClientHeight,
 		DXGI_FORMAT_R16G16B16A16_FLOAT,
 		L"CrossAdapterAccumulationBuffer");
+
+	mSharedVelocityBuffer.Initialize(
+		md3dDevice.Get(),
+		md3dDevice2.Get(),
+		mClientWidth,
+		mClientHeight,
+		DXGI_FORMAT_R16G16_FLOAT,
+		L"CrossAdapterVelocityBuffer");
+
+	mDevice2AccBuffer.Reset();
+	mDevice2PrevFrame.Reset();
+	mDevice2VelocityBuffer.Reset();
+	mSrvHeapDevice2.Reset();
+
+	D3D12_CLEAR_VALUE clearValue = {};
+	clearValue.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+
+	md3dDevice2->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R16G16B16A16_FLOAT, mClientWidth, mClientHeight, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
+		D3D12_RESOURCE_STATE_COMMON,
+		&clearValue,
+		IID_PPV_ARGS(&mDevice2AccBuffer));
+
+	md3dDevice2->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R16G16B16A16_FLOAT, mClientWidth, mClientHeight, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
+		D3D12_RESOURCE_STATE_COMMON,
+		&clearValue,
+		IID_PPV_ARGS(&mDevice2PrevFrame));
+
+	D3D12_CLEAR_VALUE clearValue2 = {};
+	clearValue2.Format = DXGI_FORMAT_R16G16_FLOAT;
+
+	md3dDevice2->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R16G16_FLOAT, mClientWidth, mClientHeight, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
+		D3D12_RESOURCE_STATE_COMMON,
+		&clearValue2,
+		IID_PPV_ARGS(&mDevice2VelocityBuffer));
+
+	//Create SRV Heap for Device2
+	D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
+	srvHeapDesc.NumDescriptors = 3;
+	srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+	srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+	srvHeapDesc.NodeMask = 0;
+
+	ThrowIfFailed(md3dDevice2->CreateDescriptorHeap(
+		&srvHeapDesc,
+		IID_PPV_ARGS(&mSrvHeapDevice2)));
+
+	mDevice2AccBufferSRVIndex = 0;
+	mDevice2VelocityBufferSRVIndex = 1;
+	mDevice2PrevFrameSRVIndex = 2;
+
+	CD3DX12_CPU_DESCRIPTOR_HANDLE hDescriptor(mSrvHeapDevice2->GetCPUDescriptorHandleForHeapStart());
+
+	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+	srvDesc.Texture2D.MostDetailedMip = 0;
+	srvDesc.Texture2D.MipLevels = 1;
+	srvDesc.Texture2D.PlaneSlice = 0;
+	srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
+
+	srvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	md3dDevice2->CreateShaderResourceView(mDevice2AccBuffer.Get(), &srvDesc, hDescriptor);
+	hDescriptor.Offset(1, mCbvSrvDescriptorSize2);
+
+	srvDesc.Format = DXGI_FORMAT_R16G16_FLOAT;
+	md3dDevice2->CreateShaderResourceView(mDevice2VelocityBuffer.Get(), &srvDesc, hDescriptor);
+	hDescriptor.Offset(1, mCbvSrvDescriptorSize2);
+
+	srvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	md3dDevice2->CreateShaderResourceView(mDevice2PrevFrame.Get(), &srvDesc, hDescriptor);
 }
 
 CD3DX12_CPU_DESCRIPTOR_HANDLE RenderingSystem::GetCpuSrv(int index)const
