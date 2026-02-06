@@ -39,6 +39,7 @@ D3DApp::~D3DApp()
 {
 	if (mRenderingSystem->getd3dDevice() != nullptr) {
 		mRenderingSystem->FlushCommandQueue();
+		mRenderingSystem->FlushCommandQueue2();
 	}
 	//mImGuiLayer->Shutdown();
 }

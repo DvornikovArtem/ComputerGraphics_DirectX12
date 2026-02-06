@@ -148,6 +148,7 @@ public:
     std::array<const CD3DX12_STATIC_SAMPLER_DESC, 6> GetStaticSamplers();
 
     void FlushCommandQueue();
+    void FlushCommandQueue2();
     D3D12_CPU_DESCRIPTOR_HANDLE RenderingSystem::DepthStencilView() const;
     ID3D12Resource* RenderingSystem::CurrentBackBuffer() const;
     D3D12_CPU_DESCRIPTOR_HANDLE RenderingSystem::CurrentBackBufferView() const;
@@ -214,6 +215,7 @@ protected:
     D3D12_RECT mScissorRect;
 
     UINT mRtvDescriptorSize = 0;
+    UINT mRtvDescriptorSize2 = 0;
     UINT mDsvDescriptorSize = 0;
     UINT mCbvSrvUavDescriptorSize = 0;
 
@@ -418,6 +420,24 @@ protected:
     std::string GetShaderTargetForModel(const std::string& shaderType);
     void InitializeDXC();
     ComPtr<ID3DBlob> DXCCompileShader(const std::wstring& filename, const D3D_SHADER_MACRO* defines, const std::string& entrypoint, const std::string& shaderType);
+// =================================================================================================
+
+// For mGPU ========================================================================================
+    Microsoft::WRL::ComPtr<ID3D12Device5> md3dDevice2;
+    Microsoft::WRL::ComPtr<ID3D12CommandQueue> mCommandQueue2;
+    Microsoft::WRL::ComPtr<ID3D12CommandAllocator> mDirectCmdListAlloc2;
+    Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList4> mCommandList2;
+    Microsoft::WRL::ComPtr<ID3D12Fence> mFence2;
+    UINT64 mCurrentFence2 = 0;
+
+    Microsoft::WRL::ComPtr<ID3D12Fence> mSharedFence;
+    Microsoft::WRL::ComPtr<ID3D12Fence> mSharedFenceOnDevice2;
+    UINT64 mSharedFenceValue = 0;
+    HANDLE mSharedFenceHandle = nullptr;
+    std::wstring mAdapterName2;
+
+    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> mRtvHeap2;
+
 // =================================================================================================
 };
 

@@ -55,27 +55,109 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 
 	ThrowIfFailed(CreateDXGIFactory1(IID_PPV_ARGS(&mdxgiFactory)));
 
-	// Try to create hardware device.
-	HRESULT hardwareResult = D3D12CreateDevice(/*default adapter*/nullptr, D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(&md3dDevice));
+	//creating Primary Device
+	HRESULT hardwareResult = D3D12CreateDevice(
+		nullptr,
+		D3D_FEATURE_LEVEL_12_0,
+		IID_PPV_ARGS(&md3dDevice));
 
-	// Fallback to WARP device.
-	if (FAILED(hardwareResult))
+	bool secondDeviceCreated = false;
+
+	LUID primaryDeviceLuid = md3dDevice->GetAdapterLuid();
+	ComPtr<IDXGIAdapter1> adapter;
+	UINT adapterIndex = 0;
+
+	// Iterate through all devices
+	while (mdxgiFactory->EnumAdapters1(adapterIndex, &adapter) != DXGI_ERROR_NOT_FOUND)
 	{
-		ComPtr<IDXGIAdapter> pWarpAdapter;
-		ThrowIfFailed(mdxgiFactory->EnumWarpAdapter(IID_PPV_ARGS(&pWarpAdapter)));
+		DXGI_ADAPTER_DESC1 desc;
+		adapter->GetDesc1(&desc);
+		// Skip Primary device
+		if (desc.AdapterLuid.LowPart == primaryDeviceLuid.LowPart &&
+			desc.AdapterLuid.HighPart == primaryDeviceLuid.HighPart)
+		{
+			adapter.Reset();
+			adapterIndex++;
+			continue;
+		}
+		// Create Secondary Device
+		if (!(desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE))
+		{
+			HRESULT hr = D3D12CreateDevice(
+				adapter.Get(),
+				D3D_FEATURE_LEVEL_12_0,
+				IID_PPV_ARGS(&md3dDevice2));
 
-		ThrowIfFailed(D3D12CreateDevice(pWarpAdapter.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&md3dDevice)));
+			if (SUCCEEDED(hr))
+			{
+				mAdapterName2 = desc.Description;
+				OutputDebugStringA("Both devices created successfully!\n");
+				secondDeviceCreated = true;
+				break;
+			}
+		}
+
+		adapter.Reset();
+		adapterIndex++;
 	}
 
-	IDXGIAdapter* currentAdapter;
-	LUID deviceLuid = md3dDevice->GetAdapterLuid();
-	mdxgiFactory->EnumAdapterByLuid(deviceLuid, IID_PPV_ARGS(&currentAdapter));
-	DXGI_ADAPTER_DESC adapterDesc;
-	currentAdapter->GetDesc(&adapterDesc);
-	mAdapterName = adapterDesc.Description;
-	OutputDebugStringA("\n\n");
-	OutputDebugStringW(adapterDesc.Description);
-	OutputDebugStringA("\n\n");
+	if (secondDeviceCreated)
+	{
+		ComPtr<IDXGIAdapter> primaryAdapter;
+		DXGI_ADAPTER_DESC primaryDesc = {};
+
+		if (SUCCEEDED(mdxgiFactory->EnumAdapterByLuid(primaryDeviceLuid, IID_PPV_ARGS(&primaryAdapter)))) primaryAdapter->GetDesc(&primaryDesc);
+
+		ComPtr<IDXGIAdapter> secondaryAdapter;
+		DXGI_ADAPTER_DESC secondaryDesc = {};
+		LUID secondaryDeviceLuid = md3dDevice2->GetAdapterLuid();
+
+		if (SUCCEEDED(mdxgiFactory->EnumAdapterByLuid(secondaryDeviceLuid, IID_PPV_ARGS(&secondaryAdapter)))) secondaryAdapter->GetDesc(&secondaryDesc);
+
+		OutputDebugStringA("\n=== GRAPHICS DEVICES ===\n\n");
+
+		OutputDebugStringW(L"PRIMARY: ");
+		OutputDebugStringW(primaryDesc.Description);
+		OutputDebugStringA("\n");
+
+		char primaryMemory[256];
+		sprintf_s(primaryMemory, "  Video Memory: %.2f GB\n", primaryDesc.DedicatedVideoMemory / (1024.0f * 1024.0f * 1024.0f));
+		OutputDebugStringA(primaryMemory);
+
+		OutputDebugStringW(L"SECONDARY: ");
+		OutputDebugStringW(secondaryDesc.Description);
+		OutputDebugStringA("\n");
+
+		char secondaryMemory[256];
+		sprintf_s(secondaryMemory, "  Video Memory: %.2f GB\n", secondaryDesc.DedicatedVideoMemory / (1024.0f * 1024.0f * 1024.0f));
+		OutputDebugStringA(secondaryMemory);
+		OutputDebugStringA("\n");
+	}
+	else throw std::runtime_error("Failed to initialize 2 hardware graphics devices");
+
+	if (md3dDevice2)
+	{
+		ThrowIfFailed(md3dDevice2->CreateFence(0, D3D12_FENCE_FLAG_NONE,
+			IID_PPV_ARGS(&mFence2)));
+
+		D3D12_COMMAND_QUEUE_DESC queueDesc = {};
+		queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
+		queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
+		ThrowIfFailed(md3dDevice2->CreateCommandQueue(&queueDesc,
+			IID_PPV_ARGS(&mCommandQueue2)));
+
+		ThrowIfFailed(md3dDevice2->CreateCommandAllocator(
+			D3D12_COMMAND_LIST_TYPE_DIRECT,
+			IID_PPV_ARGS(mDirectCmdListAlloc2.GetAddressOf())));
+
+		ThrowIfFailed(md3dDevice2->CreateCommandList(
+			0,
+			D3D12_COMMAND_LIST_TYPE_DIRECT,
+			mDirectCmdListAlloc2.Get(),
+			nullptr,
+			IID_PPV_ARGS(mCommandList2.GetAddressOf())));
+		mCommandList2->Close();
+	}
 
 	//check RT support
 	D3D12_FEATURE_DATA_D3D12_OPTIONS5 options5 = {};
@@ -117,12 +199,9 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 	ThrowIfFailed(md3dDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&mFence)));
 
 	mRtvDescriptorSize = md3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+	mRtvDescriptorSize2 = md3dDevice2->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 	mDsvDescriptorSize = md3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
 	mCbvSrvUavDescriptorSize = md3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-
-	#ifdef _DEBUG
-	LogAdapters();
-	#endif
 
 	CreateCommandObjects();
 	CreateSwapChain();
@@ -259,6 +338,7 @@ void RenderingSystem::OnResize() {
 
 	// Flush before changing any resources.
 	FlushCommandQueue();
+	FlushCommandQueue2();
 
 	ThrowIfFailed(mCommandList->Reset(mDirectCmdListAlloc.Get(), nullptr));
 
@@ -267,22 +347,21 @@ void RenderingSystem::OnResize() {
 		mSwapChainBuffer[i].Reset();
 	mDepthStencilBuffer.Reset();
 
-	// Resize the swap chain.
-	ThrowIfFailed(mSwapChain->ResizeBuffers(
-		SwapChainBufferCount,
-		mClientWidth, mClientHeight,
-		mBackBufferFormat,
-		DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH | DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING));
-
 	mCurrBackBuffer = 0;
 
-	if (mRtvHeap) {
-		CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHeapHandle(mRtvHeap->GetCPUDescriptorHandleForHeapStart());
+	if (mRtvHeap2) {
+		ThrowIfFailed(mSwapChain->ResizeBuffers(
+			SwapChainBufferCount,
+			mClientWidth, mClientHeight,
+			mBackBufferFormat,
+			DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH | DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING));
+
+		CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHeapHandle(mRtvHeap2->GetCPUDescriptorHandleForHeapStart());
 		for (UINT i = 0; i < SwapChainBufferCount; i++)
 		{
 			ThrowIfFailed(mSwapChain->GetBuffer(i, IID_PPV_ARGS(&mSwapChainBuffer[i])));
-			md3dDevice->CreateRenderTargetView(mSwapChainBuffer[i].Get(), nullptr, rtvHeapHandle);
-			rtvHeapHandle.Offset(1, mRtvDescriptorSize);
+			md3dDevice2->CreateRenderTargetView(mSwapChainBuffer[i].Get(), nullptr, rtvHeapHandle);
+			rtvHeapHandle.Offset(1, mRtvDescriptorSize2);
 		}
 	}
 
@@ -580,16 +659,7 @@ void RenderingSystem::Render()
 
 	ThrowIfFailed(mCommandList->Reset(cmdListAlloc.Get(), nullptr));
 
-	if (mTAAEnabled) SaveFrameAsPrevious();
-
-	PIXBeginEvent(mCommandList.Get(), 0x00FF00, "Clear Back Buffer");
-	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_RENDER_TARGET));
-
-	mCommandList->ClearRenderTargetView(CurrentBackBufferView(), reinterpret_cast<FLOAT*>(&ClearValue), 0, nullptr);
 	mCommandList->ClearDepthStencilView(DepthStencilView(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
-
-	mCommandList->OMSetRenderTargets(1, &CurrentBackBufferView(), FALSE, &DepthStencilView());
-	PIXEndEvent(mCommandList.Get());
 
 	DrawShadowMaps();
 
@@ -603,16 +673,9 @@ void RenderingSystem::Render()
 	DrawSkyBox();
 
 	DrawParticleSystems();
-
-	if (mTAAEnabled) TAAResolve();
-
 	mGBuffer->TransitToTonemappingState(mCommandList);
-	PostProcessingPass();
-
 	mGBuffer->TransitSRVToCommon(mCommandList);
 
-	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
-		D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
 
 	// Done recording commands.
 	ThrowIfFailed(mCommandList->Close());
@@ -620,13 +683,48 @@ void RenderingSystem::Render()
 	ID3D12CommandList* cmdsLists[] = { mCommandList.Get() };
 	mCommandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
 
-	// Swap the back and front buffers
-	ThrowIfFailed(mSwapChain->Present(mVSync ? 1u : 0u, mVSync ? 0 : DXGI_PRESENT_ALLOW_TEARING));
-	mCurrBackBuffer = (mCurrBackBuffer + 1) % SwapChainBufferCount;
-
 	// Notify the fence when the GPU completes commands up to this fence point.
 	mCurrFrameResource->Fence = ++mCurrentFence;
 	mCommandQueue->Signal(mFence.Get(), mCurrentFence);
+
+
+	if (mCurrentFence2 > 0 && mFence2->GetCompletedValue() < mCurrentFence2)
+	{
+		HANDLE eventHandle = CreateEventEx(nullptr, false, false, EVENT_ALL_ACCESS);
+		ThrowIfFailed(mFence2->SetEventOnCompletion(mCurrentFence2, eventHandle));
+		WaitForSingleObject(eventHandle, INFINITE);
+		CloseHandle(eventHandle);
+	}
+
+	ThrowIfFailed(mDirectCmdListAlloc2->Reset());
+	ThrowIfFailed(mCommandList2->Reset(mDirectCmdListAlloc2.Get(), nullptr));
+
+
+	mCommandList2->ResourceBarrier(1,
+		&CD3DX12_RESOURCE_BARRIER::Transition(
+			CurrentBackBuffer(),
+			D3D12_RESOURCE_STATE_PRESENT,
+			D3D12_RESOURCE_STATE_RENDER_TARGET));
+
+	mCommandList2->ClearRenderTargetView(CurrentBackBufferView(), reinterpret_cast<const float*>(&ClearValue), 0, nullptr);
+
+	mCommandList2->ResourceBarrier(1,
+		&CD3DX12_RESOURCE_BARRIER::Transition(
+			CurrentBackBuffer(),
+			D3D12_RESOURCE_STATE_RENDER_TARGET,
+			D3D12_RESOURCE_STATE_PRESENT));
+
+	ThrowIfFailed(mCommandList2->Close());
+
+	ID3D12CommandList* cmdsLists2[] = { mCommandList2.Get() };
+	mCommandQueue2->ExecuteCommandLists(_countof(cmdsLists2), cmdsLists2);
+
+	ThrowIfFailed(mSwapChain->Present(mVSync ? 1u : 0u, mVSync ? 0 : DXGI_PRESENT_ALLOW_TEARING));
+
+	mCurrBackBuffer = (mCurrBackBuffer + 1) % SwapChainBufferCount;
+
+	mCurrentFence2++;
+	mCommandQueue2->Signal(mFence2.Get(), mCurrentFence2);
 }
 
 
@@ -1150,6 +1248,30 @@ void RenderingSystem::FlushCommandQueue()
 	}
 }
 
+void RenderingSystem::FlushCommandQueue2()
+{
+	// Advance the fence value to mark commands up to this fence point.
+	mCurrentFence2++;
+
+	// Add an instruction to the command queue to set a new fence point.  Because we 
+	// are on the GPU timeline, the new fence point won't be set until the GPU finishes
+	// processing all the commands prior to this Signal().
+	ThrowIfFailed(mCommandQueue2->Signal(mFence2.Get(), mCurrentFence2));
+
+	// Wait until the GPU has completed commands up to this fence point.
+	if (mFence2->GetCompletedValue() < mCurrentFence2)
+	{
+		HANDLE eventHandle = CreateEventEx(nullptr, false, false, EVENT_ALL_ACCESS);
+
+		// Fire event when GPU hits current fence.  
+		ThrowIfFailed(mFence2->SetEventOnCompletion(mCurrentFence2, eventHandle));
+
+		// Wait until the GPU hits current fence event is fired.
+		WaitForSingleObject(eventHandle, INFINITE);
+		CloseHandle(eventHandle);
+	}
+}
+
 D3D12_CPU_DESCRIPTOR_HANDLE RenderingSystem::DepthStencilView() const {
 	return mDsvHeap->GetCPUDescriptorHandleForHeapStart();
 }
@@ -1160,9 +1282,9 @@ ID3D12Resource* RenderingSystem::CurrentBackBuffer() const {
 
 D3D12_CPU_DESCRIPTOR_HANDLE RenderingSystem::CurrentBackBufferView() const {
 	return CD3DX12_CPU_DESCRIPTOR_HANDLE(
-		mRtvHeap->GetCPUDescriptorHandleForHeapStart(),
+		mRtvHeap2->GetCPUDescriptorHandleForHeapStart(),
 		mCurrBackBuffer,
-		mRtvDescriptorSize);
+		mRtvDescriptorSize2);
 }
 
 void RenderingSystem::LogAdapters()
@@ -2303,7 +2425,7 @@ void RenderingSystem::CreateSwapChain()
 	sd.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH | DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
 
 	// Note: Swap chain uses queue to perform flush.
-	ThrowIfFailed(mdxgiFactory->CreateSwapChain(mCommandQueue.Get(), &sd, mSwapChain.GetAddressOf()));
+	ThrowIfFailed(mdxgiFactory->CreateSwapChain(mCommandQueue2.Get(), &sd, mSwapChain.GetAddressOf()));
 }
 
 void RenderingSystem::CreateRtvAndDsvDescriptorHeaps()
@@ -2316,12 +2438,17 @@ void RenderingSystem::CreateRtvAndDsvDescriptorHeaps()
 	ThrowIfFailed(md3dDevice->CreateDescriptorHeap(
 		&rtvHeapDesc, IID_PPV_ARGS(mRtvHeap.GetAddressOf())));
 
-	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHeapHandle(mRtvHeap->GetCPUDescriptorHandleForHeapStart());
+	//RTVHeap for device2
+	rtvHeapDesc.NumDescriptors = SwapChainBufferCount;
+	ThrowIfFailed(md3dDevice2->CreateDescriptorHeap(
+		&rtvHeapDesc, IID_PPV_ARGS(mRtvHeap2.GetAddressOf())));
+
+	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHeapHandle2(mRtvHeap2->GetCPUDescriptorHandleForHeapStart());
 	for (UINT i = 0; i < SwapChainBufferCount; i++)
 	{
 		ThrowIfFailed(mSwapChain->GetBuffer(i, IID_PPV_ARGS(&mSwapChainBuffer[i])));
-		md3dDevice->CreateRenderTargetView(mSwapChainBuffer[i].Get(), nullptr, rtvHeapHandle);
-		rtvHeapHandle.Offset(1, mRtvDescriptorSize);
+		md3dDevice2->CreateRenderTargetView(mSwapChainBuffer[i].Get(), nullptr, rtvHeapHandle2);
+		rtvHeapHandle2.Offset(1, mRtvDescriptorSize2);
 	}
 
 
@@ -2586,6 +2713,8 @@ void RenderingSystem::Update(std::vector<DrawableObject*>& mAllObjectsToUpdate, 
 		WaitForSingleObject(eventHandle, INFINITE);
 		CloseHandle(eventHandle);
 	}
+
+	ClearValue.x = cos(gt->TotalTime());
 
 	if (mTAAEnabled) CalculateJitter();
 	//if (RTSupport && mAllObjectsToUpdate.size() != 0) RefitTLAS();
