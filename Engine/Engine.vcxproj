@@ -376,6 +376,7 @@
     <ClInclude Include="Include\Engine\Render\RenderingSystem.h" />
     <ClInclude Include="Include\Engine\Render\RenderItem.h" />
     <ClInclude Include="Include\Engine\Render\ShadowMap.h" />
+    <ClInclude Include="Include\Engine\Render\SharedTexture.h" />
     <ClInclude Include="Include\Engine\RHI\DX12\d3dx12.h" />
     <ClInclude Include="Include\Engine\RHI\DX12\DDS.h" />
     <ClInclude Include="Include\Engine\RHI\DX12\DDSTextureLoader.h" />
@@ -439,6 +440,7 @@
     <ClCompile Include="src\Render\Gbuffer.cpp" />
     <ClCompile Include="src\Render\RenderingSystem.cpp" />
     <ClCompile Include="src\Render\ShadowMap.cpp" />
+    <ClCompile Include="src\Render\SharedTexture.cpp" />
     <ClCompile Include="src\RHI\DX12\DDSTextureLoader.cpp" />
     <ClCompile Include="src\RHI\DX12\DirectXHelpers.cpp" />
     <ClCompile Include="src\RHI\DX12\FrameResource.cpp" />

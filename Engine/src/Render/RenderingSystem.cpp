@@ -430,7 +430,10 @@ void RenderingSystem::OnResize() {
 	mScreenViewport.MaxDepth = 1.0f;
 
 	if (mRtvHeap) CreateOrResizeSceneColor(mClientWidth, mClientHeight);
-	if (md3dDevice2) InitializeSharedResources();
+	if (md3dDevice2)
+	{
+		mSharedAccBuffer.Resize(md3dDevice.Get(), md3dDevice2.Get(), mClientWidth, mClientHeight);
+	}
 
 	mScissorRect = { 0, 0, mClientWidth, mClientHeight };
 
@@ -679,31 +682,9 @@ void RenderingSystem::Render()
 	mGBuffer->TransitSRVToCommon(mCommandList);
 
 	//Send Finished Frame to Secondary GPU
-	mCommandList->ResourceBarrier(1,
-		&CD3DX12_RESOURCE_BARRIER::Transition(
-			mGBuffer->Accumulation.Resource.Get(),
-			D3D12_RESOURCE_STATE_COMMON,
-			D3D12_RESOURCE_STATE_COPY_SOURCE));
-
-	mCommandList->ResourceBarrier(1,
-		&CD3DX12_RESOURCE_BARRIER::Transition(
-			mSharedFrameTexture.Get(),
-			D3D12_RESOURCE_STATE_COMMON,
-			D3D12_RESOURCE_STATE_COPY_DEST));
-
-	mCommandList->CopyResource(mSharedFrameTexture.Get(), mGBuffer->Accumulation.Resource.Get());
-
-	mCommandList->ResourceBarrier(1,
-		&CD3DX12_RESOURCE_BARRIER::Transition(
-			mGBuffer->Accumulation.Resource.Get(),
-			D3D12_RESOURCE_STATE_COPY_SOURCE,
-			D3D12_RESOURCE_STATE_COMMON));
-
-	mCommandList->ResourceBarrier(1,
-		&CD3DX12_RESOURCE_BARRIER::Transition(
-			mSharedFrameTexture.Get(),
-			D3D12_RESOURCE_STATE_COPY_DEST,
-			D3D12_RESOURCE_STATE_COMMON));
+	mSharedAccBuffer.PrepareForCopyFromPrimary(mCommandList.Get(), mGBuffer->Accumulation.Resource.Get());
+	mCommandList->CopyResource(mSharedAccBuffer.GetPrimaryResource(), mGBuffer->Accumulation.Resource.Get());
+	mSharedAccBuffer.FinishCopyOnPrimary(mCommandList.Get());
 
 	// Done recording commands.
 	ThrowIfFailed(mCommandList->Close());
@@ -736,32 +717,9 @@ void RenderingSystem::Render()
 
 	mCommandList2->ClearRenderTargetView(CurrentBackBufferView(), reinterpret_cast<const float*>(&ClearValue), 0, nullptr);
 
-	mCommandList2->ResourceBarrier(1,
-		&CD3DX12_RESOURCE_BARRIER::Transition(
-			CurrentBackBuffer(),
-			D3D12_RESOURCE_STATE_PRESENT,
-			D3D12_RESOURCE_STATE_COPY_DEST));
-
-	mCommandList2->ResourceBarrier(1,
-		&CD3DX12_RESOURCE_BARRIER::Transition(
-			mSharedFrameTextureOnDevice2.Get(),
-			D3D12_RESOURCE_STATE_COMMON,
-			D3D12_RESOURCE_STATE_COPY_SOURCE));
-
-	// Копируем shared ресурс в back buffer
-	mCommandList2->CopyResource(CurrentBackBuffer(), mSharedFrameTextureOnDevice2.Get());
-
-	mCommandList2->ResourceBarrier(1,
-		&CD3DX12_RESOURCE_BARRIER::Transition(
-			mSharedFrameTextureOnDevice2.Get(),
-			D3D12_RESOURCE_STATE_COPY_SOURCE,
-			D3D12_RESOURCE_STATE_COMMON));
-
-	mCommandList2->ResourceBarrier(1,
-		&CD3DX12_RESOURCE_BARRIER::Transition(
-			CurrentBackBuffer(),
-			D3D12_RESOURCE_STATE_COPY_DEST,
-			D3D12_RESOURCE_STATE_PRESENT));
+	mSharedAccBuffer.PrepareForCopyToSecondary(mCommandList2.Get(), CurrentBackBuffer());
+	mCommandList2->CopyResource(CurrentBackBuffer(), mSharedAccBuffer.GetSecondaryResource());
+	mSharedAccBuffer.FinishCopyOnSecondary(mCommandList2.Get());
 
 	mCommandList2->ResourceBarrier(1,
 		&CD3DX12_RESOURCE_BARRIER::Transition(
@@ -2535,61 +2493,13 @@ void RenderingSystem::CreateRtvAndDsvDescriptorHeaps()
 
 void RenderingSystem::InitializeSharedResources()
 {
-	mSharedFrameTexture.Reset();
-	mSharedFrameTextureOnDevice2.Reset();
-
-	D3D12_RESOURCE_DESC desc = {};
-	desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
-	desc.Alignment = 0;
-	desc.Width = mClientWidth;
-	desc.Height = mClientHeight;
-	desc.DepthOrArraySize = 1;
-	desc.MipLevels = 1;
-	desc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
-	desc.SampleDesc.Count = 1;
-	desc.SampleDesc.Quality = 0;
-	desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-	desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_CROSS_ADAPTER;
-
-	D3D12_HEAP_PROPERTIES heapProps = {};
-	heapProps.Type = D3D12_HEAP_TYPE_DEFAULT;
-	heapProps.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
-	heapProps.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
-	heapProps.CreationNodeMask = 1;
-	heapProps.VisibleNodeMask = 1;
-
-	ThrowIfFailed(md3dDevice->CreateCommittedResource(
-		&heapProps,
-		D3D12_HEAP_FLAG_SHARED | D3D12_HEAP_FLAG_SHARED_CROSS_ADAPTER,
-		&desc,
-		D3D12_RESOURCE_STATE_COMMON,
-		nullptr,
-		IID_PPV_ARGS(&mSharedFrameTexture)));
-
-	HANDLE textureHandle = nullptr;
-	ThrowIfFailed(md3dDevice->CreateSharedHandle(
-		mSharedFrameTexture.Get(),
-		nullptr,
-		GENERIC_ALL,
-		nullptr,
-		&textureHandle));
-
-	if (!textureHandle) {
-		throw std::runtime_error("Failed to create shared handle");
-	}
-
-	HRESULT hr = md3dDevice2->OpenSharedHandle(
-		textureHandle,
-		IID_PPV_ARGS(&mSharedFrameTextureOnDevice2));
-
-	CloseHandle(textureHandle);
-
-	if (FAILED(hr)) {
-		char errorMsg[256];
-		sprintf_s(errorMsg, "Failed to open shared handle on second device: 0x%08X\n", hr);
-		OutputDebugStringA(errorMsg);
-		throw std::runtime_error(errorMsg);
-	}
+	mSharedAccBuffer.Initialize(
+		md3dDevice.Get(),
+		md3dDevice2.Get(),
+		mClientWidth,
+		mClientHeight,
+		DXGI_FORMAT_R16G16B16A16_FLOAT,
+		L"CrossAdapterAccumulationBuffer");
 }
 
 CD3DX12_CPU_DESCRIPTOR_HANDLE RenderingSystem::GetCpuSrv(int index)const

@@ -35,6 +35,8 @@
 
 #include <Engine/Scene/Camera.h>
 
+#include <Engine/Render/SharedTexture.h>
+
 #include <Engine/UI/ImGui_Layer.h>
 #include <Engine/UI/DebugOutputHook.h>
 
@@ -438,9 +440,7 @@ protected:
 
     Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> mRtvHeap2;
 
-    ComPtr<ID3D12Heap> mCrossAdapterSharedHeap[2];          // Shared heap for both devices
-    ComPtr<ID3D12Resource> mSharedFrameTexture;             // Texture on primary device
-    ComPtr<ID3D12Resource> mSharedFrameTextureOnDevice2;    // Same texture on secondary device
+    SharedTexture mSharedAccBuffer;
     void InitializeSharedResources();
 
 // =================================================================================================
