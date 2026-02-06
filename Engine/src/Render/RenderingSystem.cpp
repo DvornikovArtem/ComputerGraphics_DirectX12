@@ -1984,9 +1984,8 @@ void RenderingSystem::TAAResolve()
 	mCommandList2->SetPipelineState(GlobalPSOs2["TAAResolve"].Get());
 	mCommandList2->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-	//UINT passCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(PassConstants));
-	//auto passCB = mCurrFrameResource->PassCB->Resource();
-	//mCommandList2->SetGraphicsRootConstantBufferView(0, passCB->GetGPUVirtualAddress());
+	auto passCB = mCurrFrameResource->PassCB2->Resource();
+	mCommandList2->SetGraphicsRootConstantBufferView(0, passCB->GetGPUVirtualAddress());
 
 	ID3D12DescriptorHeap* descriptorHeaps[] = { mSrvHeapDevice2.Get() };
 	mCommandList2->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
@@ -2884,7 +2883,6 @@ void RenderingSystem::Update(std::vector<DrawableObject*>& mAllObjectsToUpdate, 
 
 void RenderingSystem::UpdateObjectCBs(const GameTimer& gt)
 {
-	auto currObjectCB = mCurrFrameResource->ObjectCB.get();
 	for (auto& e : mAllRitems)
 	{
 		// Only update the cbuffer data if the constants have changed.  
@@ -2917,7 +2915,8 @@ void RenderingSystem::UpdateObjectCBs(const GameTimer& gt)
 			objConstants.HasOutline = e->drawableObject->HasOutline ? 1.f : 0.f;
 			objConstants.OutlineColor = e->drawableObject->OutlineColor;
 
-			currObjectCB->CopyData(e->ObjCBIndex, objConstants);
+			mCurrFrameResource->ObjectCB.get()->CopyData(e->ObjCBIndex, objConstants);
+			mCurrFrameResource->ObjectCB2.get()->CopyData(e->ObjCBIndex, objConstants);
 
 			// Next FrameResource need to be updated too.
 			e->NumFramesDirty--;
@@ -3011,7 +3010,6 @@ void RenderingSystem::UpdateLightItems(std::vector<LightObject*>& mAllLightObjec
 
 void RenderingSystem::UpdateLightCBs(const GameTimer& gt)
 {
-	auto currObjectCB = mCurrFrameResource->LightCB.get();
 	//float lightAngle;
 
 	XMVECTOR lightDir;
@@ -3143,7 +3141,8 @@ void RenderingSystem::UpdateLightCBs(const GameTimer& gt)
 
 			XMStoreFloat4x4(&LightConstants.World, XMMatrixTranspose(XMLoadFloat4x4(&e->World)));
 
-			currObjectCB->CopyData(e->LightCBIndex, LightConstants);
+			mCurrFrameResource->LightCB.get()->CopyData(e->LightCBIndex, LightConstants);
+			mCurrFrameResource->LightCB2.get()->CopyData(e->LightCBIndex, LightConstants);
 
 			e->NumFramesDirty--;
 		}
@@ -3817,7 +3816,7 @@ void RenderingSystem::BuildFrameResources()
 {
 	for (int i = 0; i < gNumFrameResources; ++i)
 	{
-		mFrameResources.push_back(std::make_unique<FrameResource>(md3dDevice.Get(),
+		mFrameResources.push_back(std::make_unique<FrameResource>(md3dDevice.Get(), md3dDevice2.Get(),
 			2, (UINT)(mAllRitems.size()), (UINT)mMaterials.size(), (UINT)mAllLights.size(), (UINT)mAllParticleSystems.size()));
 	}
 }
@@ -4210,7 +4209,6 @@ void RenderingSystem::PostProcessingPass()
 
 void RenderingSystem::UpdateMaterialCBs(const GameTimer& gt)
 {
-	auto currMaterialCB = mCurrFrameResource->MaterialCB.get();
 	for (auto& e : mMaterials)
 	{
 		// Only update the cbuffer data if the constants have changed.  If the cbuffer
@@ -4227,7 +4225,8 @@ void RenderingSystem::UpdateMaterialCBs(const GameTimer& gt)
 			matConstants.Metallic = mat->Metallic;
 			XMStoreFloat4x4(&matConstants.MatTransform, XMMatrixTranspose(matTransform));
 
-			currMaterialCB->CopyData(mat->MatCBIndex, matConstants);
+			mCurrFrameResource->MaterialCB.get()->CopyData(mat->MatCBIndex, matConstants);
+			mCurrFrameResource->MaterialCB2.get()->CopyData(mat->MatCBIndex, matConstants);
 
 			// Next FrameResource need to be updated too.
 			mat->NumFramesDirty--;
@@ -4963,9 +4962,8 @@ void RenderingSystem::UpdateMainPassCB(const GameTimer& gt)
 	prevViewProjNoJitter = viewProjNoJitter;
 	prevCameraPos = mCamera.GetPosition3f();
 
-	// Main pass stored in index 2
-	auto currPassCB = mCurrFrameResource->PassCB.get();
-	currPassCB->CopyData(0, mMainPassCB);
+	mCurrFrameResource->PassCB.get()->CopyData(0, mMainPassCB);
+	mCurrFrameResource->PassCB2.get()->CopyData(0, mMainPassCB);
 }
 
 void RenderingSystem::UpdateCamera(const GameTimer& gt)

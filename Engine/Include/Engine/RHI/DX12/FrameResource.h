@@ -84,7 +84,7 @@ struct FrameResource
 {
 public:
     
-    FrameResource(ID3D12Device* device, UINT passCount, UINT objectCount, UINT materialCount, UINT LightCount, UINT particleSystemsCount);
+    FrameResource(ID3D12Device* device, ID3D12Device* device2, UINT passCount, UINT objectCount, UINT materialCount, UINT LightCount, UINT particleSystemsCount);
     FrameResource(const FrameResource& rhs) = delete;
     FrameResource& operator=(const FrameResource& rhs) = delete;
     ~FrameResource();
@@ -92,6 +92,7 @@ public:
     // We cannot reset the allocator until the GPU is done processing the commands.
     // So each frame needs their own allocator.
     Microsoft::WRL::ComPtr<ID3D12CommandAllocator> CmdListAlloc;
+    Microsoft::WRL::ComPtr<ID3D12CommandAllocator> CmdListAlloc2;
 
     // We cannot update a cbuffer until the GPU is done processing the commands
     // that reference it.  So each frame needs their own cbuffers.
@@ -104,7 +105,16 @@ public:
     std::unique_ptr<UploadBuffer<ParticleConstants>> ParticleCB = nullptr;
     std::unique_ptr<UploadBuffer<UINT>> NullUploadBuffer = nullptr;
 
+    std::unique_ptr<UploadBuffer<PassConstants>> PassCB2 = nullptr;
+    std::unique_ptr<UploadBuffer<MaterialConstants>> MaterialCB2 = nullptr;
+    std::unique_ptr<UploadBuffer<ObjectConstants>> ObjectCB2 = nullptr;
+    std::unique_ptr<UploadBuffer<Light>> LightCB2 = nullptr;
+
+    std::unique_ptr<UploadBuffer<ParticleConstants>> ParticleCB2 = nullptr;
+    std::unique_ptr<UploadBuffer<UINT>> NullUploadBuffer2 = nullptr;
+
     // Fence value to mark commands up to this fence point.  This lets us
     // check if these frame resources are still in use by the GPU.
     UINT64 Fence = 0;
+    UINT64 Fence2 = 0;
 };
