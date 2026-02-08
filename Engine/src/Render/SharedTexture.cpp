@@ -35,7 +35,6 @@ void SharedTexture::Initialize(
     CreateSharedHeap();
     CreatePlacedResources();
     ShareResources();
-    SetDebugNames();
 
     mInitialized = true;
 }
@@ -206,27 +205,6 @@ void SharedTexture::ShareResources()
         "Failed to create placed resource on secondary device");
 }
 
-void SharedTexture::SetDebugNames()
-{
-    if (mSharedHeap)
-    {
-        std::wstring heapName = mName + L" Heap";
-        mSharedHeap->SetName(heapName.c_str());
-    }
-
-    if (mSharedTexturePrimary)
-    {
-        std::wstring primaryName = mName + L" (Primary)";
-        mSharedTexturePrimary->SetName(primaryName.c_str());
-    }
-
-    if (mSharedTextureSecondary)
-    {
-        std::wstring secondaryName = mName + L" (Secondary)";
-        mSharedTextureSecondary->SetName(secondaryName.c_str());
-    }
-}
-
 D3D12_RESOURCE_STATES SharedTexture::CopyFromPrimaryDevice(
     ID3D12GraphicsCommandList* commandList,
     ID3D12Resource* sourceResource,
@@ -244,6 +222,7 @@ D3D12_RESOURCE_STATES SharedTexture::CopyFromPrimaryDevice(
     };
 
     commandList->ResourceBarrier(_countof(preCopyBarriers), preCopyBarriers);
+
     commandList->CopyResource(mSharedTexturePrimary.Get(), sourceResource);
 
     CD3DX12_RESOURCE_BARRIER postCopyBarriers[] = {

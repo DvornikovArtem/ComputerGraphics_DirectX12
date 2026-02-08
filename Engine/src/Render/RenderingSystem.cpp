@@ -101,6 +101,10 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 		adapterIndex++;
 	}
 
+	//SWAP PRIMARY AND SECONDARY DEVICES HERE IF NEEDED
+	//std::swap(md3dDevice, md3dDevice2);
+	//primaryDeviceLuid = md3dDevice->GetAdapterLuid();
+
 	if (secondDeviceCreated)
 	{
 		ComPtr<IDXGIAdapter> primaryAdapter;
