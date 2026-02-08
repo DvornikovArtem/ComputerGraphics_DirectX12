@@ -116,9 +116,9 @@ public:
 
     void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems, std::string PSOName);
 
-    void GBufferGeometryPass();
-    void GBufferLightPass();
-    void DrawParticleSystems();
+    void GBufferGeometryPass(ComPtr<ID3D12GraphicsCommandList4>& cmdList);
+    void GBufferLightPass(ComPtr<ID3D12GraphicsCommandList4>& cmdList);
+    void DrawParticleSystems(ComPtr<ID3D12GraphicsCommandList4>& cmdList);
 
     CD3DX12_CPU_DESCRIPTOR_HANDLE GetCpuSrv(int index)const;
     CD3DX12_GPU_DESCRIPTOR_HANDLE RenderingSystem::GetGpuSrv(int index)const;
@@ -139,9 +139,9 @@ protected:
     // =================================================================================================
 
 public:
-    void DrawSkyBox();
-    void DrawShadowMaps();
-    void PostProcessingPass();
+    void DrawSkyBox(ComPtr<ID3D12GraphicsCommandList4>& cmdList);
+    void DrawShadowMaps(ComPtr<ID3D12GraphicsCommandList4>& cmdList);
+    void PostProcessingPass(ComPtr<ID3D12GraphicsCommandList4>& cmdList);
 
     void Render();
 
@@ -395,9 +395,9 @@ protected:
     int mJitterIndex = 0;
 
     float HaltonSequence(uint32_t index, uint32_t base);
-    void SaveFrameAsPrevious();
+    void SaveFrameAsPrevious(ComPtr<ID3D12GraphicsCommandList4>& cmdList);
     void CalculateJitter();
-    void TAAResolve();
+    void TAAResolve(ComPtr<ID3D12GraphicsCommandList4>& cmdList);
 // =================================================================================================
 
 // For RT ==========================================================================================

@@ -660,36 +660,37 @@ void RenderingSystem::Render()
 	PreRender();
 
 	auto cmdListAlloc = mCurrFrameResource->CmdListAlloc;
+	auto cmdList = mCommandList;
 
 	ThrowIfFailed(cmdListAlloc->Reset());
 
-	ThrowIfFailed(mCommandList->Reset(cmdListAlloc.Get(), nullptr));
+	ThrowIfFailed(cmdList->Reset(cmdListAlloc.Get(), nullptr));
 
-	mCommandList->ClearDepthStencilView(DepthStencilView(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
+	cmdList->ClearDepthStencilView(DepthStencilView(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
 
-	DrawShadowMaps();
+	DrawShadowMaps(cmdList);
 
-	mGBuffer->TransitCommonToRTV(mCommandList);
-	mGBuffer->Clear(mCommandList);
-	GBufferGeometryPass();
+	mGBuffer->TransitCommonToRTV(cmdList);
+	mGBuffer->Clear(cmdList);
+	GBufferGeometryPass(cmdList);
 
-	mGBuffer->TransitToLightsRenderingState(mCommandList);
-	GBufferLightPass();
+	mGBuffer->TransitToLightsRenderingState(cmdList);
+	GBufferLightPass(cmdList);
 
-	DrawSkyBox();
+	DrawSkyBox(cmdList);
 
-	DrawParticleSystems();
-	mGBuffer->TransitToTonemappingState(mCommandList);
-	mGBuffer->TransitSRVToCommon(mCommandList);
+	DrawParticleSystems(cmdList);
+	mGBuffer->TransitToTonemappingState(cmdList);
+	mGBuffer->TransitSRVToCommon(cmdList);
 
 	//Send Finished Frames to Secondary GPU
-	mSharedAccBuffer.CopyFromPrimaryDevice(mCommandList.Get(), mGBuffer->Accumulation.Resource.Get());
-	mSharedVelocityBuffer.CopyFromPrimaryDevice(mCommandList.Get(), mGBuffer->VelocityBuffer.Resource.Get());
+	mSharedAccBuffer.CopyFromPrimaryDevice(cmdList.Get(), mGBuffer->Accumulation.Resource.Get());
+	mSharedVelocityBuffer.CopyFromPrimaryDevice(cmdList.Get(), mGBuffer->VelocityBuffer.Resource.Get());
 
 	// Done recording commands.
-	ThrowIfFailed(mCommandList->Close());
+	ThrowIfFailed(cmdList->Close());
 
-	ID3D12CommandList* cmdsLists[] = { mCommandList.Get() };
+	ID3D12CommandList* cmdsLists[] = { cmdList.Get() };
 	mCommandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
 
 	// Notify the fence when the GPU completes commands up to this fence point.
@@ -705,36 +706,39 @@ void RenderingSystem::Render()
 		CloseHandle(eventHandle);
 	}
 
-	ThrowIfFailed(mDirectCmdListAlloc2->Reset());
-	ThrowIfFailed(mCommandList2->Reset(mDirectCmdListAlloc2.Get(), nullptr));
+	auto cmdListAlloc2 = mCurrFrameResource->CmdListAlloc2;
+	auto cmdList2 = mCommandList2;
+
+	ThrowIfFailed(cmdListAlloc2->Reset());
+	ThrowIfFailed(cmdList2->Reset(cmdListAlloc2.Get(), nullptr));
 
 	//Get Resource from Shared Memory
-	mCommandList2->ResourceBarrier(1,
+	cmdList2->ResourceBarrier(1,
 		&CD3DX12_RESOURCE_BARRIER::Transition(
 			CurrentBackBuffer(),
 			D3D12_RESOURCE_STATE_PRESENT,
 			D3D12_RESOURCE_STATE_RENDER_TARGET));
 
-	mCommandList2->ClearRenderTargetView(CurrentBackBufferView(), reinterpret_cast<FLOAT*>(&ClearValue), 0, nullptr);
+	cmdList2->ClearRenderTargetView(CurrentBackBufferView(), reinterpret_cast<FLOAT*>(&ClearValue), 0, nullptr);
 
-	SaveFrameAsPrevious();
+	SaveFrameAsPrevious(cmdList2);
 
-	mSharedAccBuffer.CopyToSecondaryDevice(mCommandList2.Get(), mDevice2AccBuffer.Get());
-	mSharedVelocityBuffer.CopyToSecondaryDevice(mCommandList2.Get(), mDevice2VelocityBuffer.Get());
+	mSharedAccBuffer.CopyToSecondaryDevice(cmdList2.Get(), mDevice2AccBuffer.Get());
+	mSharedVelocityBuffer.CopyToSecondaryDevice(cmdList2.Get(), mDevice2VelocityBuffer.Get());
 
-	TAAResolve();
+	TAAResolve(cmdList2);
 
-	PostProcessingPass();
+	PostProcessingPass(cmdList2);
 
-	mCommandList2->ResourceBarrier(1,
+	cmdList2->ResourceBarrier(1,
 		&CD3DX12_RESOURCE_BARRIER::Transition(
 			CurrentBackBuffer(),
 			D3D12_RESOURCE_STATE_RENDER_TARGET,
 			D3D12_RESOURCE_STATE_PRESENT));
 
-	ThrowIfFailed(mCommandList2->Close());
+	ThrowIfFailed(cmdList2->Close());
 
-	ID3D12CommandList* cmdsLists2[] = { mCommandList2.Get() };
+	ID3D12CommandList* cmdsLists2[] = { cmdList2.Get() };
 	mCommandQueue2->ExecuteCommandLists(_countof(cmdsLists2), cmdsLists2);
 
 	ThrowIfFailed(mSwapChain->Present(mVSync ? 1u : 0u, mVSync ? 0 : DXGI_PRESENT_ALLOW_TEARING));
@@ -1905,31 +1909,31 @@ void RenderingSystem::PreRender()
 	}
 }
 
-void RenderingSystem::SaveFrameAsPrevious()
+void RenderingSystem::SaveFrameAsPrevious(ComPtr<ID3D12GraphicsCommandList4>& cmdList)
 {
-	PIXBeginEvent(mCommandList2.Get(), 0x00FF00, "Saving Previous Frame");
-	mCommandList2->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+	PIXBeginEvent(cmdList.Get(), 0x00FF00, "Saving Previous Frame");
+	cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
 		mDevice2PrevFrame.Get(),
 		D3D12_RESOURCE_STATE_COMMON,
 		D3D12_RESOURCE_STATE_COPY_DEST));
 	
-	mCommandList2->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+	cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
 		mDevice2ResolvedAccBuffer.Get(),
 		D3D12_RESOURCE_STATE_COMMON,
 		D3D12_RESOURCE_STATE_COPY_SOURCE));
 
-	mCommandList2->CopyResource(mDevice2PrevFrame.Get(), mDevice2ResolvedAccBuffer.Get());
+	cmdList->CopyResource(mDevice2PrevFrame.Get(), mDevice2ResolvedAccBuffer.Get());
 
-	mCommandList2->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+	cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
 		mDevice2PrevFrame.Get(),
 		D3D12_RESOURCE_STATE_COPY_DEST,
 		D3D12_RESOURCE_STATE_COMMON));
 
-	mCommandList2->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+	cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
 		mDevice2ResolvedAccBuffer.Get(),
 		D3D12_RESOURCE_STATE_COPY_SOURCE,
 		D3D12_RESOURCE_STATE_COMMON));
-	PIXEndEvent(mCommandList2.Get());
+	PIXEndEvent(cmdList.Get());
 }
 
 void RenderingSystem::CalculateJitter()
@@ -1961,9 +1965,9 @@ void RenderingSystem::CalculateJitter()
 	mCamera.SetJitter(mJitterX, mJitterY);
 }
 
-void RenderingSystem::TAAResolve()
+void RenderingSystem::TAAResolve(ComPtr<ID3D12GraphicsCommandList4>& cmdList)
 {
-	PIXBeginEvent(mCommandList2.Get(), 0x00FF00, "TAA Resolve Pass");
+	PIXBeginEvent(cmdList.Get(), 0x00FF00, "TAA Resolve Pass");
 	CD3DX12_RESOURCE_BARRIER barriers[3];
 	barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
 		mDevice2AccBuffer.Get(),
@@ -1975,33 +1979,33 @@ void RenderingSystem::TAAResolve()
 	barriers[2] = CD3DX12_RESOURCE_BARRIER::Transition(mDevice2PrevFrame.Get(),
 		D3D12_RESOURCE_STATE_COMMON,
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-	mCommandList2->ResourceBarrier(3, barriers);
-	mCommandList2->RSSetViewports(1, &mScreenViewport);
-	mCommandList2->RSSetScissorRects(1, &mScissorRect);
-	mCommandList2->SetGraphicsRootSignature(RootSignatures2["TAAResolve"].Get());
-	mCommandList2->OMSetRenderTargets(1, &CD3DX12_CPU_DESCRIPTOR_HANDLE(mRtvHeapDevice2->GetCPUDescriptorHandleForHeapStart(), 
+	cmdList->ResourceBarrier(3, barriers);
+	cmdList->RSSetViewports(1, &mScreenViewport);
+	cmdList->RSSetScissorRects(1, &mScissorRect);
+	cmdList->SetGraphicsRootSignature(RootSignatures2["TAAResolve"].Get());
+	cmdList->OMSetRenderTargets(1, &CD3DX12_CPU_DESCRIPTOR_HANDLE(mRtvHeapDevice2->GetCPUDescriptorHandleForHeapStart(),
 		mDevice2ResolvedAccBufferRTVIndex, mRtvDescriptorSize2), FALSE, nullptr);
-	mCommandList2->SetPipelineState(GlobalPSOs2["TAAResolve"].Get());
-	mCommandList2->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	cmdList->SetPipelineState(GlobalPSOs2["TAAResolve"].Get());
+	cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
 	auto passCB = mCurrFrameResource->PassCB2->Resource();
-	mCommandList2->SetGraphicsRootConstantBufferView(0, passCB->GetGPUVirtualAddress());
+	cmdList->SetGraphicsRootConstantBufferView(0, passCB->GetGPUVirtualAddress());
 
 	ID3D12DescriptorHeap* descriptorHeaps[] = { mSrvHeapDevice2.Get() };
-	mCommandList2->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
+	cmdList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
 
-	mCommandList2->SetGraphicsRootDescriptorTable(1, 
+	cmdList->SetGraphicsRootDescriptorTable(1,
 		CD3DX12_GPU_DESCRIPTOR_HANDLE(mSrvHeapDevice2->GetGPUDescriptorHandleForHeapStart(),
 		mDevice2AccBufferSRVIndex, mCbvSrvDescriptorSize2));
-	mCommandList2->SetGraphicsRootDescriptorTable(2, 
+	cmdList->SetGraphicsRootDescriptorTable(2,
 		CD3DX12_GPU_DESCRIPTOR_HANDLE(mSrvHeapDevice2->GetGPUDescriptorHandleForHeapStart(),
 		mDevice2PrevFrameSRVIndex, mCbvSrvDescriptorSize2));
 	//mCommandList2->SetGraphicsRootDescriptorTable(3, GetGpuSrv(mGBuffer->DepthStencils.SRVHeapIndex));
-	mCommandList2->SetGraphicsRootDescriptorTable(4, 
+	cmdList->SetGraphicsRootDescriptorTable(4,
 		CD3DX12_GPU_DESCRIPTOR_HANDLE(mSrvHeapDevice2->GetGPUDescriptorHandleForHeapStart(),
 		mDevice2VelocityBufferSRVIndex, mCbvSrvDescriptorSize2));
 
-	mCommandList2->DrawInstanced(6, 1, 0, 0);
+	cmdList->DrawInstanced(6, 1, 0, 0);
 
 	CD3DX12_RESOURCE_BARRIER antibarriers[3];
 	antibarriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
@@ -2014,8 +2018,8 @@ void RenderingSystem::TAAResolve()
 	antibarriers[2] = CD3DX12_RESOURCE_BARRIER::Transition(mDevice2PrevFrame.Get(),
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
 		D3D12_RESOURCE_STATE_COMMON);
-	mCommandList2->ResourceBarrier(3, antibarriers);
-	PIXEndEvent(mCommandList2.Get());
+	cmdList->ResourceBarrier(3, antibarriers);
+	PIXEndEvent(cmdList.Get());
 }
 
 void RenderingSystem::BuildBLASForGeometries()
@@ -3855,7 +3859,7 @@ void RenderingSystem::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const 
 	auto matCB = mCurrFrameResource->MaterialCB->Resource();
 
 	auto passCB = mCurrFrameResource->PassCB->Resource();
-	mCommandList->SetGraphicsRootConstantBufferView(4, passCB->GetGPUVirtualAddress());
+	cmdList->SetGraphicsRootConstantBufferView(4, passCB->GetGPUVirtualAddress());
 
 	// For each render item...
 	for (size_t i = 0; i < ritems.size(); ++i)
@@ -3895,12 +3899,12 @@ void RenderingSystem::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const 
 	}
 }
 
-void RenderingSystem::GBufferGeometryPass()
+void RenderingSystem::GBufferGeometryPass(ComPtr<ID3D12GraphicsCommandList4>& cmdList)
 {
-	PIXBeginEvent(mCommandList.Get(), 0x00FF00, "GBuffer Geometry Pass");
-	mCommandList->RSSetViewports(1, mFSREnabled ? &mDownscaledScreenViewport : &mScreenViewport);
-	mCommandList->RSSetScissorRects(1, mFSREnabled ? &mDownscaledScissorRect : &mScissorRect);
-	mCommandList->SetGraphicsRootSignature(RootSignatures["Default"].Get());
+	PIXBeginEvent(cmdList.Get(), 0x00FF00, "GBuffer Geometry Pass");
+	cmdList->RSSetViewports(1, mFSREnabled ? &mDownscaledScreenViewport : &mScreenViewport);
+	cmdList->RSSetScissorRects(1, mFSREnabled ? &mDownscaledScissorRect : &mScissorRect);
+	cmdList->SetGraphicsRootSignature(RootSignatures["Default"].Get());
 
 	D3D12_CPU_DESCRIPTOR_HANDLE rtvs[6] = {
 		mGBuffer->Diffuse.RTV,
@@ -3911,26 +3915,22 @@ void RenderingSystem::GBufferGeometryPass()
 		mGBuffer->ObjectOutlines.RTV
 	};
 
-	mCommandList->OMSetRenderTargets(6, rtvs, false, &DepthStencilView());
-
-	//mCommandList->ClearDepthStencilView(DepthStencilView(), D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
-
+	cmdList->OMSetRenderTargets(6, rtvs, false, &DepthStencilView());
 
 	const std::string psoName = GetWireframe() ? "GBufferGeometryPass_WireFrame" : "GBufferGeometryPass";
 
-	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Opaque], psoName);
+	DrawRenderItems(cmdList.Get(), mRitemLayer[(int)RenderLayer::Opaque], psoName);
 
 	//DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Landscape], "GBufferGeometryPass");
-	DrawRenderItems(mCommandList.Get(), mVisibleTerrainRitems, psoName);
-	PIXEndEvent(mCommandList.Get());
+	DrawRenderItems(cmdList.Get(), mVisibleTerrainRitems, psoName);
+	PIXEndEvent(cmdList.Get());
 }
 
-void RenderingSystem::GBufferLightPass()
+void RenderingSystem::GBufferLightPass(ComPtr<ID3D12GraphicsCommandList4>& cmdList)
 {
-	PIXBeginEvent(mCommandList.Get(), 0x00FF00, "GBuffer Light Pass");
-	mCommandList->SetGraphicsRootSignature(RootSignatures["DeferredLightPass"].Get());
-	//mCommandList->OMSetRenderTargets(1, &mGbuffer->BloomRTV, false, &DepthStencilView());
-	mCommandList->OMSetRenderTargets(1, &mGBuffer->Accumulation.RTV, false, &DepthStencilView());
+	PIXBeginEvent(cmdList.Get(), 0x00FF00, "GBuffer Light Pass");
+	cmdList->SetGraphicsRootSignature(RootSignatures["DeferredLightPass"].Get());
+	cmdList->OMSetRenderTargets(1, &mGBuffer->Accumulation.RTV, false, &DepthStencilView());
 
 	UINT lightCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(Light));
 	UINT passCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(PassConstants));
@@ -3939,20 +3939,19 @@ void RenderingSystem::GBufferLightPass()
 	auto passCB = mCurrFrameResource->PassCB->Resource();
 
 	ID3D12DescriptorHeap* descriptorHeaps[] = { mSrvDescriptorHeap.Get() };
-	mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
+	cmdList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
 
-	mCommandList->SetGraphicsRootDescriptorTable(2, GetGpuSrv(mGBuffer->Diffuse.SRVHeapIndex));
-	mCommandList->SetGraphicsRootDescriptorTable(3, GetGpuSrv(mGBuffer->DepthStencils.SRVHeapIndex));
-	mCommandList->SetGraphicsRootDescriptorTable(4, GetGpuSrv(mGBuffer->Normal.SRVHeapIndex));
-	mCommandList->SetGraphicsRootDescriptorTable(5, GetGpuSrv(mGBuffer->MatFresnelRoughness.SRVHeapIndex));
-	//mCommandList->SetGraphicsRootDescriptorTable(6, GetGpuSrv(mGBuffer->MatFresnelRoughness.SRVHeapIndex));
+	cmdList->SetGraphicsRootDescriptorTable(2, GetGpuSrv(mGBuffer->Diffuse.SRVHeapIndex));
+	cmdList->SetGraphicsRootDescriptorTable(3, GetGpuSrv(mGBuffer->DepthStencils.SRVHeapIndex));
+	cmdList->SetGraphicsRootDescriptorTable(4, GetGpuSrv(mGBuffer->Normal.SRVHeapIndex));
+	cmdList->SetGraphicsRootDescriptorTable(5, GetGpuSrv(mGBuffer->MatFresnelRoughness.SRVHeapIndex));
 
-	mCommandList->SetGraphicsRootDescriptorTable(7, GetGpuSrv(mTextures["SkyIrradiance"]->srvHeapIndex));
-	mCommandList->SetGraphicsRootDescriptorTable(8, GetGpuSrv(mTextures["SkyPref"]->srvHeapIndex));
-	mCommandList->SetGraphicsRootDescriptorTable(9, GetGpuSrv(mTextures["SkyBRDF"]->srvHeapIndex));
+	cmdList->SetGraphicsRootDescriptorTable(7, GetGpuSrv(mTextures["SkyIrradiance"]->srvHeapIndex));
+	cmdList->SetGraphicsRootDescriptorTable(8, GetGpuSrv(mTextures["SkyPref"]->srvHeapIndex));
+	cmdList->SetGraphicsRootDescriptorTable(9, GetGpuSrv(mTextures["SkyBRDF"]->srvHeapIndex));
 
-	mCommandList->SetGraphicsRootConstantBufferView(0, passCB->GetGPUVirtualAddress());
-	mCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	cmdList->SetGraphicsRootConstantBufferView(0, passCB->GetGPUVirtualAddress());
+	cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
 	// For each light item...
 	for (size_t i = 0; i < mAllLights.size(); ++i)
@@ -3960,94 +3959,94 @@ void RenderingSystem::GBufferLightPass()
 		auto& li = mAllLights[i];
 
 		D3D12_GPU_VIRTUAL_ADDRESS lightCBAddress = lightCB->GetGPUVirtualAddress() + li->LightCBIndex * lightCBByteSize;
-		mCommandList->SetGraphicsRootConstantBufferView(1, lightCBAddress);
+		cmdList->SetGraphicsRootConstantBufferView(1, lightCBAddress);
 
-		mCommandList->SetGraphicsRootDescriptorTable(6, GetGpuSrv(li->shadowMap->SRVHeapIndex));
+		cmdList->SetGraphicsRootDescriptorTable(6, GetGpuSrv(li->shadowMap->SRVHeapIndex));
 
 		if (li->LightType == LightType::Directional)
 		{
-			mCommandList->SetPipelineState(GlobalPSOs["DeferredLightPass_FSQuad"].Get());
-			mCommandList->DrawInstanced(6, 1, 0, 0);
+			cmdList->SetPipelineState(GlobalPSOs["DeferredLightPass_FSQuad"].Get());
+			cmdList->DrawInstanced(6, 1, 0, 0);
 		}
 		else
 		{
 			if (!li->IsInViewFrustum) continue;
 
-			mCommandList->SetPipelineState(GlobalPSOs["DeferredLightPass_Bounded"].Get());
-			mCommandList->IASetVertexBuffers(0, 1, &li->Geo->VertexBufferView());
-			mCommandList->IASetIndexBuffer(&li->Geo->IndexBufferView());
+			cmdList->SetPipelineState(GlobalPSOs["DeferredLightPass_Bounded"].Get());
+			cmdList->IASetVertexBuffers(0, 1, &li->Geo->VertexBufferView());
+			cmdList->IASetIndexBuffer(&li->Geo->IndexBufferView());
 
 			UINT IndexCount = li->Geo->DrawArgs["LOD0"].IndexCount;
 			UINT StartIndexLocation = li->Geo->DrawArgs["LOD0"].StartIndexLocation;
 			UINT BaseVertexLocation = li->Geo->DrawArgs["LOD0"].BaseVertexLocation;
 
-			mCommandList->DrawIndexedInstanced(IndexCount, 1, StartIndexLocation, BaseVertexLocation, 0);
+			cmdList->DrawIndexedInstanced(IndexCount, 1, StartIndexLocation, BaseVertexLocation, 0);
 
 			li->IsInViewFrustum = false;
 		}
 	}
 
 	//Add ambient light on screen
-	mCommandList->SetPipelineState(GlobalPSOs["DeferredLightPass_AddAmbient"].Get());
-	mCommandList->DrawInstanced(6, 1, 0, 0);
-	PIXEndEvent(mCommandList.Get());
+	cmdList->SetPipelineState(GlobalPSOs["DeferredLightPass_AddAmbient"].Get());
+	cmdList->DrawInstanced(6, 1, 0, 0);
+	PIXEndEvent(cmdList.Get());
 }
 
-void RenderingSystem::DrawSkyBox()
+void RenderingSystem::DrawSkyBox(ComPtr<ID3D12GraphicsCommandList4>& cmdList)
 {
-	PIXBeginEvent(mCommandList.Get(), 0x00FF00, "Sky Box Rendering");
+	PIXBeginEvent(cmdList.Get(), 0x00FF00, "Sky Box Rendering");
 	UINT objCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(ObjectConstants));
 	UINT matCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(MaterialConstants));
 
 	auto objectCB = mCurrFrameResource->ObjectCB->Resource();
 	auto matCB = mCurrFrameResource->MaterialCB->Resource();
 	auto passCB = mCurrFrameResource->PassCB->Resource();
-	mCommandList->SetGraphicsRootSignature(RootSignatures["Default"].Get());
-	mCommandList->SetPipelineState(GlobalPSOs["SkyBox"].Get());
-	mCommandList->SetGraphicsRootConstantBufferView(4, passCB->GetGPUVirtualAddress());
+	cmdList->SetGraphicsRootSignature(RootSignatures["Default"].Get());
+	cmdList->SetPipelineState(GlobalPSOs["SkyBox"].Get());
+	cmdList->SetGraphicsRootConstantBufferView(4, passCB->GetGPUVirtualAddress());
 
 	// For each render item...
 	for (size_t i = 0; i < mRitemLayer[(int)RenderLayer::Sky].size(); ++i)
 	{
 		auto ri = mRitemLayer[(int)RenderLayer::Sky][i];
 
-		mCommandList->IASetVertexBuffers(0, 1, &ri->Geo->VertexBufferView());
-		mCommandList->IASetIndexBuffer(&ri->Geo->IndexBufferView());
-		mCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+		cmdList->IASetVertexBuffers(0, 1, &ri->Geo->VertexBufferView());
+		cmdList->IASetIndexBuffer(&ri->Geo->IndexBufferView());
+		cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
 		ID3D12DescriptorHeap* descriptorHeaps[] = { mSrvDescriptorHeap.Get() };
-		mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
+		cmdList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
 
 		D3D12_GPU_VIRTUAL_ADDRESS objCBAddress = objectCB->GetGPUVirtualAddress() + ri->ObjCBIndex * objCBByteSize;
 		D3D12_GPU_VIRTUAL_ADDRESS matCBAddress = matCB->GetGPUVirtualAddress() + ri->Mat->MatCBIndex * matCBByteSize;
 
-		mCommandList->SetGraphicsRootDescriptorTable(0, GetGpuSrv(ri->Mat->DiffuseSrvHeapIndex));
-		mCommandList->SetGraphicsRootConstantBufferView(3, objCBAddress);
-		mCommandList->SetGraphicsRootConstantBufferView(5, matCBAddress);
+		cmdList->SetGraphicsRootDescriptorTable(0, GetGpuSrv(ri->Mat->DiffuseSrvHeapIndex));
+		cmdList->SetGraphicsRootConstantBufferView(3, objCBAddress);
+		cmdList->SetGraphicsRootConstantBufferView(5, matCBAddress);
 
 		UINT IndexCount = ri->Geo->DrawArgs["LOD0"].IndexCount;
 		UINT StartIndexLocation = ri->Geo->DrawArgs["LOD0"].StartIndexLocation;
 		UINT BaseVertexLocation = ri->Geo->DrawArgs["LOD0"].BaseVertexLocation;
 
-		mCommandList->DrawIndexedInstanced(IndexCount, 1, StartIndexLocation, BaseVertexLocation, 0);
+		cmdList->DrawIndexedInstanced(IndexCount, 1, StartIndexLocation, BaseVertexLocation, 0);
 	}
-	PIXEndEvent(mCommandList.Get());
+	PIXEndEvent(cmdList.Get());
 }
 
-void RenderingSystem::DrawParticleSystems()
+void RenderingSystem::DrawParticleSystems(ComPtr<ID3D12GraphicsCommandList4>& cmdList)
 {
-	PIXBeginEvent(mCommandList.Get(), 0x00FF00, "Particle System Updating");
+	PIXBeginEvent(cmdList.Get(), 0x00FF00, "Particle System Updating");
 	for (ParticleSystem* particleSystem : mAllParticleSystems)
 	{
 		particleSystem->CameraPos = mCamera.GetPosition3f();
 		particleSystem->CameraDir = mCamera.GetLook3f();
-		particleSystem->Update(gt->DeltaTime(), mCurrFrameResource);
+		particleSystem->Update(gt->DeltaTime(), mCurrFrameResource, cmdList);
 	}
-	PIXEndEvent(mCommandList.Get());
+	PIXEndEvent(cmdList.Get());
 
-	PIXBeginEvent(mCommandList.Get(), 0x00FF00, "Particle System Rendering");
+	PIXBeginEvent(cmdList.Get(), 0x00FF00, "Particle System Rendering");
 	ID3D12DescriptorHeap* descriptorHeaps[] = { mSrvDescriptorHeap.Get() };
-	mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
+	cmdList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
 
 	auto passCBAddress = mCurrFrameResource->PassCB->Resource()->GetGPUVirtualAddress();
 
@@ -4057,8 +4056,8 @@ void RenderingSystem::DrawParticleSystems()
 			CD3DX12_RESOURCE_BARRIER::Transition(particleSystem->GetParticlePool(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
 			CD3DX12_RESOURCE_BARRIER::Transition(particleSystem->GetAliveList(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE)
 		};
-		mCommandList->ResourceBarrier(_countof(toSrv), toSrv);
-		particleSystem->Draw(passCBAddress);
+		cmdList->ResourceBarrier(_countof(toSrv), toSrv);
+		particleSystem->Draw(passCBAddress, cmdList);
 
 		CD3DX12_RESOURCE_BARRIER barriers[2] = {
 			CD3DX12_RESOURCE_BARRIER::Transition(particleSystem->GetAliveList(),
@@ -4066,38 +4065,38 @@ void RenderingSystem::DrawParticleSystems()
 			CD3DX12_RESOURCE_BARRIER::Transition(particleSystem->GetParticlePool(),
 				D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
 		};
-		mCommandList->ResourceBarrier(_countof(barriers), barriers);
+		cmdList->ResourceBarrier(_countof(barriers), barriers);
 	}
-	PIXEndEvent(mCommandList.Get());
+	PIXEndEvent(cmdList.Get());
 }
 
-void RenderingSystem::DrawShadowMaps()
+void RenderingSystem::DrawShadowMaps(ComPtr<ID3D12GraphicsCommandList4>& cmdList)
 {
-	PIXBeginEvent(mCommandList.Get(), 0x00FF00, "Shadow Map Pass");
-	mCommandList->SetGraphicsRootSignature(RootSignatures["Default"].Get());
+	PIXBeginEvent(cmdList.Get(), 0x00FF00, "Shadow Map Pass");
+	cmdList->SetGraphicsRootSignature(RootSignatures["Default"].Get());
 	for (auto& i : mAllLights)
 	{
-		PIXBeginEvent(mCommandList.Get(), 0x00FF00, i->Name.c_str());
+		PIXBeginEvent(cmdList.Get(), 0x00FF00, i->Name.c_str());
 		//if (i->LightType == LightType::Pointlight) continue;
 
-		mCommandList->RSSetViewports(1, &i->shadowMap->Viewport());
-		mCommandList->RSSetScissorRects(1, &i->shadowMap->ScissorRect());
+		cmdList->RSSetViewports(1, &i->shadowMap->Viewport());
+		cmdList->RSSetScissorRects(1, &i->shadowMap->ScissorRect());
 
 		// Change to DEPTH_WRITE.
-		mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(i->shadowMap->Resource(),
+		cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(i->shadowMap->Resource(),
 			D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_DEPTH_WRITE));
 
 
 		// Clear the back buffer and depth buffer.
-		mCommandList->ClearDepthStencilView(i->shadowMap->Dsv(),
+		cmdList->ClearDepthStencilView(i->shadowMap->Dsv(),
 			D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
 
 		// Set null render target because we are only going to draw to
 		// depth buffer.  Setting a null render target will disable color writes.
 		// Note the active PSO also must specify a render target count of 0.
-		mCommandList->OMSetRenderTargets(0, nullptr, false, &i->shadowMap->Dsv());
+		cmdList->OMSetRenderTargets(0, nullptr, false, &i->shadowMap->Dsv());
 
-		mCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+		cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
 		UINT lightCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(Light));
 		auto lightCB = mCurrFrameResource->LightCB->Resource();
@@ -4108,29 +4107,29 @@ void RenderingSystem::DrawShadowMaps()
 		auto matCB = mCurrFrameResource->MaterialCB->Resource();
 
 		ID3D12DescriptorHeap* descriptorHeaps[] = { mSrvDescriptorHeap.Get() };
-		mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
+		cmdList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
 
 		D3D12_GPU_VIRTUAL_ADDRESS lightCBAddress = lightCB->GetGPUVirtualAddress() + i->LightCBIndex * lightCBByteSize;
-		mCommandList->SetGraphicsRootConstantBufferView(4, lightCBAddress);
+		cmdList->SetGraphicsRootConstantBufferView(4, lightCBAddress);
 
 		for (size_t j = 0; j < i->VisibleRitems.size(); ++j)
 		{
 			auto& ri = i->VisibleRitems[j];
 
-			mCommandList->IASetVertexBuffers(0, 1, &ri->Geo->VertexBufferView());
-			mCommandList->IASetIndexBuffer(&ri->Geo->IndexBufferView());
-			mCommandList->SetPipelineState(ri->Mat->PSOs["ShadowOpaque"].Get());
+			cmdList->IASetVertexBuffers(0, 1, &ri->Geo->VertexBufferView());
+			cmdList->IASetIndexBuffer(&ri->Geo->IndexBufferView());
+			cmdList->SetPipelineState(ri->Mat->PSOs["ShadowOpaque"].Get());
 
-			mCommandList->SetGraphicsRootDescriptorTable(0, GetGpuSrv(ri->Mat->DiffuseSrvHeapIndex));
-			mCommandList->SetGraphicsRootDescriptorTable(1, GetGpuSrv(ri->Mat->NormalSrvHeapIndex));
-			mCommandList->SetGraphicsRootDescriptorTable(2, GetGpuSrv(ri->Mat->HeightSrvHeapIndex));
+			cmdList->SetGraphicsRootDescriptorTable(0, GetGpuSrv(ri->Mat->DiffuseSrvHeapIndex));
+			cmdList->SetGraphicsRootDescriptorTable(1, GetGpuSrv(ri->Mat->NormalSrvHeapIndex));
+			cmdList->SetGraphicsRootDescriptorTable(2, GetGpuSrv(ri->Mat->HeightSrvHeapIndex));
 
 
 			D3D12_GPU_VIRTUAL_ADDRESS objCBAddress = objectCB->GetGPUVirtualAddress() + ri->ObjCBIndex * objCBByteSize;
 			D3D12_GPU_VIRTUAL_ADDRESS matCBAddress = matCB->GetGPUVirtualAddress() + ri->Mat->MatCBIndex * matCBByteSize;
 
-			mCommandList->SetGraphicsRootConstantBufferView(3, objCBAddress);
-			mCommandList->SetGraphicsRootConstantBufferView(5, matCBAddress);
+			cmdList->SetGraphicsRootConstantBufferView(3, objCBAddress);
+			cmdList->SetGraphicsRootConstantBufferView(5, matCBAddress);
 
 
 			std::string subMeshName = "LOD" + std::to_string(ri->currentLOD);
@@ -4139,7 +4138,7 @@ void RenderingSystem::DrawShadowMaps()
 			UINT StartIndexLocation = ri->Geo->DrawArgs[subMeshName].StartIndexLocation;
 			UINT BaseVertexLocation = ri->Geo->DrawArgs[subMeshName].BaseVertexLocation;
 
-			mCommandList->DrawIndexedInstanced(IndexCount, 1, StartIndexLocation, BaseVertexLocation, 0);
+			cmdList->DrawIndexedInstanced(IndexCount, 1, StartIndexLocation, BaseVertexLocation, 0);
 
 		}
 
@@ -4149,62 +4148,62 @@ void RenderingSystem::DrawShadowMaps()
 			auto& Terrain = terrainRenderer->Quad().Find(0, 0, 0)->terrainTileItem;
 			if (i->LightFrustum.Intersects(Terrain->bounds))
 			{
-				mCommandList->SetPipelineState(Terrain->Mat->PSOs["ShadowOpaque_terrain"].Get());
-				mCommandList->IASetVertexBuffers(0, 1, &Terrain->Geo->VertexBufferView());
-				mCommandList->IASetIndexBuffer(&Terrain->Geo->IndexBufferView());
-				mCommandList->SetGraphicsRootDescriptorTable(2, GetGpuSrv(Terrain->Mat->HeightSrvHeapIndex));
+				cmdList->SetPipelineState(Terrain->Mat->PSOs["ShadowOpaque_terrain"].Get());
+				cmdList->IASetVertexBuffers(0, 1, &Terrain->Geo->VertexBufferView());
+				cmdList->IASetIndexBuffer(&Terrain->Geo->IndexBufferView());
+				cmdList->SetGraphicsRootDescriptorTable(2, GetGpuSrv(Terrain->Mat->HeightSrvHeapIndex));
 
 				D3D12_GPU_VIRTUAL_ADDRESS objCBAddress = objectCB->GetGPUVirtualAddress() + Terrain->ObjCBIndex * objCBByteSize;
 				D3D12_GPU_VIRTUAL_ADDRESS matCBAddress = matCB->GetGPUVirtualAddress() + Terrain->Mat->MatCBIndex * matCBByteSize;
 
-				mCommandList->SetGraphicsRootConstantBufferView(3, objCBAddress);
-				mCommandList->SetGraphicsRootConstantBufferView(5, matCBAddress);
+				cmdList->SetGraphicsRootConstantBufferView(3, objCBAddress);
+				cmdList->SetGraphicsRootConstantBufferView(5, matCBAddress);
 
 				std::string subMeshName = "LOD" + std::to_string(Terrain->currentLOD);
 				UINT IndexCount = Terrain->Geo->DrawArgs[subMeshName].IndexCount;
 				UINT StartIndexLocation = Terrain->Geo->DrawArgs[subMeshName].StartIndexLocation;
 				UINT BaseVertexLocation = Terrain->Geo->DrawArgs[subMeshName].BaseVertexLocation;
 
-				mCommandList->DrawIndexedInstanced(IndexCount, 1, StartIndexLocation, BaseVertexLocation, 0);
+				cmdList->DrawIndexedInstanced(IndexCount, 1, StartIndexLocation, BaseVertexLocation, 0);
 			}
 		}
 
 		// Change back to GENERIC_READ so we can read the texture in a shader.
-		mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(i->shadowMap->Resource(),
+		cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(i->shadowMap->Resource(),
 			D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_GENERIC_READ));
-		PIXEndEvent(mCommandList.Get());
+		PIXEndEvent(cmdList.Get());
 	}
-	PIXEndEvent(mCommandList.Get());
+	PIXEndEvent(cmdList.Get());
 }
 
-void RenderingSystem::PostProcessingPass()
+void RenderingSystem::PostProcessingPass(ComPtr<ID3D12GraphicsCommandList4>& cmdList)
 {
-	PIXBeginEvent(mCommandList2.Get(), 0x00FF00, "Post Processing Pass");
-	mCommandList2->RSSetViewports(1, &mScreenViewport);
-	mCommandList2->RSSetScissorRects(1, &mScissorRect);
-	mCommandList2->SetGraphicsRootSignature(RootSignatures2["PostProcessing"].Get());
-	mCommandList2->OMSetRenderTargets(1, &CurrentBackBufferView(), false, nullptr);
-	mCommandList2->SetPipelineState(GlobalPSOs2["PostProcessing"].Get());
-	mCommandList2->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	PIXBeginEvent(cmdList.Get(), 0x00FF00, "Post Processing Pass");
+	cmdList->RSSetViewports(1, &mScreenViewport);
+	cmdList->RSSetScissorRects(1, &mScissorRect);
+	cmdList->SetGraphicsRootSignature(RootSignatures2["PostProcessing"].Get());
+	cmdList->OMSetRenderTargets(1, &CurrentBackBufferView(), false, nullptr);
+	cmdList->SetPipelineState(GlobalPSOs2["PostProcessing"].Get());
+	cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
 	auto passCB = mCurrFrameResource->PassCB->Resource();
 
 	ID3D12DescriptorHeap* descriptorHeaps[] = { mSrvHeapDevice2.Get() };
-	mCommandList2->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
+	cmdList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
 
-	mCommandList2->SetGraphicsRootDescriptorTable(1, 
+	cmdList->SetGraphicsRootDescriptorTable(1,
 		CD3DX12_GPU_DESCRIPTOR_HANDLE(mSrvHeapDevice2->GetGPUDescriptorHandleForHeapStart(),
 		mDevice2ResolvedAccBufferSRVIndex, mCbvSrvDescriptorSize2));
 
 
-	mCommandList2->DrawInstanced(6, 1, 0, 0);
+	cmdList->DrawInstanced(6, 1, 0, 0);
 
-	mCommandList2->ResourceBarrier(1,
+	cmdList->ResourceBarrier(1,
 		&CD3DX12_RESOURCE_BARRIER::Transition(
 			mDevice2ResolvedAccBuffer.Get(),
 			D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
 			D3D12_RESOURCE_STATE_COMMON));
-	PIXEndEvent(mCommandList2.Get());
+	PIXEndEvent(cmdList.Get());
 }
 
 void RenderingSystem::UpdateMaterialCBs(const GameTimer& gt)

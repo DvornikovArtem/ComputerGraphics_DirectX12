@@ -54,8 +54,8 @@ public:
     void Initialize(const ParticleSystemDescriptor& particleSystemDesc);
     void Build(ComPtr<ID3D12Device> device, ComPtr<ID3D12GraphicsCommandList> cmdList);
 
-    void Update(float dt, FrameResource* currentFrameResource);
-    void Draw(D3D12_GPU_VIRTUAL_ADDRESS passCBAddress);
+    void Update(float dt, FrameResource* currentFrameResource, ComPtr<ID3D12GraphicsCommandList4>& cmdList);
+    void Draw(D3D12_GPU_VIRTUAL_ADDRESS passCBAddress, ComPtr<ID3D12GraphicsCommandList4>& cmdList);
 
     MeshGeometry* GetQuadGeometry() const { return mGeometry; }
     ID3D12Resource* GetAliveList() const { return mAliveList.Get(); }

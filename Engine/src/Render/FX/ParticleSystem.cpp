@@ -288,7 +288,7 @@ void ParticleSystem::BuildShadersAndPSOs()
     ThrowIfFailed(mDevice->CreateComputePipelineState(&computePsoDesc, IID_PPV_ARGS(&mPSOSort)));
 }
 
-void ParticleSystem::Update(float dt, FrameResource* frameResource)
+void ParticleSystem::Update(float dt, FrameResource* frameResource, ComPtr<ID3D12GraphicsCommandList4>& cmdList)
 {
     mTime += dt;
 
@@ -306,10 +306,10 @@ void ParticleSystem::Update(float dt, FrameResource* frameResource)
     pConsts.CameraDir = CameraDir;
     frameResource->ParticleCB->CopyData(mCBIndex, pConsts);
 
-    mCommandList->SetComputeRootSignature(mRootSignatureCompute.Get());
+    cmdList->SetComputeRootSignature(mRootSignatureCompute.Get());
 
     ID3D12DescriptorHeap* computeHeaps[] = { mUavSrvHeap.Get() };
-    mCommandList->SetDescriptorHeaps(_countof(computeHeaps), computeHeaps);
+    cmdList->SetDescriptorHeaps(_countof(computeHeaps), computeHeaps);
 
     // Bariers for all UAVs before use
     CD3DX12_RESOURCE_BARRIER uavBarriers[] =
@@ -320,11 +320,11 @@ void ParticleSystem::Update(float dt, FrameResource* frameResource)
         CD3DX12_RESOURCE_BARRIER::UAV(mDeadList[1].Get()),
         CD3DX12_RESOURCE_BARRIER::UAV(mAliveList.Get()),
     };
-    mCommandList->ResourceBarrier(_countof(uavBarriers), uavBarriers);
+    cmdList->ResourceBarrier(_countof(uavBarriers), uavBarriers);
 
 
     // Resetting the AliveList counter
-    mCommandList->ResourceBarrier(1,
+    cmdList->ResourceBarrier(1,
         &CD3DX12_RESOURCE_BARRIER::Transition(
             mCounters.Get(),
             D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
@@ -332,7 +332,7 @@ void ParticleSystem::Update(float dt, FrameResource* frameResource)
         )
     );
 
-    mCommandList->CopyBufferRegion(
+    cmdList->CopyBufferRegion(
         mCounters.Get(),
         kAliveCounterOffset,
         frameResource->NullUploadBuffer->Resource(),
@@ -344,14 +344,14 @@ void ParticleSystem::Update(float dt, FrameResource* frameResource)
         : 0;
 
 
-    mCommandList->CopyBufferRegion(
+    cmdList->CopyBufferRegion(
         mCounters.Get(),
         deadCounterOffset,
         frameResource->NullUploadBuffer->Resource(),
         0,
         sizeof(UINT));
 
-    mCommandList->ResourceBarrier(
+    cmdList->ResourceBarrier(
         1,
         &CD3DX12_RESOURCE_BARRIER::Transition(
             mCounters.Get(),
@@ -362,25 +362,25 @@ void ParticleSystem::Update(float dt, FrameResource* frameResource)
 
 
     // Launch EmitCS for creating new particles
-    mCommandList->SetPipelineState(mPSOEmit.Get());
+    cmdList->SetPipelineState(mPSOEmit.Get());
 
     UINT alignedSize = d3dUtil::CalcConstantBufferByteSize(sizeof(ParticleConstants));
-    mCommandList->SetComputeRootConstantBufferView(0, frameResource->ParticleCB->Resource()->GetGPUVirtualAddress() + mCBIndex * alignedSize);
+    cmdList->SetComputeRootConstantBufferView(0, frameResource->ParticleCB->Resource()->GetGPUVirtualAddress() + mCBIndex * alignedSize);
 
     // PassConstants
     auto passCB = frameResource->PassCB->Resource();
-    mCommandList->SetComputeRootConstantBufferView(1, passCB->GetGPUVirtualAddress());
+    cmdList->SetComputeRootConstantBufferView(1, passCB->GetGPUVirtualAddress());
 
-    mCommandList->SetComputeRootDescriptorTable(2, mUavSrvHeap->GetGPUDescriptorHandleForHeapStart());
+    cmdList->SetComputeRootDescriptorTable(2, mUavSrvHeap->GetGPUDescriptorHandleForHeapStart());
 
     CD3DX12_GPU_DESCRIPTOR_HANDLE DepthTexDescriptorGPU(mUavSrvHeap->GetGPUDescriptorHandleForHeapStart());
     DepthTexDescriptorGPU.Offset(5, mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
 
-    mCommandList->SetComputeRootDescriptorTable(3, DepthTexDescriptorGPU);
+    cmdList->SetComputeRootDescriptorTable(3, DepthTexDescriptorGPU);
 
     UINT groups = (mNumParticlesToEmit + 255) / 256;
     if (groups == 0) return;
-    mCommandList->Dispatch(groups, 1, 1);
+    cmdList->Dispatch(groups, 1, 1);
     
 
     // Barier for synchronization between EmitCS and SimulateCS
@@ -392,34 +392,34 @@ void ParticleSystem::Update(float dt, FrameResource* frameResource)
         CD3DX12_RESOURCE_BARRIER::UAV(mAliveList.Get()),
         CD3DX12_RESOURCE_BARRIER::UAV(mCounters.Get())
     };
-    mCommandList->ResourceBarrier(_countof(postEmitBarriers), postEmitBarriers);
+    cmdList->ResourceBarrier(_countof(postEmitBarriers), postEmitBarriers);
 
 
     // Launch SimulateCS for updating and selection
-    mCommandList->SetPipelineState(mPSOSimulate.Get());
-    mCommandList->Dispatch(mMaxParticles / 256 + 1, 1, 1);
+    cmdList->SetPipelineState(mPSOSimulate.Get());
+    cmdList->Dispatch(mMaxParticles / 256 + 1, 1, 1);
 
 
     // Copy the number of alive particles (counter from AliveList) to the buffer for DrawIndirect
-    mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mDrawArgs.Get(), D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT, D3D12_RESOURCE_STATE_COPY_DEST));
-    mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mCounters.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE));
+    cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mDrawArgs.Get(), D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT, D3D12_RESOURCE_STATE_COPY_DEST));
+    cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mCounters.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE));
 
-    mCommandList->CopyBufferRegion(mDrawArgs.Get(), offsetof(D3D12_DRAW_INDEXED_ARGUMENTS, InstanceCount), mCounters.Get(), kAliveCounterOffset, sizeof(UINT));
+    cmdList->CopyBufferRegion(mDrawArgs.Get(), offsetof(D3D12_DRAW_INDEXED_ARGUMENTS, InstanceCount), mCounters.Get(), kAliveCounterOffset, sizeof(UINT));
 
-    mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mCounters.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS));
-    mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mDrawArgs.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT));
+    cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mCounters.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS));
+    cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mDrawArgs.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT));
 
 
     // Sorting
     // Barrier fir gAliveList cause SimulateCS just now wrote inside gAliveList
     CD3DX12_RESOURCE_BARRIER sortBarrier = CD3DX12_RESOURCE_BARRIER::UAV(mAliveList.Get());
-    mCommandList->ResourceBarrier(1, &sortBarrier);
+    cmdList->ResourceBarrier(1, &sortBarrier);
 
-    mCommandList->SetPipelineState(mPSOSort.Get());
-    mCommandList->SetComputeRootSignature(mRootSignatureCompute.Get());
+    cmdList->SetPipelineState(mPSOSort.Get());
+    cmdList->SetComputeRootSignature(mRootSignatureCompute.Get());
 
     UINT numGroups = (mMaxParticles + 255) / 256;
-    mCommandList->Dispatch(numGroups, 1, 1);
+    cmdList->Dispatch(numGroups, 1, 1);
 
 
 
@@ -427,18 +427,18 @@ void ParticleSystem::Update(float dt, FrameResource* frameResource)
     mCurrentDeadList = 1 - mCurrentDeadList;
 }
 
-void ParticleSystem::Draw(D3D12_GPU_VIRTUAL_ADDRESS passCBAddress)
+void ParticleSystem::Draw(D3D12_GPU_VIRTUAL_ADDRESS passCBAddress, ComPtr<ID3D12GraphicsCommandList4>& cmdList)
 {
-    mCommandList->SetPipelineState(mPSORender.Get());
-    mCommandList->SetGraphicsRootSignature(mRootSignatureRender.Get());
+    cmdList->SetPipelineState(mPSORender.Get());
+    cmdList->SetGraphicsRootSignature(mRootSignatureRender.Get());
 
-    mCommandList->IASetVertexBuffers(0, 1, &mGeometry->VertexBufferView());
-    mCommandList->IASetIndexBuffer(&mGeometry->IndexBufferView());
-    mCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    cmdList->IASetVertexBuffers(0, 1, &mGeometry->VertexBufferView());
+    cmdList->IASetIndexBuffer(&mGeometry->IndexBufferView());
+    cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-    mCommandList->SetGraphicsRootConstantBufferView(0, passCBAddress);
-    mCommandList->SetGraphicsRootShaderResourceView(1, mParticlePool->GetGPUVirtualAddress());
-    mCommandList->SetGraphicsRootShaderResourceView(2, mAliveList->GetGPUVirtualAddress());
+    cmdList->SetGraphicsRootConstantBufferView(0, passCBAddress);
+    cmdList->SetGraphicsRootShaderResourceView(1, mParticlePool->GetGPUVirtualAddress());
+    cmdList->SetGraphicsRootShaderResourceView(2, mAliveList->GetGPUVirtualAddress());
 
-    mCommandList->ExecuteIndirect(mCommandSignature.Get(), 1, mDrawArgs.Get(), 0, nullptr, 0);
+    cmdList->ExecuteIndirect(mCommandSignature.Get(), 1, mDrawArgs.Get(), 0, nullptr, 0);
 }
