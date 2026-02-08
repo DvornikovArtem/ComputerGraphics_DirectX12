@@ -61,8 +61,8 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 		D3D_FEATURE_LEVEL_12_0,
 		IID_PPV_ARGS(&md3dDevice));
 
+	//second GPU
 	bool secondDeviceCreated = false;
-
 	LUID primaryDeviceLuid = md3dDevice->GetAdapterLuid();
 	ComPtr<IDXGIAdapter1> adapter;
 	UINT adapterIndex = 0;
@@ -101,43 +101,63 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 		adapterIndex++;
 	}
 
-	//SWAP PRIMARY AND SECONDARY DEVICES HERE IF NEEDED
-	//std::swap(md3dDevice, md3dDevice2);
-	//primaryDeviceLuid = md3dDevice->GetAdapterLuid();
+	if (!mUseSingleGPU)
+	{
+		//SWAP PRIMARY AND SECONDARY DEVICES HERE IF NEEDED
+		//std::swap(md3dDevice, md3dDevice2);
+		//primaryDeviceLuid = md3dDevice->GetAdapterLuid();
 
-	if (secondDeviceCreated)
+		if (secondDeviceCreated)
+		{
+			ComPtr<IDXGIAdapter> primaryAdapter;
+			DXGI_ADAPTER_DESC primaryDesc = {};
+
+			if (SUCCEEDED(mdxgiFactory->EnumAdapterByLuid(primaryDeviceLuid, IID_PPV_ARGS(&primaryAdapter)))) primaryAdapter->GetDesc(&primaryDesc);
+
+			ComPtr<IDXGIAdapter> secondaryAdapter;
+			DXGI_ADAPTER_DESC secondaryDesc = {};
+			LUID secondaryDeviceLuid = md3dDevice2->GetAdapterLuid();
+
+			if (SUCCEEDED(mdxgiFactory->EnumAdapterByLuid(secondaryDeviceLuid, IID_PPV_ARGS(&secondaryAdapter)))) secondaryAdapter->GetDesc(&secondaryDesc);
+
+			OutputDebugStringA("\n=== DUAL GPU MODE ===\n\n");
+
+			OutputDebugStringW(L"PRIMARY DEVICE: ");
+			OutputDebugStringW(primaryDesc.Description);
+			OutputDebugStringA("\n");
+
+			char primaryMemory[256];
+			sprintf_s(primaryMemory, "  Video Memory: %.2f GB\n", primaryDesc.DedicatedVideoMemory / (1024.0f * 1024.0f * 1024.0f));
+			OutputDebugStringA(primaryMemory);
+
+			OutputDebugStringW(L"SECONDARY DEVICE: ");
+			OutputDebugStringW(secondaryDesc.Description);
+			OutputDebugStringA("\n");
+
+			char secondaryMemory[256];
+			sprintf_s(secondaryMemory, "  Video Memory: %.2f GB\n", secondaryDesc.DedicatedVideoMemory / (1024.0f * 1024.0f * 1024.0f));
+			OutputDebugStringA(secondaryMemory);
+			OutputDebugStringA("\n");
+		}
+		else throw std::runtime_error("Failed to initialize 2 hardware graphics devices");
+	}
+	else
 	{
 		ComPtr<IDXGIAdapter> primaryAdapter;
 		DXGI_ADAPTER_DESC primaryDesc = {};
 
-		if (SUCCEEDED(mdxgiFactory->EnumAdapterByLuid(primaryDeviceLuid, IID_PPV_ARGS(&primaryAdapter)))) primaryAdapter->GetDesc(&primaryDesc);
+		if (SUCCEEDED(mdxgiFactory->EnumAdapterByLuid(md3dDevice->GetAdapterLuid(), IID_PPV_ARGS(&primaryAdapter)))) primaryAdapter->GetDesc(&primaryDesc);
 
-		ComPtr<IDXGIAdapter> secondaryAdapter;
-		DXGI_ADAPTER_DESC secondaryDesc = {};
-		LUID secondaryDeviceLuid = md3dDevice2->GetAdapterLuid();
+		OutputDebugStringA("\n=== SINGLE GPU MODE: ===\n\n");
 
-		if (SUCCEEDED(mdxgiFactory->EnumAdapterByLuid(secondaryDeviceLuid, IID_PPV_ARGS(&secondaryAdapter)))) secondaryAdapter->GetDesc(&secondaryDesc);
-
-		OutputDebugStringA("\n=== GRAPHICS DEVICES ===\n\n");
-
-		OutputDebugStringW(L"PRIMARY: ");
+		OutputDebugStringW(L"USING DEVICE: ");
 		OutputDebugStringW(primaryDesc.Description);
 		OutputDebugStringA("\n");
 
 		char primaryMemory[256];
 		sprintf_s(primaryMemory, "  Video Memory: %.2f GB\n", primaryDesc.DedicatedVideoMemory / (1024.0f * 1024.0f * 1024.0f));
 		OutputDebugStringA(primaryMemory);
-
-		OutputDebugStringW(L"SECONDARY: ");
-		OutputDebugStringW(secondaryDesc.Description);
-		OutputDebugStringA("\n");
-
-		char secondaryMemory[256];
-		sprintf_s(secondaryMemory, "  Video Memory: %.2f GB\n", secondaryDesc.DedicatedVideoMemory / (1024.0f * 1024.0f * 1024.0f));
-		OutputDebugStringA(secondaryMemory);
-		OutputDebugStringA("\n");
 	}
-	else throw std::runtime_error("Failed to initialize 2 hardware graphics devices");
 
 	if (md3dDevice2)
 	{
@@ -203,7 +223,7 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 	ThrowIfFailed(md3dDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&mFence)));
 
 	mRtvDescriptorSize = md3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-	mRtvDescriptorSize2 = md3dDevice2->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+	if (!mUseSingleGPU) mRtvDescriptorSize2 = md3dDevice2->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 	mDsvDescriptorSize = md3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
 	mCbvSrvUavDescriptorSize = md3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
@@ -254,7 +274,7 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 void RenderingSystem::FinishInitialize()
 {
 	CreateRtvAndDsvDescriptorHeaps();
-	InitializeSharedResources();
+	if (!mUseSingleGPU) InitializeSharedResources();
 	//CreateOrResizeSceneColor(mClientWidth, mClientHeight);
 
 	mGBuffer->Channel0SRVHeapIndex = static_cast<int>(TexDescsLength + MPRTextures.size() + MPRTerrainTextures.size() + 1);
@@ -344,7 +364,7 @@ void RenderingSystem::OnResize() {
 
 	// Flush before changing any resources.
 	FlushCommandQueue();
-	FlushCommandQueue2();
+	if (!mUseSingleGPU) FlushCommandQueue2();
 
 	ThrowIfFailed(mCommandList->Reset(mDirectCmdListAlloc.Get(), nullptr));
 
@@ -355,7 +375,7 @@ void RenderingSystem::OnResize() {
 
 	mCurrBackBuffer = 0;
 
-	if (mRtvHeap2) {
+	if (!mUseSingleGPU && mRtvHeap2) {
 		ThrowIfFailed(mSwapChain->ResizeBuffers(
 			SwapChainBufferCount,
 			mClientWidth, mClientHeight,
@@ -368,6 +388,22 @@ void RenderingSystem::OnResize() {
 			ThrowIfFailed(mSwapChain->GetBuffer(i, IID_PPV_ARGS(&mSwapChainBuffer[i])));
 			md3dDevice2->CreateRenderTargetView(mSwapChainBuffer[i].Get(), nullptr, rtvHeapHandle);
 			rtvHeapHandle.Offset(1, mRtvDescriptorSize2);
+		}
+	}
+	else if (mRtvHeap)
+	{
+		ThrowIfFailed(mSwapChain->ResizeBuffers(
+			SwapChainBufferCount,
+			mClientWidth, mClientHeight,
+			mBackBufferFormat,
+			DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH | DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING));
+
+		CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHeapHandle(mRtvHeap->GetCPUDescriptorHandleForHeapStart());
+		for (UINT i = 0; i < SwapChainBufferCount; i++)
+		{
+			ThrowIfFailed(mSwapChain->GetBuffer(i, IID_PPV_ARGS(&mSwapChainBuffer[i])));
+			md3dDevice->CreateRenderTargetView(mSwapChainBuffer[i].Get(), nullptr, rtvHeapHandle);
+			rtvHeapHandle.Offset(1, mRtvDescriptorSize);
 		}
 	}
 
@@ -672,6 +708,16 @@ void RenderingSystem::Render()
 
 	cmdList->ClearDepthStencilView(DepthStencilView(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
 
+	if (mUseSingleGPU)
+	{
+		SaveFrameAsPrevious(cmdList);
+		cmdList->ResourceBarrier(1,
+			&CD3DX12_RESOURCE_BARRIER::Transition(
+				CurrentBackBuffer(),
+				D3D12_RESOURCE_STATE_PRESENT,
+				D3D12_RESOURCE_STATE_RENDER_TARGET));
+	}
+
 	DrawShadowMaps(cmdList);
 
 	mGBuffer->TransitCommonToRTV(cmdList);
@@ -684,12 +730,29 @@ void RenderingSystem::Render()
 	DrawSkyBox(cmdList);
 
 	DrawParticleSystems(cmdList);
+
+	if (mUseSingleGPU && mTAAEnabled) TAAResolve(cmdList);
+
 	mGBuffer->TransitToTonemappingState(cmdList);
+
+	if (mUseSingleGPU) PostProcessingPass(cmdList);
+
 	mGBuffer->TransitSRVToCommon(cmdList);
 
-	//Send Finished Frames to Secondary GPU
-	mSharedAccBuffer.CopyFromPrimaryDevice(cmdList.Get(), mGBuffer->Accumulation.Resource.Get());
-	mSharedVelocityBuffer.CopyFromPrimaryDevice(cmdList.Get(), mGBuffer->VelocityBuffer.Resource.Get());
+	if (!mUseSingleGPU)
+	{
+		//Send Finished Frames to Secondary GPU
+		mSharedAccBuffer.CopyFromPrimaryDevice(cmdList.Get(), mGBuffer->Accumulation.Resource.Get());
+		mSharedVelocityBuffer.CopyFromPrimaryDevice(cmdList.Get(), mGBuffer->VelocityBuffer.Resource.Get());
+	}
+	else
+	{
+		cmdList->ResourceBarrier(1,
+			&CD3DX12_RESOURCE_BARRIER::Transition(
+				CurrentBackBuffer(),
+				D3D12_RESOURCE_STATE_RENDER_TARGET,
+				D3D12_RESOURCE_STATE_PRESENT));
+	}
 
 	// Done recording commands.
 	ThrowIfFailed(cmdList->Close());
@@ -701,7 +764,16 @@ void RenderingSystem::Render()
 	mCurrFrameResource->Fence = ++mCurrentFence;
 	mCommandQueue->Signal(mFence.Get(), mCurrentFence);
 
+	if (mUseSingleGPU)
+	{
+		ThrowIfFailed(mSwapChain->Present(mVSync ? 1u : 0u, mVSync ? 0 : DXGI_PRESENT_ALLOW_TEARING));
 
+		mCurrBackBuffer = (mCurrBackBuffer + 1) % SwapChainBufferCount;
+
+		return;
+	}
+
+	//GPU 2 Logic
 	if (mCurrentFence2 > 0 && mFence2->GetCompletedValue() < mCurrentFence2)
 	{
 		HANDLE eventHandle = CreateEventEx(nullptr, false, false, EVENT_ALL_ACCESS);
@@ -1307,10 +1379,14 @@ ID3D12Resource* RenderingSystem::CurrentBackBuffer() const {
 }
 
 D3D12_CPU_DESCRIPTOR_HANDLE RenderingSystem::CurrentBackBufferView() const {
-	return CD3DX12_CPU_DESCRIPTOR_HANDLE(
+	return !mUseSingleGPU ? CD3DX12_CPU_DESCRIPTOR_HANDLE(
 		mRtvHeap2->GetCPUDescriptorHandleForHeapStart(),
 		mCurrBackBuffer,
-		mRtvDescriptorSize2);
+		mRtvDescriptorSize2) : 
+		CD3DX12_CPU_DESCRIPTOR_HANDLE(
+			mRtvHeap->GetCPUDescriptorHandleForHeapStart(),
+			mCurrBackBuffer,
+			mRtvDescriptorSize);
 }
 
 void RenderingSystem::LogAdapters()
@@ -1917,24 +1993,24 @@ void RenderingSystem::SaveFrameAsPrevious(ComPtr<ID3D12GraphicsCommandList4>& cm
 {
 	PIXBeginEvent(cmdList.Get(), 0x00FF00, "Saving Previous Frame");
 	cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
-		mDevice2PrevFrame.Get(),
+		!mUseSingleGPU ? mDevice2PrevFrame.Get() : mPrevFrameTex.Get(),
 		D3D12_RESOURCE_STATE_COMMON,
 		D3D12_RESOURCE_STATE_COPY_DEST));
 	
 	cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
-		mDevice2ResolvedAccBuffer.Get(),
+		!mUseSingleGPU ? mDevice2ResolvedAccBuffer.Get() : mTAAResolvedAccBuffer.Get(),
 		D3D12_RESOURCE_STATE_COMMON,
 		D3D12_RESOURCE_STATE_COPY_SOURCE));
 
-	cmdList->CopyResource(mDevice2PrevFrame.Get(), mDevice2ResolvedAccBuffer.Get());
+	cmdList->CopyResource(!mUseSingleGPU ? mDevice2PrevFrame.Get() : mPrevFrameTex.Get(), !mUseSingleGPU ? mDevice2ResolvedAccBuffer.Get() : mTAAResolvedAccBuffer.Get());
 
 	cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
-		mDevice2PrevFrame.Get(),
+		!mUseSingleGPU ? mDevice2PrevFrame.Get() : mPrevFrameTex.Get(),
 		D3D12_RESOURCE_STATE_COPY_DEST,
 		D3D12_RESOURCE_STATE_COMMON));
 
 	cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
-		mDevice2ResolvedAccBuffer.Get(),
+		!mUseSingleGPU ? mDevice2ResolvedAccBuffer.Get() : mTAAResolvedAccBuffer.Get(),
 		D3D12_RESOURCE_STATE_COPY_SOURCE,
 		D3D12_RESOURCE_STATE_COMMON));
 	PIXEndEvent(cmdList.Get());
@@ -1974,52 +2050,65 @@ void RenderingSystem::TAAResolve(ComPtr<ID3D12GraphicsCommandList4>& cmdList)
 	PIXBeginEvent(cmdList.Get(), 0x00FF00, "TAA Resolve Pass");
 	CD3DX12_RESOURCE_BARRIER barriers[3];
 	barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
-		mDevice2AccBuffer.Get(),
-		D3D12_RESOURCE_STATE_COMMON,
+		!mUseSingleGPU ? mDevice2AccBuffer.Get() : mGBuffer->Accumulation.Resource.Get(),
+		!mUseSingleGPU ? D3D12_RESOURCE_STATE_COMMON : D3D12_RESOURCE_STATE_RENDER_TARGET,
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-	barriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(mDevice2ResolvedAccBuffer.Get(),
+	barriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(
+		!mUseSingleGPU ? mDevice2ResolvedAccBuffer.Get() : mTAAResolvedAccBuffer.Get(),
 		D3D12_RESOURCE_STATE_COMMON, 
 		D3D12_RESOURCE_STATE_RENDER_TARGET);
-	barriers[2] = CD3DX12_RESOURCE_BARRIER::Transition(mDevice2PrevFrame.Get(),
+	barriers[2] = CD3DX12_RESOURCE_BARRIER::Transition(
+		!mUseSingleGPU ? mDevice2PrevFrame.Get() : mPrevFrameTex.Get(),
 		D3D12_RESOURCE_STATE_COMMON,
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 	cmdList->ResourceBarrier(3, barriers);
 	cmdList->RSSetViewports(1, &mScreenViewport);
 	cmdList->RSSetScissorRects(1, &mScissorRect);
-	cmdList->SetGraphicsRootSignature(RootSignatures2["TAAResolve"].Get());
-	cmdList->OMSetRenderTargets(1, &CD3DX12_CPU_DESCRIPTOR_HANDLE(mRtvHeapDevice2->GetCPUDescriptorHandleForHeapStart(),
-		mDevice2ResolvedAccBufferRTVIndex, mRtvDescriptorSize2), FALSE, nullptr);
-	cmdList->SetPipelineState(GlobalPSOs2["TAAResolve"].Get());
+	cmdList->SetGraphicsRootSignature(!mUseSingleGPU ? RootSignatures2["TAAResolve"].Get() : RootSignatures["TAAResolve"].Get());
+	cmdList->OMSetRenderTargets(1, !mUseSingleGPU ? &CD3DX12_CPU_DESCRIPTOR_HANDLE(mRtvHeapDevice2->GetCPUDescriptorHandleForHeapStart(),
+		mDevice2ResolvedAccBufferRTVIndex, mRtvDescriptorSize2) : 
+		&CD3DX12_CPU_DESCRIPTOR_HANDLE(mRtvHeap->GetCPUDescriptorHandleForHeapStart(),
+		 mResolvedAccBufferRTVHeapIndex, mRtvDescriptorSize), FALSE, nullptr);
+
+	cmdList->SetPipelineState(!mUseSingleGPU ? GlobalPSOs2["TAAResolve"].Get() : GlobalPSOs["TAAResolve"].Get());
 	cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-	auto passCB = mCurrFrameResource->PassCB2->Resource();
+	auto passCB = !mUseSingleGPU ? mCurrFrameResource->PassCB2->Resource() : mCurrFrameResource->PassCB->Resource();
 	cmdList->SetGraphicsRootConstantBufferView(0, passCB->GetGPUVirtualAddress());
 
-	ID3D12DescriptorHeap* descriptorHeaps[] = { mSrvHeapDevice2.Get() };
+	ID3D12DescriptorHeap* descriptorHeaps[] = { !mUseSingleGPU ? mSrvHeapDevice2.Get(): mSrvDescriptorHeap.Get() };
 	cmdList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
 
 	cmdList->SetGraphicsRootDescriptorTable(1,
-		CD3DX12_GPU_DESCRIPTOR_HANDLE(mSrvHeapDevice2->GetGPUDescriptorHandleForHeapStart(),
-		mDevice2AccBufferSRVIndex, mCbvSrvDescriptorSize2));
+		!mUseSingleGPU ? CD3DX12_GPU_DESCRIPTOR_HANDLE(mSrvHeapDevice2->GetGPUDescriptorHandleForHeapStart(),
+		mDevice2AccBufferSRVIndex, mCbvSrvDescriptorSize2) :
+		CD3DX12_GPU_DESCRIPTOR_HANDLE(mSrvDescriptorHeap->GetGPUDescriptorHandleForHeapStart(),
+			mGBuffer->Accumulation.SRVHeapIndex, mCbvSrvDescriptorSize));
 	cmdList->SetGraphicsRootDescriptorTable(2,
-		CD3DX12_GPU_DESCRIPTOR_HANDLE(mSrvHeapDevice2->GetGPUDescriptorHandleForHeapStart(),
-		mDevice2PrevFrameSRVIndex, mCbvSrvDescriptorSize2));
+		!mUseSingleGPU ? CD3DX12_GPU_DESCRIPTOR_HANDLE(mSrvHeapDevice2->GetGPUDescriptorHandleForHeapStart(),
+		mDevice2PrevFrameSRVIndex, mCbvSrvDescriptorSize2) :
+		CD3DX12_GPU_DESCRIPTOR_HANDLE(mSrvDescriptorHeap->GetGPUDescriptorHandleForHeapStart(),
+			mPrevFrameSRVHeapIndex, mCbvSrvDescriptorSize));
 	//mCommandList2->SetGraphicsRootDescriptorTable(3, GetGpuSrv(mGBuffer->DepthStencils.SRVHeapIndex));
 	cmdList->SetGraphicsRootDescriptorTable(4,
-		CD3DX12_GPU_DESCRIPTOR_HANDLE(mSrvHeapDevice2->GetGPUDescriptorHandleForHeapStart(),
-		mDevice2VelocityBufferSRVIndex, mCbvSrvDescriptorSize2));
+		!mUseSingleGPU ? CD3DX12_GPU_DESCRIPTOR_HANDLE(mSrvHeapDevice2->GetGPUDescriptorHandleForHeapStart(),
+		mDevice2VelocityBufferSRVIndex, mCbvSrvDescriptorSize2) :
+		CD3DX12_GPU_DESCRIPTOR_HANDLE(mSrvDescriptorHeap->GetGPUDescriptorHandleForHeapStart(),
+			mGBuffer->VelocityBuffer.SRVHeapIndex, mCbvSrvDescriptorSize));
 
 	cmdList->DrawInstanced(6, 1, 0, 0);
 
 	CD3DX12_RESOURCE_BARRIER antibarriers[3];
 	antibarriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
-		mDevice2AccBuffer.Get(),
+		!mUseSingleGPU ? mDevice2AccBuffer.Get() : mGBuffer->Accumulation.Resource.Get(),
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
-		D3D12_RESOURCE_STATE_COMMON);
-	antibarriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(mDevice2ResolvedAccBuffer.Get(),
+		!mUseSingleGPU ? D3D12_RESOURCE_STATE_COMMON : D3D12_RESOURCE_STATE_RENDER_TARGET);
+	antibarriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(
+		!mUseSingleGPU ? mDevice2ResolvedAccBuffer.Get() : mTAAResolvedAccBuffer.Get(),
 		D3D12_RESOURCE_STATE_RENDER_TARGET,
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-	antibarriers[2] = CD3DX12_RESOURCE_BARRIER::Transition(mDevice2PrevFrame.Get(),
+	antibarriers[2] = CD3DX12_RESOURCE_BARRIER::Transition(
+		!mUseSingleGPU ? mDevice2PrevFrame.Get() : mPrevFrameTex.Get(),
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
 		D3D12_RESOURCE_STATE_COMMON);
 	cmdList->ResourceBarrier(3, antibarriers);
@@ -2456,7 +2545,7 @@ void RenderingSystem::CreateSwapChain()
 	sd.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH | DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
 
 	// Note: Swap chain uses queue to perform flush.
-	ThrowIfFailed(mdxgiFactory->CreateSwapChain(mCommandQueue2.Get(), &sd, mSwapChain.GetAddressOf()));
+	ThrowIfFailed(mdxgiFactory->CreateSwapChain(mUseSingleGPU ? mCommandQueue.Get() : mCommandQueue2.Get(), &sd, mSwapChain.GetAddressOf()));
 }
 
 void RenderingSystem::CreateRtvAndDsvDescriptorHeaps()
@@ -2470,16 +2559,29 @@ void RenderingSystem::CreateRtvAndDsvDescriptorHeaps()
 		&rtvHeapDesc, IID_PPV_ARGS(mRtvHeap.GetAddressOf())));
 
 	//RTVHeap for device2
-	rtvHeapDesc.NumDescriptors = SwapChainBufferCount;
-	ThrowIfFailed(md3dDevice2->CreateDescriptorHeap(
-		&rtvHeapDesc, IID_PPV_ARGS(mRtvHeap2.GetAddressOf())));
-
-	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHeapHandle2(mRtvHeap2->GetCPUDescriptorHandleForHeapStart());
-	for (UINT i = 0; i < SwapChainBufferCount; i++)
+	if (!mUseSingleGPU)
 	{
-		ThrowIfFailed(mSwapChain->GetBuffer(i, IID_PPV_ARGS(&mSwapChainBuffer[i])));
-		md3dDevice2->CreateRenderTargetView(mSwapChainBuffer[i].Get(), nullptr, rtvHeapHandle2);
-		rtvHeapHandle2.Offset(1, mRtvDescriptorSize2);
+		rtvHeapDesc.NumDescriptors = SwapChainBufferCount;
+		ThrowIfFailed(md3dDevice2->CreateDescriptorHeap(
+			&rtvHeapDesc, IID_PPV_ARGS(mRtvHeap2.GetAddressOf())));
+
+		CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHeapHandle2(mRtvHeap2->GetCPUDescriptorHandleForHeapStart());
+		for (UINT i = 0; i < SwapChainBufferCount; i++)
+		{
+			ThrowIfFailed(mSwapChain->GetBuffer(i, IID_PPV_ARGS(&mSwapChainBuffer[i])));
+			md3dDevice2->CreateRenderTargetView(mSwapChainBuffer[i].Get(), nullptr, rtvHeapHandle2);
+			rtvHeapHandle2.Offset(1, mRtvDescriptorSize2);
+		}
+	}
+	else
+	{
+		CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHeapHandle(mRtvHeap->GetCPUDescriptorHandleForHeapStart());
+		for (UINT i = 0; i < SwapChainBufferCount; i++)
+		{
+			ThrowIfFailed(mSwapChain->GetBuffer(i, IID_PPV_ARGS(&mSwapChainBuffer[i])));
+			md3dDevice->CreateRenderTargetView(mSwapChainBuffer[i].Get(), nullptr, rtvHeapHandle);
+			rtvHeapHandle.Offset(1, mRtvDescriptorSize);
+		}
 	}
 
 
@@ -4185,26 +4287,28 @@ void RenderingSystem::PostProcessingPass(ComPtr<ID3D12GraphicsCommandList4>& cmd
 	PIXBeginEvent(cmdList.Get(), 0x00FF00, "Post Processing Pass");
 	cmdList->RSSetViewports(1, &mScreenViewport);
 	cmdList->RSSetScissorRects(1, &mScissorRect);
-	cmdList->SetGraphicsRootSignature(RootSignatures2["PostProcessing"].Get());
+	cmdList->SetGraphicsRootSignature(mUseSingleGPU ? RootSignatures["PostProcessing"].Get() : RootSignatures2["PostProcessing"].Get());
 	cmdList->OMSetRenderTargets(1, &CurrentBackBufferView(), false, nullptr);
-	cmdList->SetPipelineState(GlobalPSOs2["PostProcessing"].Get());
+	cmdList->SetPipelineState(mUseSingleGPU ? GlobalPSOs["PostProcessing"].Get() : GlobalPSOs2["PostProcessing"].Get());
 	cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
 	auto passCB = mCurrFrameResource->PassCB->Resource();
 
-	ID3D12DescriptorHeap* descriptorHeaps[] = { mSrvHeapDevice2.Get() };
+	ID3D12DescriptorHeap* descriptorHeaps[] = { mUseSingleGPU ?  mSrvDescriptorHeap.Get() : mSrvHeapDevice2.Get() };
 	cmdList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
 
-	cmdList->SetGraphicsRootDescriptorTable(1,
+	cmdList->SetGraphicsRootDescriptorTable(1, !mUseSingleGPU ?
 		CD3DX12_GPU_DESCRIPTOR_HANDLE(mSrvHeapDevice2->GetGPUDescriptorHandleForHeapStart(),
-		mDevice2ResolvedAccBufferSRVIndex, mCbvSrvDescriptorSize2));
+		mDevice2ResolvedAccBufferSRVIndex, mCbvSrvDescriptorSize2) : 
+		CD3DX12_GPU_DESCRIPTOR_HANDLE(mSrvDescriptorHeap->GetGPUDescriptorHandleForHeapStart(),
+			mResolvedAccBufferSRVHeapIndex, mCbvSrvDescriptorSize));
 
 
 	cmdList->DrawInstanced(6, 1, 0, 0);
 
 	cmdList->ResourceBarrier(1,
 		&CD3DX12_RESOURCE_BARRIER::Transition(
-			mDevice2ResolvedAccBuffer.Get(),
+			!mUseSingleGPU ? mDevice2ResolvedAccBuffer.Get() : mTAAResolvedAccBuffer.Get(),
 			D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
 			D3D12_RESOURCE_STATE_COMMON));
 	PIXEndEvent(cmdList.Get());
