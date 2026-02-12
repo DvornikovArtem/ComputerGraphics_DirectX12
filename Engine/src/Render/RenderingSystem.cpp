@@ -105,8 +105,8 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 	if (!mUseSingleGPU)
 	{
 		//SWAP PRIMARY AND SECONDARY DEVICES HERE IF NEEDED
-		std::swap(md3dDevice, md3dDevice2);
-		primaryDeviceLuid = md3dDevice->GetAdapterLuid();
+		//std::swap(md3dDevice, md3dDevice2);
+		//primaryDeviceLuid = md3dDevice->GetAdapterLuid();
 
 		if (secondDeviceCreated)
 		{
@@ -391,7 +391,7 @@ void RenderingSystem::OnResize() {
 			rtvHeapHandle.Offset(1, mRtvDescriptorSize2);
 		}
 	}
-	else if (mRtvHeap)
+	else if (mUseSingleGPU && mRtvHeap)
 	{
 		ThrowIfFailed(mSwapChain->ResizeBuffers(
 			SwapChainBufferCount,
