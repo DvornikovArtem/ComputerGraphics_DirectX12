@@ -100,6 +100,7 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 		adapter.Reset();
 		adapterIndex++;
 	}
+	if (!secondDeviceCreated) throw std::runtime_error("Failed to initialize 2 hardware graphics devices");
 
 	if (!mUseSingleGPU)
 	{
@@ -702,75 +703,118 @@ void RenderingSystem::Render()
 	auto cmdListAlloc = mCurrFrameResource->CmdListAlloc;
 	auto cmdList = mCommandList;
 
-	ThrowIfFailed(cmdListAlloc->Reset());
+	bool GPU1Busy = mCurrentFence > 0 && mFence->GetCompletedValue() < mCurrentFence;
 
-	ThrowIfFailed(cmdList->Reset(cmdListAlloc.Get(), nullptr));
+	// mGPU for GPU1
+	if (!mUseSingleGPU)
+	{
+		//skip frame if GPU1 is not ready
+		if (!GPU1Busy)
+		{
+			ThrowIfFailed(cmdListAlloc->Reset());
 
-	cmdList->ClearDepthStencilView(DepthStencilView(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
+			ThrowIfFailed(cmdList->Reset(cmdListAlloc.Get(), nullptr));
 
+			cmdList->ClearDepthStencilView(DepthStencilView(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
+
+			DrawShadowMaps(cmdList);
+
+			mGBuffer->TransitCommonToRTV(cmdList);
+			mGBuffer->Clear(cmdList);
+			GBufferGeometryPass(cmdList);
+
+			mGBuffer->TransitToLightsRenderingState(cmdList);
+			GBufferLightPass(cmdList);
+
+			DrawSkyBox(cmdList);
+
+			DrawParticleSystems(cmdList);
+
+			mGBuffer->TransitToTonemappingState(cmdList);
+			mGBuffer->TransitSRVToCommon(cmdList);
+
+			mSharedAccBuffer.CopyFromPrimaryDevice(cmdList.Get(), mGBuffer->Accumulation.Resource.Get());
+			mSharedVelocityBuffer.CopyFromPrimaryDevice(cmdList.Get(), mGBuffer->VelocityBuffer.Resource.Get());
+
+			ThrowIfFailed(cmdList->Close());
+
+			ID3D12CommandList* cmdsLists[] = { cmdList.Get() };
+			mCommandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
+
+			mCurrFrameResource->Fence = ++mCurrentFence;
+			mCommandQueue->Signal(mFence.Get(), mCurrentFence);
+		}
+		else
+		{
+			mCurrFrameResource->Fence = mCurrentFence;
+		}
+	}
+
+
+	//SignleGPU Pass
 	if (mUseSingleGPU)
 	{
+		//sync
+		if (GPU1Busy)
+		{
+			HANDLE eventHandle = CreateEventEx(nullptr, false, false, EVENT_ALL_ACCESS);
+			ThrowIfFailed(mFence->SetEventOnCompletion(mCurrentFence, eventHandle));
+			WaitForSingleObject(eventHandle, INFINITE);
+			CloseHandle(eventHandle);
+		}
+
+		ThrowIfFailed(cmdListAlloc->Reset());
+
+		ThrowIfFailed(cmdList->Reset(cmdListAlloc.Get(), nullptr));
+
+		cmdList->ClearDepthStencilView(DepthStencilView(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
+
 		SaveFrameAsPrevious(cmdList);
 		cmdList->ResourceBarrier(1,
 			&CD3DX12_RESOURCE_BARRIER::Transition(
 				CurrentBackBuffer(),
 				D3D12_RESOURCE_STATE_PRESENT,
 				D3D12_RESOURCE_STATE_RENDER_TARGET));
-	}
 
-	DrawShadowMaps(cmdList);
+		DrawShadowMaps(cmdList);
 
-	mGBuffer->TransitCommonToRTV(cmdList);
-	mGBuffer->Clear(cmdList);
-	GBufferGeometryPass(cmdList);
+		mGBuffer->TransitCommonToRTV(cmdList);
+		mGBuffer->Clear(cmdList);
+		GBufferGeometryPass(cmdList);
 
-	mGBuffer->TransitToLightsRenderingState(cmdList);
-	GBufferLightPass(cmdList);
+		mGBuffer->TransitToLightsRenderingState(cmdList);
+		GBufferLightPass(cmdList);
 
-	DrawSkyBox(cmdList);
+		DrawSkyBox(cmdList);
 
-	DrawParticleSystems(cmdList);
+		DrawParticleSystems(cmdList);
 
-	if (mUseSingleGPU && mTAAEnabled) TAAResolve(cmdList);
+		if (mTAAEnabled) TAAResolve(cmdList);
 
-	mGBuffer->TransitToTonemappingState(cmdList);
+		mGBuffer->TransitToTonemappingState(cmdList);
 
-	if (mUseSingleGPU) PostProcessingPass(cmdList);
+		PostProcessingPass(cmdList);
 
-	mGBuffer->TransitSRVToCommon(cmdList);
+		mGBuffer->TransitSRVToCommon(cmdList);
 
-	if (!mUseSingleGPU)
-	{
-		//Send Finished Frames to Secondary GPU
-		mSharedAccBuffer.CopyFromPrimaryDevice(cmdList.Get(), mGBuffer->Accumulation.Resource.Get());
-		mSharedVelocityBuffer.CopyFromPrimaryDevice(cmdList.Get(), mGBuffer->VelocityBuffer.Resource.Get());
-	}
-	else
-	{
 		cmdList->ResourceBarrier(1,
 			&CD3DX12_RESOURCE_BARRIER::Transition(
 				CurrentBackBuffer(),
 				D3D12_RESOURCE_STATE_RENDER_TARGET,
 				D3D12_RESOURCE_STATE_PRESENT));
-	}
 
-	// Done recording commands.
-	ThrowIfFailed(cmdList->Close());
+		ThrowIfFailed(cmdList->Close());
 
-	ID3D12CommandList* cmdsLists[] = { cmdList.Get() };
-	mCommandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
+		ID3D12CommandList* cmdsLists[] = { cmdList.Get() };
+		mCommandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
 
-	// Notify the fence when the GPU completes commands up to this fence point.
-	mCurrFrameResource->Fence = ++mCurrentFence;
-	mCommandQueue->Signal(mFence.Get(), mCurrentFence);
+		mCurrFrameResource->Fence = ++mCurrentFence;
+		mCommandQueue->Signal(mFence.Get(), mCurrentFence);
 
-	if (mUseSingleGPU)
-	{
 		ThrowIfFailed(mSwapChain->Present(mVSync ? 1u : 0u, mVSync ? 0 : DXGI_PRESENT_ALLOW_TEARING));
-
 		mCurrBackBuffer = (mCurrBackBuffer + 1) % SwapChainBufferCount;
-
 		return;
+
 	}
 
 	//GPU 2 Logic
@@ -821,8 +865,11 @@ void RenderingSystem::Render()
 
 	mCurrBackBuffer = (mCurrBackBuffer + 1) % SwapChainBufferCount;
 
-	mCurrentFence2++;
+	mCurrFrameResource->Fence2 = ++mCurrentFence2;
 	mCommandQueue2->Signal(mFence2.Get(), mCurrentFence2);
+
+	mCurrFrameResourceIndex = (mCurrFrameResourceIndex + 1) % gNumFrameResources;
+	mCurrFrameResource = mFrameResources[mCurrFrameResourceIndex].get();
 }
 
 
