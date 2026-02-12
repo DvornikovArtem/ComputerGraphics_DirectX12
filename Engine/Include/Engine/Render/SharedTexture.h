@@ -66,5 +66,4 @@ private:
     void CreateSharedHeap();
     void CreatePlacedResources();
     void ShareResources();
-    UINT64 CalculateHeapSize(const D3D12_RESOURCE_DESC& desc) const;
 };

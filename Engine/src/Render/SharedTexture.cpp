@@ -96,13 +96,6 @@ UINT64 SharedTexture::GetSizeInBytes() const
     return totalBytes;
 }
 
-UINT64 SharedTexture::CalculateHeapSize(const D3D12_RESOURCE_DESC& desc) const
-{
-    D3D12_RESOURCE_ALLOCATION_INFO allocInfo = mPrimaryDevice->GetResourceAllocationInfo(0, 1, &desc);
-
-    return allocInfo.SizeInBytes;
-}
-
 void SharedTexture::CreateSharedHeap()
 {
     D3D12_RESOURCE_DESC desc = {};
@@ -118,7 +111,11 @@ void SharedTexture::CreateSharedHeap()
     desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
     desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_CROSS_ADAPTER;
 
-    mHeapSize = CalculateHeapSize(desc);
+    D3D12_RESOURCE_ALLOCATION_INFO primaryInfo = mPrimaryDevice->GetResourceAllocationInfo(0, 1, &desc);
+    D3D12_RESOURCE_ALLOCATION_INFO secondaryInfo = mSecondaryDevice->GetResourceAllocationInfo(0, 1, &desc);
+
+    mHeapSize = max(primaryInfo.SizeInBytes, secondaryInfo.SizeInBytes);
+    mHeapSize = (mHeapSize + D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT - 1) & ~(D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT - 1);
 
     D3D12_HEAP_DESC heapDesc = {};
     heapDesc.SizeInBytes = mHeapSize;

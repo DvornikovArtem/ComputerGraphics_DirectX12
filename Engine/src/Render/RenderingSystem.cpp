@@ -105,8 +105,8 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 	if (!mUseSingleGPU)
 	{
 		//SWAP PRIMARY AND SECONDARY DEVICES HERE IF NEEDED
-		//std::swap(md3dDevice, md3dDevice2);
-		//primaryDeviceLuid = md3dDevice->GetAdapterLuid();
+		std::swap(md3dDevice, md3dDevice2);
+		primaryDeviceLuid = md3dDevice->GetAdapterLuid();
 
 		if (secondDeviceCreated)
 		{
