@@ -25,6 +25,8 @@ public:
 	DirectX::XMFLOAT3 GetPosition3f()const;
 	void SetPosition(float x, float y, float z);
 	void SetPosition(const DirectX::XMFLOAT3& v);
+
+	void LookAt(const DirectX::XMFLOAT3& target);
 	
 	// Get camera basis vectors.
 	DirectX::XMVECTOR GetRight()const;

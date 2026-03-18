@@ -44,6 +44,12 @@ private:
     POINT mLastMousePos;
 
     std::unordered_map<std::string, std::vector<MeshParsingResult>> MeshParsingResults;
+
+    float mOrbitAngle = 0.0f;           
+    float mOrbitRadius = 10.0f;         
+    float mOrbitHeight = 5.0f;          
+    XMFLOAT3 mTargetPosition = { 0.0f, 2.0f, 0.0f }; 
+    bool mUseOrbitCamera = true;
 };
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prevInstance,
@@ -110,7 +116,18 @@ void StencilApp::OnResize()
 
 void StencilApp::Update(const GameTimer& gt)
 {
-    OnKeyboardInput(gt);
+    if (mUseOrbitCamera)
+    {
+        mOrbitAngle += gt.DeltaTime() * 0.5f;
+
+        float x = mTargetPosition.x + mOrbitRadius * cos(mOrbitAngle);
+        float z = mTargetPosition.z + mOrbitRadius * sin(mOrbitAngle);
+        float y = mTargetPosition.y + mOrbitHeight;
+
+        mRenderingSystem->mCamera.SetPosition(x, y, z);
+        mRenderingSystem->mCamera.LookAt(mTargetPosition);
+    }
+    else OnKeyboardInput(gt);
 
     //Set NeedsUpdate for every object that changes its values at runtime
 

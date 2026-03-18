@@ -37,6 +37,28 @@ void Camera::SetPosition(const XMFLOAT3& v)
 	mViewDirty = true;
 }
 
+void Camera::LookAt(const DirectX::XMFLOAT3& target)
+{
+	DirectX::XMVECTOR P = XMLoadFloat3(&mPosition);
+	DirectX::XMVECTOR T = XMLoadFloat3(&target);
+	DirectX::XMVECTOR worldUp = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+
+	DirectX::XMVECTOR L = XMVector3Normalize(XMVectorSubtract(T, P));
+	DirectX::XMVECTOR R = XMVector3Normalize(XMVector3Cross(worldUp, L));
+	DirectX::XMVECTOR U = XMVector3Cross(L, R);
+
+	XMStoreFloat3(&mLook, L);
+	XMStoreFloat3(&mRight, R);
+	XMStoreFloat3(&mUp, U);
+
+	DirectX::XMFLOAT3 look;
+	XMStoreFloat3(&look, L);
+	mPitch = asinf(std::clamp(look.y, -1.0f, 1.0f));
+
+	mViewDirty = true;
+	UpdateViewMatrix();
+}
+
 XMVECTOR Camera::GetRight()const
 {
 	return XMLoadFloat3(&mRight);
