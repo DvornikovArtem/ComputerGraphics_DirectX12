@@ -9,6 +9,24 @@ using namespace DirectX::PackedVector;
 #pragma comment(lib, "d3dcompiler.lib")
 #pragma comment(lib, "D3D12.lib")
 
+struct CameraFlyParams
+{
+    XMFLOAT3 StartPos;
+    XMFLOAT3 EndPos;
+    bool FocusOnPoint;
+    XMFLOAT3 FocusCoordinate;
+    float TransitionSpeed;
+    bool SmoothTransitFocusPoint;
+
+    CameraFlyParams(const XMFLOAT3& start, const XMFLOAT3& end,
+        bool focus = false, const XMFLOAT3& focusPoint = { 0,0,0 },
+        float speed = 5.0f, bool smoothFocus = false)
+        : StartPos(start), EndPos(end), FocusOnPoint(focus),
+        FocusCoordinate(focusPoint), TransitionSpeed(speed),
+        SmoothTransitFocusPoint(smoothFocus) {
+    }
+};
+
 class StencilApp : public D3DApp
 {
 public:
@@ -41,15 +59,21 @@ private:
     void MakeLights();
     void MakeParticleSystems();
 
+    float EaseInEaseOut(float t);
+    void UpdateFlyCamera(const GameTimer& gt);
+    void InitializeFlyRoutes();
+
     POINT mLastMousePos;
 
     std::unordered_map<std::string, std::vector<MeshParsingResult>> MeshParsingResults;
 
-    float mOrbitAngle = 0.0f;           
-    float mOrbitRadius = 10.0f;         
-    float mOrbitHeight = 5.0f;          
-    XMFLOAT3 mTargetPosition = { 0.0f, 2.0f, 0.0f }; 
-    bool mUseOrbitCamera = false;
+    std::vector<CameraFlyParams> mFlyRoutes;
+    size_t mCurrentRouteIndex = 0;
+    float mFlyProgress = 0.0f;
+    float mFlyTimer = 0.0f;
+    bool mIsFlying = false;
+    XMFLOAT3 mCurrentFocusPoint;
+    XMFLOAT3 mTargetFocusPoint;
 };
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prevInstance,
@@ -81,6 +105,92 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prevInstance,
     }
 }
 
+float StencilApp::EaseInEaseOut(float t)
+{
+    return t < 0.5f ? 2.0f * t * t : 1.0f - powf(-2.0f * t + 2.0f, 2.0f) / 2.0f;
+}
+
+void StencilApp::InitializeFlyRoutes()
+{
+    mFlyRoutes.push_back(CameraFlyParams(
+        XMFLOAT3(10.57f, 11.61f, -7.82f),
+        XMFLOAT3(8.66f, 11.34f, 16.97f),
+        true, XMFLOAT3(-5.52f, 9.21f, 3.73f), 5.0f, false));
+
+    mFlyRoutes.push_back(CameraFlyParams(
+        XMFLOAT3(8.66f, 11.34f, 16.97f),
+        XMFLOAT3(23.11f, 14.41f, -13.76f),
+        true, XMFLOAT3(-5.52f, 9.21f, 3.73f), 5.0f, false));
+
+    mFlyRoutes.push_back(CameraFlyParams(
+        XMFLOAT3(23.11f, 14.41f, -13.76f),
+        XMFLOAT3(-5.53f, 5.89f, 16.41f),
+        true, XMFLOAT3(25.66f, 14.98f, 5.38f), 5.0f, true));
+
+    mFlyRoutes.push_back(CameraFlyParams(
+        XMFLOAT3(-5.53f, 5.89f, 16.41f),
+        XMFLOAT3(16.11f, 2.73f, -9.70f),
+        true, XMFLOAT3(19.08f, 8.35f, 8.44f), 5.0f, true));
+
+    mFlyRoutes.push_back(CameraFlyParams(
+        XMFLOAT3(16.11f, 2.73f, -9.70f),
+        XMFLOAT3(10.41f, 6.38f, 2.51f),
+        true, XMFLOAT3(-5.02f, 2.38f, 1.20f), 5.0f, true));
+
+    mFlyRoutes.push_back(CameraFlyParams(
+        XMFLOAT3(10.41f, 6.38f, 2.51f),
+        XMFLOAT3(10.57f, 11.61f, -7.82f),
+        true, XMFLOAT3(-5.52f, 9.21f, 3.73f), 5.0f, true));
+}
+
+void StencilApp::UpdateFlyCamera(const GameTimer& gt)
+{
+    if (!mIsFlying) return;
+
+    float dt = gt.DeltaTime();
+    mFlyTimer += dt;
+
+    const CameraFlyParams& currentRoute = mFlyRoutes[mCurrentRouteIndex];
+    float currentDuration = currentRoute.TransitionSpeed;
+    mFlyProgress = mFlyTimer / currentDuration;
+
+    if (mFlyProgress >= 1.0f)
+    {
+        mCurrentRouteIndex = (mCurrentRouteIndex + 1) % mFlyRoutes.size();
+        mFlyTimer = 0.0f;
+        mFlyProgress = 0.0f;
+
+        mCurrentFocusPoint = currentRoute.FocusCoordinate;
+        mTargetFocusPoint = mFlyRoutes[mCurrentRouteIndex].FocusCoordinate;
+        return;
+    }
+
+    float easedProgress = EaseInEaseOut(mFlyProgress);
+
+    XMFLOAT3 currentPos;
+    currentPos.x = currentRoute.StartPos.x + (currentRoute.EndPos.x - currentRoute.StartPos.x) * easedProgress;
+    currentPos.y = currentRoute.StartPos.y + (currentRoute.EndPos.y - currentRoute.StartPos.y) * easedProgress;
+    currentPos.z = currentRoute.StartPos.z + (currentRoute.EndPos.z - currentRoute.StartPos.z) * easedProgress;
+
+    mRenderingSystem->mCamera.SetPosition(currentPos);
+
+    if (currentRoute.FocusOnPoint)
+    {
+        if (currentRoute.SmoothTransitFocusPoint)
+        {
+            float smoothProgress = easedProgress;
+            XMFLOAT3 currentFocus;
+            currentFocus.x = mCurrentFocusPoint.x + (mTargetFocusPoint.x - mCurrentFocusPoint.x) * smoothProgress;
+            currentFocus.y = mCurrentFocusPoint.y + (mTargetFocusPoint.y - mCurrentFocusPoint.y) * smoothProgress;
+            currentFocus.z = mCurrentFocusPoint.z + (mTargetFocusPoint.z - mCurrentFocusPoint.z) * smoothProgress;
+
+            mRenderingSystem->mCamera.LookAt(currentFocus);
+        }
+        else mRenderingSystem->mCamera.LookAt(currentRoute.FocusCoordinate);
+    }
+    else mRenderingSystem->mCamera.UpdateViewMatrix();
+}
+
 bool StencilApp::Initialize()
 {
     if(!D3DApp::Initialize()) return false;
@@ -92,6 +202,9 @@ bool StencilApp::Initialize()
     MakeMaterials();
     MakeDrawableObjects();
     MakeParticleSystems();
+
+    InitializeFlyRoutes();
+    mIsFlying = true;
 
     mRenderingSystem->mCamera.SetPosition(-1.0f, 3.0f, 5.0f);
     mRenderingSystem->mCamera.RotateY(DirectX::XM_PI - 0.2f);
@@ -116,17 +229,7 @@ void StencilApp::OnResize()
 
 void StencilApp::Update(const GameTimer& gt)
 {
-    if (mUseOrbitCamera)
-    {
-        mOrbitAngle += gt.DeltaTime() * 0.5f;
-
-        float x = mTargetPosition.x + mOrbitRadius * cos(mOrbitAngle);
-        float z = mTargetPosition.z + mOrbitRadius * sin(mOrbitAngle);
-        float y = mTargetPosition.y + mOrbitHeight;
-
-        mRenderingSystem->mCamera.SetPosition(x, y, z);
-        mRenderingSystem->mCamera.LookAt(mTargetPosition);
-    }
+    if (mIsFlying) UpdateFlyCamera(gt);
     else OnKeyboardInput(gt);
 
     //Set NeedsUpdate for every object that changes its values at runtime
@@ -160,16 +263,6 @@ void StencilApp::OnMouseUp(WPARAM btnState, int x, int y)
 
 void StencilApp::OnMouseMove(WPARAM btnState, int x, int y)
 {
-    /*ImGuiIO& io = ImGui::GetIO();
-    if (io.WantCaptureMouse && !mRenderingSystem->IsSceneInputActive()) return;*/
-
-    //if (!mRenderingSystem->IsSceneInputActive())
-    //{
-    //    mLastMousePos.x = x;
-    //    mLastMousePos.y = y;
-    //    return;
-    //}
-
     if ((btnState & MK_RBUTTON) != 0)
     {
         // Make each pixel correspond to a quarter of a degree.
@@ -186,11 +279,6 @@ void StencilApp::OnMouseMove(WPARAM btnState, int x, int y)
 
 void StencilApp::OnMouseWheelMove(WPARAM btnState)
 {
-    //ImGuiIO& io = ImGui::GetIO();
-    //if (io.WantCaptureMouse && !mRenderingSystem->IsSceneInputActive()) return;
-
-    //if (!mRenderingSystem->IsSceneInputActive()) return;
-
     short wheelDelta = GET_WHEEL_DELTA_WPARAM(btnState);
 
     float speed = mRenderingSystem->mCamera.GetMoveSpeed();
@@ -202,24 +290,6 @@ void StencilApp::OnMouseWheelMove(WPARAM btnState)
  
 void StencilApp::OnKeyboardInput(const GameTimer& gt)
 {
-    //if (!mRenderingSystem->IsSceneInputActive()) {
-    //    mRenderingSystem->mCamera.UpdateViewMatrix();
-    //    return;
-    //}
-
-    if (GetAsyncKeyState('X') & 0x8000)
-    {
-        mAllDrawableObjects["Patrick"]->WorldLocation.y += 0.1;
-        DrawableObjectUpdateList.push_back(mAllDrawableObjects["Patrick"]);
-    }
-
-    if (GetAsyncKeyState('C') & 0x8000)
-    {
-        mAllDrawableObjects["Patrick"]->WorldLocation.y -= 0.1;
-        DrawableObjectUpdateList.push_back(mAllDrawableObjects["Patrick"]);
-    }
-
-
     const float dt = gt.DeltaTime();
     const float speed = mRenderingSystem->mCamera.GetMoveSpeed();
 
@@ -302,13 +372,14 @@ void StencilApp::LoadMeshes()
     MeshParsingResults["Head"] = mRenderingSystem->LoadMesh(MeshDesc("Head", "assets/models/african_head.obj", MeshDesc::ImportType::SingleMesh), false);
     MeshParsingResults["PatrickStar"] = mRenderingSystem->LoadMesh(MeshDesc("PatrickStar", "assets/models/patrickstarW5LODs.fbx", MeshDesc::ImportType::LODed), false);
     MeshParsingResults["Svidetel"] = mRenderingSystem->LoadMesh(MeshDesc("Svidetel", "assets/models/Svidetel.fbx", MeshDesc::ImportType::SingleMesh), true);
+    MeshParsingResults["Erato"] = mRenderingSystem->LoadMesh(MeshDesc("Erato", "assets/models/Erato.fbx", MeshDesc::ImportType::SingleMesh), true);
 
     for (int i = 1; i < 22; i++)
     {
         std::string name = std::to_string(i);
         std::string path = "assets/models/Room/" + name + ".fbx";
         MeshParsingResults[name] =
-            mRenderingSystem->LoadMesh(MeshDesc(name, path, MeshDesc::ImportType::SingleMesh), false);
+            mRenderingSystem->LoadMesh(MeshDesc(name, path, MeshDesc::ImportType::SingleMesh), true);
     }
 }
 
@@ -332,6 +403,7 @@ void StencilApp::LoadTextures()
         TextureDesc("SkyIrradiance", L"assets/textures/skyIrradiance.dds", TextureDesc::CubeMap, false),
 
         TextureDesc("Picture", L"assets/textures/picture.dds", TextureDesc::Texture2D, true),
+        TextureDesc("OrangeTex", L"assets/textures/orange1x1.dds", TextureDesc::Texture2D, true),
 
         //TextureDesc("SkyPref", L"assets/textures/roomPrefilter.dds", TextureDesc::CubeMap, true),
         //TextureDesc("SkyBRDF", L"assets/textures/roomBrdf.dds", TextureDesc::Texture2D, false),
@@ -354,9 +426,12 @@ void StencilApp::MakeMaterials()
         MaterialDesc("MetallicYellow", "standardVS", "standardPS", "", "", "yellow1x1Tex", "", "", 0.3f, 0.8f, false),
         MaterialDesc("Picture", "standardVS", "standardPS", "", "", "Picture", "", "", 0.3f, 0.0f, false),
         MaterialDesc("Black", "standardVS", "standardPS", "", "", "", "", "", 0.3f, 0.0f, false),
+        MaterialDesc("Orange", "standardVS", "standardPS", "", "", "OrangeTex", "", "", 0.3f, 0.3f, false),
     };
 
     MeshParsingResults["Svidetel"][0].GeneratedMaterial.Roughness = 0.99f;
+    MeshParsingResults["Erato"][0].GeneratedMaterial.Metallic = 0.01f;
+    MeshParsingResults["Erato"][0].GeneratedMaterial.Roughness = 0.99f;
 
     for (auto& i : MeshParsingResults)
     {
@@ -435,6 +510,17 @@ void StencilApp::MakeDrawableObjects()
 
     mAllDrawableObjects[Patrick1->Name] = Patrick1;
 
+    DrawableObject* Erato = new DrawableObject();
+    Erato->Name = "Erato";
+    Erato->GeometryName = MeshParsingResults["Erato"][0].GeometryName;
+    Erato->MaterialName = MeshParsingResults["Erato"][0].GeneratedMaterial.Name;
+    Erato->renderLayer = RenderLayer::Opaque;
+    Erato->WorldLocation = XMFLOAT3(22.0f, 1.f, 15.0f);
+    Erato->WorldRotation = { 0, -DirectX::XM_PI / 2, 0 };
+    Erato->Scale = { 0.5f, 0.5f, 0.5f };
+
+    mAllDrawableObjects[Erato->Name] = Erato;
+
     const float spacing = 2.0f;
     XMFLOAT3 StartPosition = XMFLOAT3(30.0f, 15.0f, 1.0f);
     for (int row = 0; row < 11; ++row)
@@ -466,14 +552,11 @@ void StencilApp::MakeDrawableObjects()
         RoomObject->Scale = { 3.0f, 3.0f, 3.0f };
         RoomObject->WorldLocation = { 0.f, 5.f, 0.f };
         RoomObject->WorldRotation = { 0.f, DirectX::XM_PI / 2, 0.f };
+        RoomObject->MaterialName = "sphere_mat_0_0";
 
-        if (i == 21)
-        {
-            RoomObject->MaterialName = "Picture";
-            RoomObject->WorldLocation.x = -0.5f;
-        }
-        if (i == 10 || i == 15) RoomObject->MaterialName = "Black";
-        else RoomObject->MaterialName = "sphere_mat_0_0";
+        if (i == 21 || i == 10 || i == 15 || i == 4 || i == 17) RoomObject->MaterialName = MeshParsingResults[name][0].GeneratedMaterial.Name;
+        if (i == 12) RoomObject->MaterialName = "Orange";
+        if (i == 21) RoomObject->WorldLocation.x = -0.5f;
 
         mAllDrawableObjects[RoomObject->Name] = RoomObject;
     }
