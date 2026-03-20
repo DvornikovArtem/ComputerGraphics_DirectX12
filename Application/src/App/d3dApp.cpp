@@ -370,9 +370,11 @@ void D3DApp::CalculateFrameStats()
         wstring fpsStr = to_wstring(fps);
         wstring mspfStr = to_wstring(mspf);
 
-        wstring windowText = mMainWndCaption +
-            L"    fps: " + fpsStr +
-            L"   mspf: " + mspfStr;
+		wstring windowText = mMainWndCaption +
+			L"    fps: " + fpsStr +
+			L"   mspf: " + mspfStr +
+			L" Primary: " + mRenderingSystem->PrimaryDeviceName;
+			if (mRenderingSystem->MultiGPUMode()) windowText += L", Secondary: " + mRenderingSystem->SecondaryDeviceName;
 
         SetWindowText(mhMainWnd, windowText.c_str());
 		

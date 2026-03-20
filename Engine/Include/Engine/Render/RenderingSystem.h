@@ -187,6 +187,8 @@ public:
     bool GetShowBounds() const { return mShowBounds; }
     void SetShowBounds(bool v) { mShowBounds = v; }
 
+    bool MultiGPUMode() { return !mUseSingleGPU; }
+
 protected:
     bool mVSync = false;
     bool mWireframe = false;
@@ -325,6 +327,9 @@ public:
     void EndMouseLook();
 
     void RegisterScenePanels();
+
+    std::wstring PrimaryDeviceName = L"";
+    std::wstring SecondaryDeviceName = L"";
 
 protected:
     // SRV for imgui

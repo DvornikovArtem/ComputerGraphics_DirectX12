@@ -127,6 +127,7 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 
 			OutputDebugStringW(L"PRIMARY DEVICE: ");
 			OutputDebugStringW(primaryDesc.Description);
+			PrimaryDeviceName = primaryDesc.Description;
 			OutputDebugStringA("\n");
 
 			char primaryMemory[256];
@@ -135,6 +136,7 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 
 			OutputDebugStringW(L"SECONDARY DEVICE: ");
 			OutputDebugStringW(secondaryDesc.Description);
+			SecondaryDeviceName = secondaryDesc.Description;
 			OutputDebugStringA("\n");
 
 			char secondaryMemory[256];
@@ -155,6 +157,7 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 
 		OutputDebugStringW(L"USING DEVICE: ");
 		OutputDebugStringW(primaryDesc.Description);
+		PrimaryDeviceName = primaryDesc.Description;
 		OutputDebugStringA("\n");
 
 		char primaryMemory[256];
