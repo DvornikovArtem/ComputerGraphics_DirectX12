@@ -44,9 +44,9 @@ void EmitCS(uint3 dispatchThreadID : SV_DispatchThreadID)
     ParticlePool[deadIndex].Pos = cbParticle.EmitterPos;
     ParticlePool[deadIndex].LifeTime = 2.0f + rand1 * 2.0f;
     ParticlePool[deadIndex].Velocity = float3(
-        rand2 * 2.0f - 1.0f, // x [-1, 1]
-        1.0f + rand3 * 3.0f, // y [2, 5]
-        rand4 * 2.0f - 1.0f // z [-1, 1]
+        rand2 * 1.0f - 1.0f, // x [-1, 1]
+        1.0f + rand3 * 2.0f, // y [2, 5]
+        rand4 * 1.0f - 1.0f // z [-1, 1]
     ) * 2.0f;
     ParticlePool[deadIndex].Size = cbParticle.ParticleSize;
     

@@ -464,7 +464,7 @@ protected:
     std::unordered_map<std::string, Microsoft::WRL::ComPtr<ID3D12PipelineState>> GlobalPSOs2;
     std::unordered_map<std::string, Microsoft::WRL::ComPtr<ID3D12RootSignature>> RootSignatures2;
 
-    const bool mUseSingleGPU = false;
+    const bool mUseSingleGPU = true;
 // =================================================================================================
 };
 

@@ -197,11 +197,11 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 	//check Highest Supported Shader Model
 	D3D12_FEATURE_DATA_SHADER_MODEL shaderModel;
 	D3D_SHADER_MODEL testModels[] = {
-		D3D_SHADER_MODEL_6_8,
-		D3D_SHADER_MODEL_6_7,
-		D3D_SHADER_MODEL_6_6,
-		D3D_SHADER_MODEL_6_5,
-		D3D_SHADER_MODEL_6_4,
+		//D3D_SHADER_MODEL_6_8,
+		//D3D_SHADER_MODEL_6_7,
+		//D3D_SHADER_MODEL_6_6,
+		//D3D_SHADER_MODEL_6_5,
+		//D3D_SHADER_MODEL_6_4,
 		D3D_SHADER_MODEL_6_3,
 		D3D_SHADER_MODEL_6_2,
 		D3D_SHADER_MODEL_6_1,
@@ -254,7 +254,7 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 		// Get the increment size of a descriptor in this heap type.  This is hardware specific, 
 		// so we have to query this information.
 	mCbvSrvDescriptorSize = md3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-	mCbvSrvDescriptorSize2 = md3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	mCbvSrvDescriptorSize2 = md3dDevice2->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
 	BuildRootSignatures();
 	BuildInputLayout();
@@ -3363,7 +3363,7 @@ std::vector<MeshParsingResult> RenderingSystem::BuildMeshGeometry(std::string Na
 					if (material->GetTextureCount(texType) > 0)
 					{
 						aiString texturePath;
-						aiTexture* embeddedTexture;
+						aiTexture* embeddedTexture = nullptr;
 						if (material->GetTexture(texType, 0, &texturePath) == AI_SUCCESS)
 						{
 							for (unsigned int i = 0; i < scene->mNumTextures; ++i) {
@@ -3380,7 +3380,7 @@ std::vector<MeshParsingResult> RenderingSystem::BuildMeshGeometry(std::string Na
 							size_t dotPos = TextureName.find_last_of('.');
 							if (dotPos != std::string::npos) { TextureName = TextureName.substr(0, dotPos); }
 
-							ProcessEmbeddedTexture(embeddedTexture, TextureName);
+							if (embeddedTexture) ProcessEmbeddedTexture(embeddedTexture, TextureName);
 
 							switch (texType)
 							{
@@ -3510,11 +3510,13 @@ std::vector<MeshParsingResult> RenderingSystem::BuildMeshGeometry(std::string Na
 					if (material->GetTextureCount(texType) > 0)
 					{
 						aiString texturePath;
-						aiTexture* embeddedTexture;
+						aiTexture* embeddedTexture = nullptr;
 						if (material->GetTexture(texType, 0, &texturePath) == AI_SUCCESS)
 						{
-							for (unsigned int i = 0; i < scene->mNumTextures; ++i) {
-								if (scene->mTextures[i]->mFilename == texturePath) {
+							for (unsigned int i = 0; i < scene->mNumTextures; ++i) 
+							{
+								if (scene->mTextures[i]->mFilename == texturePath) 
+								{
 									embeddedTexture = scene->mTextures[i];
 									break;
 								}
@@ -3527,7 +3529,7 @@ std::vector<MeshParsingResult> RenderingSystem::BuildMeshGeometry(std::string Na
 							size_t dotPos = TextureName.find_last_of('.');
 							if (dotPos != std::string::npos) { TextureName = TextureName.substr(0, dotPos); }
 
-							ProcessEmbeddedTexture(embeddedTexture, TextureName);
+							if (embeddedTexture) ProcessEmbeddedTexture(embeddedTexture, TextureName);
 
 							switch (texType)
 							{

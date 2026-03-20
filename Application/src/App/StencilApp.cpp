@@ -49,7 +49,7 @@ private:
     float mOrbitRadius = 10.0f;         
     float mOrbitHeight = 5.0f;          
     XMFLOAT3 mTargetPosition = { 0.0f, 2.0f, 0.0f }; 
-    bool mUseOrbitCamera = true;
+    bool mUseOrbitCamera = false;
 };
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prevInstance,
@@ -131,15 +131,13 @@ void StencilApp::Update(const GameTimer& gt)
 
     //Set NeedsUpdate for every object that changes its values at runtime
 
-    mAllDrawableObjects["Head"]->WorldRotation.y = gt.TotalTime();
+    mAllDrawableObjects["Head"]->WorldRotation.y = gt.TotalTime() * 0.5;
     DrawableObjectUpdateList.push_back(mAllDrawableObjects["Head"]);
-
-    mAllLightObjects["Spot1"]->Color = { 0.5f + 0.5f * cos(gt.TotalTime()) , 0.5f + 0.5f * cos(gt.TotalTime() + 1) , 0.5f + 0.5f * cos(gt.TotalTime() + 4) };
-    LightObjectUpdateList.push_back(mAllLightObjects["Spot1"]);
 
     LightObjectUpdateList.push_back(mAllLightObjects["Direct1"]);
 
-    mAllLightObjects["Point1"]->WorldLocation = { 1.f + sin(gt.TotalTime()) * 3, 2.f, 1.f + cos(gt.TotalTime()) * 3 };
+    mAllLightObjects["Point1"]->WorldLocation = { -4.f + sin(gt.TotalTime()) * 3, 4.f, 2.f + cos(gt.TotalTime()) * 3 };
+    mAllLightObjects["Point1"]->Color = { 0.5f + 0.5f * cos(gt.TotalTime()) , 0.5f + 0.5f * cos(gt.TotalTime() + 1) , 0.5f + 0.5f * cos(gt.TotalTime() + 4) };
     LightObjectUpdateList.push_back(mAllLightObjects["Point1"]);
 
     mRenderingSystem->Update(DrawableObjectUpdateList, LightObjectUpdateList);
@@ -208,6 +206,19 @@ void StencilApp::OnKeyboardInput(const GameTimer& gt)
     //    mRenderingSystem->mCamera.UpdateViewMatrix();
     //    return;
     //}
+
+    if (GetAsyncKeyState('X') & 0x8000)
+    {
+        mAllDrawableObjects["Patrick"]->WorldLocation.y += 0.1;
+        DrawableObjectUpdateList.push_back(mAllDrawableObjects["Patrick"]);
+    }
+
+    if (GetAsyncKeyState('C') & 0x8000)
+    {
+        mAllDrawableObjects["Patrick"]->WorldLocation.y -= 0.1;
+        DrawableObjectUpdateList.push_back(mAllDrawableObjects["Patrick"]);
+    }
+
 
     const float dt = gt.DeltaTime();
     const float speed = mRenderingSystem->mCamera.GetMoveSpeed();
@@ -291,7 +302,14 @@ void StencilApp::LoadMeshes()
     MeshParsingResults["Head"] = mRenderingSystem->LoadMesh(MeshDesc("Head", "assets/models/african_head.obj", MeshDesc::ImportType::SingleMesh), false);
     MeshParsingResults["PatrickStar"] = mRenderingSystem->LoadMesh(MeshDesc("PatrickStar", "assets/models/patrickstarW5LODs.fbx", MeshDesc::ImportType::LODed), false);
     MeshParsingResults["Svidetel"] = mRenderingSystem->LoadMesh(MeshDesc("Svidetel", "assets/models/Svidetel.fbx", MeshDesc::ImportType::SingleMesh), true);
-    MeshParsingResults["Statue"] = mRenderingSystem->LoadMesh(MeshDesc("Statue", "assets/models/Statue.fbx", MeshDesc::ImportType::SingleMesh), true);
+
+    for (int i = 1; i < 22; i++)
+    {
+        std::string name = std::to_string(i);
+        std::string path = "assets/models/Room/" + name + ".fbx";
+        MeshParsingResults[name] =
+            mRenderingSystem->LoadMesh(MeshDesc(name, path, MeshDesc::ImportType::SingleMesh), false);
+    }
 }
 
 void StencilApp::LoadTextures()
@@ -308,19 +326,12 @@ void StencilApp::LoadTextures()
         TextureDesc("yellow1x1Tex", L"assets/textures/yellow1x1.dds", TextureDesc::Texture2D, true),
         TextureDesc("AH_Diffuse", L"assets/textures/african_head_diffuse.dds", TextureDesc::Texture2D, true),
         TextureDesc("redTex", L"assets/textures/rsq.dds", TextureDesc::Texture2D, true),
-        TextureDesc("woodCrateTex", L"assets/textures/WoodCrate01.dds", TextureDesc::Texture2D, true),
         TextureDesc("PatrickTex", L"assets/textures/patrickstar.dds", TextureDesc::Texture2D, true),
-        TextureDesc("Semechki_Diffuse", L"assets/textures/semente_BaseColor.dds", TextureDesc::Texture2D, true),
-        TextureDesc("Semechki_NormalMap", L"assets/textures/semente_Normal.dds", TextureDesc::Texture2D, false),
-        TextureDesc("Semechki_HeightMap", L"assets/textures/semente_Height.dds", TextureDesc::Texture2D, false),
-        TextureDesc("ShinyStones_Diffuse", L"assets/textures/ShinyStones_Diffuse.dds", TextureDesc::Texture2D, true),
-        TextureDesc("ShinyStones_NormalMap", L"assets/textures/ShinyStones_NormalMap.dds", TextureDesc::Texture2D, false),
-        TextureDesc("ShinyStones_HeightMap", L"assets/textures/ShinyStones_HeightMap.dds", TextureDesc::Texture2D, false),
-        TextureDesc("SkyCubeMap", L"assets/skyboxes/snowcube1024.dds", TextureDesc::CubeMap, true),
-
         TextureDesc("SkyPref", L"assets/textures/skyPrefilter.dds", TextureDesc::CubeMap, true),
         TextureDesc("SkyBRDF", L"assets/textures/skyBrdf.dds", TextureDesc::Texture2D, false),
         TextureDesc("SkyIrradiance", L"assets/textures/skyIrradiance.dds", TextureDesc::CubeMap, false),
+
+        TextureDesc("Picture", L"assets/textures/picture.dds", TextureDesc::Texture2D, true),
 
         //TextureDesc("SkyPref", L"assets/textures/roomPrefilter.dds", TextureDesc::CubeMap, true),
         //TextureDesc("SkyBRDF", L"assets/textures/roomBrdf.dds", TextureDesc::Texture2D, false),
@@ -338,12 +349,11 @@ void StencilApp::MakeMaterials()
         MaterialDesc("bricks", "standardVS", "standardPS",  "", "", "bricksTex", "", "", 0.25f, 0.f, false),
         MaterialDesc("Bricks_DecalTesting", "standardVS", "standardPS", "", "", "bricksTex", "ShinyStones_NormalMap", "ShinyStones_HeightMap", 0.3f, 0.f, false),
         MaterialDesc("AH", "standardVS", "standardPS", "", "", "AH_Diffuse", "", "", 0.99f, 0.f, false),
-        MaterialDesc("woodCrate", "standardVS", "RotatingTilesPS", "", "", "woodCrateTex", "", "", 0.2f, 0.05f, false),
         MaterialDesc("PatrickMat", "standardVS", "standardPS", "", "", "PatrickTex", "", "", 0.3f, 0.f, false),
-        MaterialDesc("Semechki", "standardVS", "standardPS", "standardHS", "standardDS", "Semechki_Diffuse", "Semechki_NormalMap", "Semechki_HeightMap", 0.3f, 0.f, true),
-        MaterialDesc("ShinyStones", "standardVS", "standardPS", "standardHS", "standardDS", "ShinyStones_Diffuse", "ShinyStones_NormalMap", "ShinyStones_HeightMap", 0.3f, 0.f, true),
         MaterialDesc("SkyBox", "SkyBoxVS", "SkyBoxPS",  "", "", "SkyPref", "", "", 1.f, 0.f, false),
-        MaterialDesc("MetallicYellow", "standardVS", "standardPS", "", "", "yellow1x1Tex", "", "", 0.3f, 0.8f, false)
+        MaterialDesc("MetallicYellow", "standardVS", "standardPS", "", "", "yellow1x1Tex", "", "", 0.3f, 0.8f, false),
+        MaterialDesc("Picture", "standardVS", "standardPS", "", "", "Picture", "", "", 0.3f, 0.0f, false),
+        MaterialDesc("Black", "standardVS", "standardPS", "", "", "", "", "", 0.3f, 0.0f, false),
     };
 
     MeshParsingResults["Svidetel"][0].GeneratedMaterial.Roughness = 0.99f;
@@ -390,25 +400,11 @@ void StencilApp::MakeDrawableObjects()
     Svidetel->GeometryName = MeshParsingResults["Svidetel"][0].GeometryName;
     Svidetel->MaterialName = MeshParsingResults["Svidetel"][0].GeneratedMaterial.Name;
     Svidetel->renderLayer = RenderLayer::Opaque;
-    Svidetel->WorldLocation = XMFLOAT3(1.5f, 0.2f, 0.f);
-    Svidetel->Scale = XMFLOAT3(2.f, 2.f, 2.f);
-    Svidetel->HasOutline = true;
-    Svidetel->OutlineColor = { 1.f, 0.53f, 0.f };
+    Svidetel->WorldLocation = XMFLOAT3(-11.f, 4.9f, -2.f);
+    Svidetel->Scale = XMFLOAT3(3.f, 3.f, 3.f);
+    Svidetel->WorldRotation = { 0, DirectX::XM_PI / 2, 0 };
 
     mAllDrawableObjects[Svidetel->Name] = Svidetel;
-
-    DrawableObject* Statue = new DrawableObject();
-    Statue->Name = "Statue";
-    Statue->GeometryName = MeshParsingResults["Statue"][0].GeometryName;
-    Statue->MaterialName = "MetallicYellow";
-    Statue->renderLayer = RenderLayer::Opaque;
-    Statue->WorldLocation = XMFLOAT3(-15.f, 0.5f, -10.f);
-    Statue->WorldRotation = XMFLOAT3(0.f, DirectX::XM_PI / 4, DirectX::XM_PI);
-    Statue->Scale = XMFLOAT3(0.1f, 0.1f, 0.1f);
-    Statue->HasOutline = true;
-    Statue->OutlineColor = { 1.f, 0.f, 0.f };
-
-    mAllDrawableObjects[Statue->Name] = Statue;
 
     DrawableObject* SkyBoxSphere = new DrawableObject();
     SkyBoxSphere->Name = "SkyBoxSphere";
@@ -419,48 +415,12 @@ void StencilApp::MakeDrawableObjects()
 
     mAllDrawableObjects[SkyBoxSphere->Name] = SkyBoxSphere;
 
-    DrawableObject* TesselationTestSphere = new DrawableObject();
-    TesselationTestSphere->Name = "TesselationTestSphere";
-    TesselationTestSphere->GeometryName = "Sphere";
-    TesselationTestSphere->MaterialName = "Semechki";
-    TesselationTestSphere->renderLayer = RenderLayer::Opaque;
-    TesselationTestSphere->WorldLocation = XMFLOAT3(5.f, 3.f, -1.f);
-    TesselationTestSphere->Scale = XMFLOAT3(2.5f, 2.5f, 2.5f);
-    TesselationTestSphere->TexTransform = XMMatrixScaling(5.0f, 5.0f, 1.0f);
-
-    mAllDrawableObjects[TesselationTestSphere->Name] = TesselationTestSphere;
-
-    DrawableObject* DecalTestCylinder = new DrawableObject();
-    DecalTestCylinder->Name = "DecalTestCylinder";
-    DecalTestCylinder->GeometryName = "Cylinder";
-    DecalTestCylinder->MaterialName = "bricks";
-    DecalTestCylinder->renderLayer = RenderLayer::Opaque;
-    DecalTestCylinder->WorldLocation = XMFLOAT3(10.f, 3.f, 5.f);
-    DecalTestCylinder->Scale = XMFLOAT3(5.0f, 5.0f, 5.0f);
-    DecalTestCylinder->TexTransform = XMMatrixScaling(5.0f, 5.0f, 1.0f);
-
-    mAllDrawableObjects[DecalTestCylinder->Name] = DecalTestCylinder;
-
-
-    DrawableObject* Floor = new DrawableObject();
-    Floor->Name = "Floor";
-    Floor->GeometryName = "Grid";
-    Floor->MaterialName = "woodCrate";
-    Floor->renderLayer = RenderLayer::Opaque;
-    Floor->Scale = XMFLOAT3(5.0f, 1.0f, 5.0f);
-    Floor->WorldLocation = XMFLOAT3(0.f, 0.1f, 0.f);
-    Floor->TexTransform = XMMatrixScaling(50.0f, 50.0f, 1.0f);
-
-    mAllDrawableObjects[Floor->Name] = Floor;
-
     DrawableObject* Head = new DrawableObject();
     Head->Name = "Head";
     Head->GeometryName = "Head";
     Head->MaterialName = "AH";
     Head->renderLayer = RenderLayer::Opaque;
-    Head->WorldLocation = XMFLOAT3(0.f, 2.f, 0.f);
-    Head->HasOutline = true;
-    Head->OutlineColor = { 0.f, 0.65f, 1.f };
+    Head->WorldLocation = XMFLOAT3(-5.f, 2.f, 2.f);
 
     mAllDrawableObjects[Head->Name] = Head;
 
@@ -469,15 +429,18 @@ void StencilApp::MakeDrawableObjects()
     Patrick1->GeometryName = MeshParsingResults["PatrickStar"][0].GeometryName;
     Patrick1->MaterialName = "PatrickMat";
     Patrick1->renderLayer = RenderLayer::Opaque;
-    Patrick1->WorldLocation = XMFLOAT3(-3.0f, 2.0f, -1.0f);
-    Patrick1->HasOutline = true;
-    Patrick1->OutlineColor = { 1.f, 0.f, 0.93f };
+    Patrick1->WorldLocation = XMFLOAT3(-0.0f, 7.f, -2.0f);
+    Patrick1->WorldRotation = { 0, -DirectX::XM_PI / 2, 0 };
+    Patrick1->Scale = { 2.f, 2.f, 2.f };
 
     mAllDrawableObjects[Patrick1->Name] = Patrick1;
 
     const float spacing = 2.0f;
-    for (int row = 0; row < 11; ++row) {
-        for (int col = 0; col < 11; ++col) {
+    XMFLOAT3 StartPosition = XMFLOAT3(30.0f, 15.0f, 1.0f);
+    for (int row = 0; row < 11; ++row)
+    {
+        for (int col = 0; col < 11; ++col)
+        {
             auto sphere = new DrawableObject();
             sphere->Name = "Sphere" + std::to_string(row) + "_" + std::to_string(col);
             sphere->GeometryName = "Sphere";
@@ -485,13 +448,34 @@ void StencilApp::MakeDrawableObjects()
             sphere->renderLayer = RenderLayer::Opaque;
             sphere->Scale = XMFLOAT3(1.0f, 1.0f, 1.0f);
             sphere->WorldLocation = XMFLOAT3(
-                (col - 5) * spacing,
-                1.0f,
-                -30.f + (row - 5) * spacing
-            );
+                StartPosition.x,
+                StartPosition.y + (row - 5) * spacing,
+                StartPosition.z + (col - 5) * spacing);
 
             mAllDrawableObjects[sphere->Name] = sphere;
         }
+    }
+
+    for (int i = 1; i < 22; i++)
+    {
+        std::string name = std::to_string(i);
+        auto RoomObject = new DrawableObject();
+        RoomObject->Name = "Room_" + name;
+        RoomObject->GeometryName = MeshParsingResults[name][0].GeometryName;
+        RoomObject->renderLayer = RenderLayer::Opaque;
+        RoomObject->Scale = { 3.0f, 3.0f, 3.0f };
+        RoomObject->WorldLocation = { 0.f, 5.f, 0.f };
+        RoomObject->WorldRotation = { 0.f, DirectX::XM_PI / 2, 0.f };
+
+        if (i == 21)
+        {
+            RoomObject->MaterialName = "Picture";
+            RoomObject->WorldLocation.x = -0.5f;
+        }
+        if (i == 10 || i == 15) RoomObject->MaterialName = "Black";
+        else RoomObject->MaterialName = "sphere_mat_0_0";
+
+        mAllDrawableObjects[RoomObject->Name] = RoomObject;
     }
 
     mRenderingSystem->BuildRenderItems(mAllDrawableObjects);
@@ -518,18 +502,27 @@ void StencilApp::MakeLights()
 
     mAllLightObjects[Point1->Name] = Point1;
 
-    auto Spot1 = new LightObject;
-    Spot1->Name = "Spot1";
-    Spot1->LightType = LightType::Spotlight;
-    Spot1->WorldLocation = { 4.f, 20.f, 5.f };
-    Spot1->Strength = 0.6f; //0.3 //probably defines the brightness
-    Spot1->Color = { 0.f, 1.f, 0.f };
-    Spot1->FalloffStart = 1.f;
-    Spot1->FalloffEnd = 100.f; //100 //defines how far it lights
-    Spot1->SpotPower = 20.f; //20 //defines how sharp it is
-    Spot1->WorldDirection = { 0.5f, -1.f, 0.f };
+    auto Point2 = new LightObject;
+    Point2->Name = "Point2";
+    Point2->LightType = LightType::Pointlight;
+    Point2->WorldLocation = { -4.5f, 14.f, -3.f };
+    Point2->Strength = 2.f;
+    Point2->Color = { 1.f, 1.f, 1.f };
+    Point2->FalloffStart = 1.f;
+    Point2->FalloffEnd = 9.f;
 
-    mAllLightObjects[Spot1->Name] = Spot1;
+    mAllLightObjects[Point2->Name] = Point2;
+
+    auto Point3 = new LightObject;
+    Point3->Name = "Point3";
+    Point3->LightType = LightType::Pointlight;
+    Point3->WorldLocation = { -4.5f, 14.f, 8.f };
+    Point3->Strength = 2.f;
+    Point3->Color = { 1.f, 1.f, 1.f };
+    Point3->FalloffStart = 1.f;
+    Point3->FalloffEnd = 9.f;
+
+    mAllLightObjects[Point3->Name] = Point3;
 
     mRenderingSystem->BuildLightItems(mAllLightObjects);
 }
@@ -539,31 +532,16 @@ void StencilApp::MakeParticleSystems()
     ParticleSystemDescriptor fireworkParticleSystemDesc;
     
     fireworkParticleSystemDesc.name = "fireworkParticleSystem";
-    fireworkParticleSystemDesc.emitterPosition = { -6.0f, 2.0f, -6.0f };
+    fireworkParticleSystemDesc.emitterPosition = { -7.0f, 9.5f, 0.5f };
     fireworkParticleSystemDesc.numParticlesToEmit = 10;
     fireworkParticleSystemDesc.maxParticles = 256;
     fireworkParticleSystemDesc.particleSize = 0.1f;
     fireworkParticleSystemDesc.emitComputeShaderName = "EmitCS";
     fireworkParticleSystemDesc.simulateComputeShaderName = "SimulateCS2";
-    fireworkParticleSystemDesc.particleGeometryName = MeshParsingResults["Svidetel"][0].GeometryName;
-    fireworkParticleSystemDesc.IsBillboard = false;
+    fireworkParticleSystemDesc.particleGeometryName = "2DCircle";
+    fireworkParticleSystemDesc.IsBillboard = true;
 
     mParticleSystemDescriptors[fireworkParticleSystemDesc.name] = fireworkParticleSystemDesc;
-
-    
-    ParticleSystemDescriptor smokeParticleSystemDesc;
-
-    smokeParticleSystemDesc.name = "smokeParticleSystem";
-    smokeParticleSystemDesc.emitterPosition = { -10.0f, 2.0f, -10.0f };
-    smokeParticleSystemDesc.numParticlesToEmit = 1000;
-    smokeParticleSystemDesc.maxParticles = 3000;
-    smokeParticleSystemDesc.particleSize = 0.02f;
-    smokeParticleSystemDesc.emitComputeShaderName = "EmitSmokeCS";
-    smokeParticleSystemDesc.simulateComputeShaderName = "SimulateSmokeCS";
-    smokeParticleSystemDesc.particleGeometryName = "2DCircle";
-    smokeParticleSystemDesc.IsBillboard = true;
-
-    mParticleSystemDescriptors[smokeParticleSystemDesc.name] = smokeParticleSystemDesc;
 
     mRenderingSystem->BuildParticleSystems(mParticleSystemDescriptors);
 }
