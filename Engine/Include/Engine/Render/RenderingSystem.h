@@ -465,6 +465,7 @@ protected:
     std::unordered_map<std::string, Microsoft::WRL::ComPtr<ID3D12RootSignature>> RootSignatures2;
 
     const bool mUseSingleGPU = true;
+    const bool mSwapDevices = false;
 // =================================================================================================
 };
 

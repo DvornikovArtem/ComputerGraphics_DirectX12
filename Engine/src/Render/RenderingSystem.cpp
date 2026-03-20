@@ -104,9 +104,11 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 
 	if (!mUseSingleGPU)
 	{
-		//SWAP PRIMARY AND SECONDARY DEVICES HERE IF NEEDED
-		//std::swap(md3dDevice, md3dDevice2);
-		//primaryDeviceLuid = md3dDevice->GetAdapterLuid();
+		if (mSwapDevices)
+		{
+			std::swap(md3dDevice, md3dDevice2);
+			primaryDeviceLuid = md3dDevice->GetAdapterLuid();
+		}
 
 		if (secondDeviceCreated)
 		{
@@ -3017,14 +3019,25 @@ void RenderingSystem::Update(std::vector<DrawableObject*>& mAllObjectsToUpdate, 
 	mCurrFrameResourceIndex = (mCurrFrameResourceIndex + 1) % gNumFrameResources;
 	mCurrFrameResource = mFrameResources[mCurrFrameResourceIndex].get();
 
-	// Has the GPU finished processing the commands of the current frame resource?
-	// If not, wait until the GPU has completed commands up to this fence point.
-	if (mCurrFrameResource->Fence != 0 && mFence->GetCompletedValue() < mCurrFrameResource->Fence)
+	if (!mUseSingleGPU)
 	{
-		HANDLE eventHandle = CreateEventEx(nullptr, false, false, EVENT_ALL_ACCESS);
-		ThrowIfFailed(mFence->SetEventOnCompletion(mCurrFrameResource->Fence, eventHandle));
-		WaitForSingleObject(eventHandle, INFINITE);
-		CloseHandle(eventHandle);
+		if (mCurrFrameResource->Fence2 != 0 && mFence2->GetCompletedValue() < mCurrFrameResource->Fence2)
+		{
+			HANDLE eventHandle = CreateEventEx(nullptr, false, false, EVENT_ALL_ACCESS);
+			ThrowIfFailed(mFence2->SetEventOnCompletion(mCurrFrameResource->Fence2, eventHandle));
+			WaitForSingleObject(eventHandle, INFINITE);
+			CloseHandle(eventHandle);
+		}
+	}
+	else
+	{
+		if (mCurrFrameResource->Fence != 0 && mFence->GetCompletedValue() < mCurrFrameResource->Fence)
+		{
+			HANDLE eventHandle = CreateEventEx(nullptr, false, false, EVENT_ALL_ACCESS);
+			ThrowIfFailed(mFence->SetEventOnCompletion(mCurrFrameResource->Fence, eventHandle));
+			WaitForSingleObject(eventHandle, INFINITE);
+			CloseHandle(eventHandle);
+		}
 	}
 
 	if (mTAAEnabled) CalculateJitter();

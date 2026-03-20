@@ -390,9 +390,6 @@ void StencilApp::LoadTextures()
     // DDS textures only
     std::vector<TextureDesc> TexDescs = 
     {
-        TextureDesc("bricksTex", L"assets/textures/bricks3.dds", TextureDesc::Texture2D, true),
-        TextureDesc("checkboardTex", L"assets/textures/checkboard.dds", TextureDesc::Texture2D, true),
-        TextureDesc("iceTex", L"assets/textures/ice.dds", TextureDesc::Texture2D, true),
         TextureDesc("white1x1Tex", L"assets/textures/white1x1.dds", TextureDesc::Texture2D, true),
         TextureDesc("yellow1x1Tex", L"assets/textures/yellow1x1.dds", TextureDesc::Texture2D, true),
         TextureDesc("AH_Diffuse", L"assets/textures/african_head_diffuse.dds", TextureDesc::Texture2D, true),
@@ -401,8 +398,6 @@ void StencilApp::LoadTextures()
         TextureDesc("SkyPref", L"assets/textures/skyPrefilter.dds", TextureDesc::CubeMap, true),
         TextureDesc("SkyBRDF", L"assets/textures/skyBrdf.dds", TextureDesc::Texture2D, false),
         TextureDesc("SkyIrradiance", L"assets/textures/skyIrradiance.dds", TextureDesc::CubeMap, false),
-
-        TextureDesc("Picture", L"assets/textures/picture.dds", TextureDesc::Texture2D, true),
         TextureDesc("OrangeTex", L"assets/textures/orange1x1.dds", TextureDesc::Texture2D, true),
 
         //TextureDesc("SkyPref", L"assets/textures/roomPrefilter.dds", TextureDesc::CubeMap, true),
@@ -418,13 +413,10 @@ void StencilApp::MakeMaterials()
     //You can modify Mesh Parsing Result materials here, before they are fully initialized
     std::vector<MaterialDesc> MaterialDescs =
     {
-        MaterialDesc("bricks", "standardVS", "standardPS",  "", "", "bricksTex", "", "", 0.25f, 0.f, false),
-        MaterialDesc("Bricks_DecalTesting", "standardVS", "standardPS", "", "", "bricksTex", "ShinyStones_NormalMap", "ShinyStones_HeightMap", 0.3f, 0.f, false),
         MaterialDesc("AH", "standardVS", "standardPS", "", "", "AH_Diffuse", "", "", 0.99f, 0.f, false),
         MaterialDesc("PatrickMat", "standardVS", "standardPS", "", "", "PatrickTex", "", "", 0.3f, 0.f, false),
         MaterialDesc("SkyBox", "SkyBoxVS", "SkyBoxPS",  "", "", "SkyPref", "", "", 1.f, 0.f, false),
         MaterialDesc("MetallicYellow", "standardVS", "standardPS", "", "", "yellow1x1Tex", "", "", 0.3f, 0.8f, false),
-        MaterialDesc("Picture", "standardVS", "standardPS", "", "", "Picture", "", "", 0.3f, 0.0f, false),
         MaterialDesc("Black", "standardVS", "standardPS", "", "", "", "", "", 0.3f, 0.0f, false),
         MaterialDesc("Orange", "standardVS", "standardPS", "", "", "OrangeTex", "", "", 0.3f, 0.3f, false),
     };
