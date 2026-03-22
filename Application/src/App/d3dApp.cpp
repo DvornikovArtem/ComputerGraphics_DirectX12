@@ -40,7 +40,8 @@ D3DApp::~D3DApp()
 	std::wstring primaryName = mRenderingSystem->PrimaryDeviceName;
 	std::wstring secondaryName = mRenderingSystem->SecondaryDeviceName;
 	bool multiGPUMode = mRenderingSystem->MultiGPUMode();
-	StatsLogger::GetInstance()->GenerateReport(primaryName, secondaryName, multiGPUMode);
+	bool swappedDevices = mRenderingSystem->GetSwappedDevices();
+	StatsLogger::GetInstance()->GenerateReport(primaryName, secondaryName, multiGPUMode, swappedDevices);
 
 	if (mRenderingSystem->getd3dDevice() != nullptr) {
 		mRenderingSystem->FlushCommandQueue();
@@ -375,8 +376,8 @@ void D3DApp::CalculateFrameStats()
 
 
 		auto Logger = StatsLogger::GetInstance();
-		Logger->RecordFrameTime(mspf);
-		if (Logger->GetNumLogs() >= 5) PostQuitMessage(0);
+		Logger->RecordTotalMspf(mspf);
+		if (Logger->GetNumLogs() >= 200) PostQuitMessage(0);
 
         wstring fpsStr = to_wstring(fps);
         wstring mspfStr = to_wstring(mspf);
@@ -385,7 +386,11 @@ void D3DApp::CalculateFrameStats()
 			L"    fps: " + fpsStr +
 			L"   mspf: " + mspfStr +
 			L" Primary: " + mRenderingSystem->PrimaryDeviceName;
-			if (mRenderingSystem->MultiGPUMode()) windowText += L", Secondary: " + mRenderingSystem->SecondaryDeviceName;
+		if (mRenderingSystem->MultiGPUMode())
+		{
+			windowText += L", Secondary: " + mRenderingSystem->SecondaryDeviceName;
+			Logger->RecordPrimaryGPUMspf(mRenderingSystem->GetPrimaryGPUMspf());
+		}
 
         SetWindowText(mhMainWnd, windowText.c_str());
 		

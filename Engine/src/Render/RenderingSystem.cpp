@@ -752,6 +752,24 @@ void RenderingSystem::Render()
 			ID3D12CommandList* cmdsLists[] = { cmdList.Get() };
 			mCommandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
 
+			if (mCurrFrameResource->Fence != mLastPrimaryFenceValue && mCurrFrameResource->Fence > 0)
+			{
+				LARGE_INTEGER currentTime;
+				QueryPerformanceCounter(&currentTime);
+
+				if (mLastPrimaryTime.QuadPart != 0)
+				{
+					LARGE_INTEGER freq;
+					QueryPerformanceFrequency(&freq);
+
+					double elapsedMs = (currentTime.QuadPart - mLastPrimaryTime.QuadPart) * 1000.0 / freq.QuadPart;
+					mPrimaryGPUMspf = static_cast<float>(elapsedMs);
+				}
+
+				mLastPrimaryTime = currentTime;
+				mLastPrimaryFenceValue = mCurrFrameResource->Fence;
+			}
+
 			mCurrFrameResource->Fence = ++mCurrentFence;
 			mCommandQueue->Signal(mFence.Get(), mCurrentFence);
 		}

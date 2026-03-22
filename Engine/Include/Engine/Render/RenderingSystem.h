@@ -469,8 +469,17 @@ protected:
     std::unordered_map<std::string, Microsoft::WRL::ComPtr<ID3D12PipelineState>> GlobalPSOs2;
     std::unordered_map<std::string, Microsoft::WRL::ComPtr<ID3D12RootSignature>> RootSignatures2;
 
-    const bool mUseSingleGPU = true;
-    const bool mSwapDevices = false;
+public:
+    float GetPrimaryGPUMspf() const { return mPrimaryGPUMspf; }
+    bool GetSwappedDevices() const { return mSwapDevices; }
+
+private:
+    float mPrimaryGPUMspf = 0.0f;
+    UINT64 mLastPrimaryFenceValue = 0;
+    LARGE_INTEGER mLastPrimaryTime = { 0 };
+
+    const bool mUseSingleGPU = false;
+    const bool mSwapDevices = true;
 // =================================================================================================
 };
 

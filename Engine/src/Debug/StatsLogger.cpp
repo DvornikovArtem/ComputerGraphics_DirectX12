@@ -12,17 +12,27 @@ StatsLogger* StatsLogger::GetInstance()
     return mInstance;
 }
 
-void StatsLogger::RecordFrameTime(float mspf)
+void StatsLogger::RecordTotalMspf(float mspf)
 {
     std::lock_guard<std::mutex> lock(mMutex);
     mFrameTimes.push_back(mspf);
 }
 
-void StatsLogger::GenerateReport(const std::wstring& deviceName1, const std::wstring& deviceName2, bool multiGPUMode)
+void StatsLogger::RecordPrimaryGPUMspf(float mspf)
+{
+    std::lock_guard<std::mutex> lock(mMutex);
+    mPrimaryGPUMspfs.push_back(mspf);
+}
+
+void StatsLogger::GenerateReport(const std::wstring& deviceName1, const std::wstring& deviceName2, bool multiGPUMode, bool swappedDevices)
 {
     std::lock_guard<std::mutex> lock(mMutex);
 
-    std::ofstream reportFile(multiGPUMode ? "Report_DualGPU.txt" : "Report_SingleGPU.txt");
+    std::string FileName = "Report_SingleGPU.txt";
+    if (multiGPUMode) FileName = "Report_DualGPU.txt";
+    if (swappedDevices) FileName = "Report_DualGPU_SwappedDevices.txt";
+
+    std::ofstream reportFile(FileName);
 
     if (multiGPUMode) reportFile << "Dual GPU Mode\n";
     else reportFile << "Single GPU Mode\n";
@@ -37,6 +47,12 @@ void StatsLogger::GenerateReport(const std::wstring& deviceName1, const std::wst
 
     reportFile << mFrameTimes.size() << "\n";
     for (float mspf : mFrameTimes) reportFile << std::fixed << std::setprecision(6) << mspf << "\n";
+
+    if (multiGPUMode)
+    {
+        reportFile << mPrimaryGPUMspfs.size() << "\n";
+        for (float mspf : mPrimaryGPUMspfs) reportFile << std::fixed << std::setprecision(6) << mspf << "\n";
+    }
 
     reportFile.close();
 }

@@ -19,8 +19,9 @@ class StatsLogger
 public:
     static StatsLogger* GetInstance();
 
-    void RecordFrameTime(float mspf);
-    void GenerateReport(const std::wstring& deviceName1, const std::wstring& deviceName2, bool multiGPUMode);
+    void RecordTotalMspf(float mspf);
+    void RecordPrimaryGPUMspf(float mspf);
+    void GenerateReport(const std::wstring& deviceName1, const std::wstring& deviceName2, bool multiGPUMode, bool swappedDevices);
     void Shutdown();
     int GetNumLogs();
 
@@ -36,5 +37,6 @@ private:
 
     static StatsLogger* mInstance;
     std::vector<float> mFrameTimes;
+    std::vector<float> mPrimaryGPUMspfs;
     std::mutex mMutex;
 };
