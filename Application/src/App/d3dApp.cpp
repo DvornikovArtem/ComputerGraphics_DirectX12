@@ -376,7 +376,7 @@ void D3DApp::CalculateFrameStats()
 
 		auto Logger = StatsLogger::GetInstance();
 		Logger->RecordFrameTime(mspf);
-		if (Logger->GetNumLogs() >= 200) PostQuitMessage(0);
+		if (Logger->GetNumLogs() >= 5) PostQuitMessage(0);
 
         wstring fpsStr = to_wstring(fps);
         wstring mspfStr = to_wstring(mspf);

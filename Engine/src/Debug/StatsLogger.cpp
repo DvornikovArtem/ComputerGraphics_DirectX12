@@ -27,10 +27,14 @@ void StatsLogger::GenerateReport(const std::wstring& deviceName1, const std::wst
     if (multiGPUMode) reportFile << "Dual GPU Mode\n";
     else reportFile << "Single GPU Mode\n";
 
-    reportFile << std::string(deviceName1.begin(), deviceName1.end()) << "\n";
+    reportFile << "CPU: " + GetCPUName() << "\n";
+    reportFile << "Total RAM: " + std::to_string(GetTotalRAMMB()) << " MB" << "\n";
 
+    reportFile << "Primary GPU: " + std::string(deviceName1.begin(), deviceName1.end()) << "\n";
+    reportFile << "Secondary GPU: ";
     if (multiGPUMode) reportFile << std::string(deviceName2.begin(), deviceName2.end()) << "\n";
     else reportFile << "NONE\n";
+
     reportFile << mFrameTimes.size() << "\n";
     for (float mspf : mFrameTimes) reportFile << std::fixed << std::setprecision(6) << mspf << "\n";
 
@@ -49,4 +53,41 @@ void StatsLogger::Shutdown()
 int StatsLogger::GetNumLogs()
 {
     return mFrameTimes.size();
+}
+
+std::string StatsLogger::GetCPUName()
+{
+    std::string cpuName = "Unknown";
+
+    int cpuInfo[4] = { 0 };
+    __cpuid(cpuInfo, 0x80000000);
+
+    if ((unsigned int)cpuInfo[0] >= 0x80000004)
+    {
+        char brand[49] = { 0 };
+        __cpuid(cpuInfo, 0x80000002);
+        memcpy(brand, cpuInfo, sizeof(cpuInfo));
+        __cpuid(cpuInfo, 0x80000003);
+        memcpy(brand + 16, cpuInfo, sizeof(cpuInfo));
+        __cpuid(cpuInfo, 0x80000004);
+        memcpy(brand + 32, cpuInfo, sizeof(cpuInfo));
+
+        cpuName = std::string(brand);
+
+        // Trim whitespace
+        size_t end = cpuName.find_last_not_of(" \t\n\r\f\v");
+        if (end != std::string::npos)
+            cpuName = cpuName.substr(0, end + 1);
+    }
+
+    return cpuName;
+}
+
+uint64_t StatsLogger::GetTotalRAMMB()
+{
+    MEMORYSTATUSEX memoryStatus;
+    memoryStatus.dwLength = sizeof(memoryStatus);
+    GlobalMemoryStatusEx(&memoryStatus);
+
+    return memoryStatus.ullTotalPhys / (1024 * 1024);
 }

@@ -4,6 +4,15 @@
 #include <vector>
 #include <fstream>
 #include <mutex>
+#include <windows.h>
+#include <intrin.h>
+#include <comdef.h>
+#include <wbemidl.h>
+#include <sysinfoapi.h>
+#include <psapi.h>
+
+#pragma comment(lib, "wbemuuid.lib")
+#pragma comment(lib, "psapi.lib")
 
 class StatsLogger
 {
@@ -15,11 +24,15 @@ public:
     void Shutdown();
     int GetNumLogs();
 
+
 private:
     StatsLogger() = default;
     ~StatsLogger() = default;
     StatsLogger(const StatsLogger&) = delete;
     StatsLogger& operator=(const StatsLogger&) = delete;
+
+    std::string StatsLogger::GetCPUName();
+    uint64_t StatsLogger::GetTotalRAMMB();
 
     static StatsLogger* mInstance;
     std::vector<float> mFrameTimes;
