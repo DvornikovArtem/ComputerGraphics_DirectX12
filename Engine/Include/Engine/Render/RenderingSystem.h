@@ -478,8 +478,8 @@ private:
     UINT64 mLastPrimaryFenceValue = 0;
     LARGE_INTEGER mLastPrimaryTime = { 0 };
 
-    const bool mUseSingleGPU = false;
-    const bool mSwapDevices = true;
+    const bool mUseSingleGPU = true;
+    const bool mSwapDevices = false;
 // =================================================================================================
 };
 
