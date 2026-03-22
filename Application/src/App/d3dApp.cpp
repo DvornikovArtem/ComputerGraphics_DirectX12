@@ -373,7 +373,10 @@ void D3DApp::CalculateFrameStats()
 		float fps = (float)frameCnt; // fps = frameCnt / 1
 		float mspf = 1000.0f / fps;
 
-		StatsLogger::GetInstance()->RecordFrameTime(mspf);
+
+		auto Logger = StatsLogger::GetInstance();
+		Logger->RecordFrameTime(mspf);
+		if (Logger->GetNumLogs() >= 200) PostQuitMessage(0);
 
         wstring fpsStr = to_wstring(fps);
         wstring mspfStr = to_wstring(mspf);

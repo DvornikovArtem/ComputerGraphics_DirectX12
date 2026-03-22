@@ -22,7 +22,7 @@ void StatsLogger::GenerateReport(const std::wstring& deviceName1, const std::wst
 {
     std::lock_guard<std::mutex> lock(mMutex);
 
-    std::ofstream reportFile("report.txt");
+    std::ofstream reportFile(multiGPUMode ? "Report_DualGPU.txt" : "Report_SingleGPU.txt");
 
     if (multiGPUMode) reportFile << "Dual GPU Mode\n";
     else reportFile << "Single GPU Mode\n";
@@ -44,4 +44,9 @@ void StatsLogger::Shutdown()
         delete mInstance;
         mInstance = nullptr;
     }
+}
+
+int StatsLogger::GetNumLogs()
+{
+    return mFrameTimes.size();
 }

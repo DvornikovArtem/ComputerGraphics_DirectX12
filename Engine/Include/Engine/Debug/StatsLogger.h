@@ -13,6 +13,7 @@ public:
     void RecordFrameTime(float mspf);
     void GenerateReport(const std::wstring& deviceName1, const std::wstring& deviceName2, bool multiGPUMode);
     void Shutdown();
+    int GetNumLogs();
 
 private:
     StatsLogger() = default;
