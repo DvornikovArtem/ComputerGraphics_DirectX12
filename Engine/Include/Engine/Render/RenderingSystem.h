@@ -194,7 +194,7 @@ protected:
     bool mWireframe = false;
     bool mShowBounds = false;
 
-    Microsoft::WRL::ComPtr<IDXGIFactory4> mdxgiFactory;
+    Microsoft::WRL::ComPtr<IDXGIFactory6> mdxgiFactory;
     Microsoft::WRL::ComPtr<IDXGISwapChain> mSwapChain;
     Microsoft::WRL::ComPtr<ID3D12Device5> md3dDevice;
 

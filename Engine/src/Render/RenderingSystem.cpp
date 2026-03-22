@@ -55,9 +55,15 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 
 	ThrowIfFailed(CreateDXGIFactory1(IID_PPV_ARGS(&mdxgiFactory)));
 
+	ComPtr<IDXGIAdapter1> CoolAssAdapter;
+	HRESULT EnumCoolAssAdaptersResult = mdxgiFactory->EnumAdapterByGpuPreference(
+		0,
+		DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE,
+		IID_PPV_ARGS(&CoolAssAdapter));
+
 	//creating Primary Device
 	HRESULT hardwareResult = D3D12CreateDevice(
-		nullptr,
+		CoolAssAdapter.Get(),
 		D3D_FEATURE_LEVEL_12_0,
 		IID_PPV_ARGS(&md3dDevice));
 
