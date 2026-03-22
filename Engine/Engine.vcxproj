@@ -364,6 +364,7 @@
     <ClInclude Include="Include\Engine\Core\GameTimer.h" />
     <ClInclude Include="Include\Engine\Core\OctTree.h" />
     <ClInclude Include="Include\Engine\Debug\DebugRenderSysImpl.h" />
+    <ClInclude Include="Include\Engine\Debug\StatsLogger.h" />
     <ClInclude Include="Include\Engine\IO\TextureImporter.h" />
     <ClInclude Include="Include\Engine\Math\GeometryGenerator.h" />
     <ClInclude Include="Include\Engine\Math\MathHelper.h" />
@@ -431,6 +432,7 @@
     <ClCompile Include="src\Core\d3dUtil.cpp" />
     <ClCompile Include="src\Core\GameTimer.cpp" />
     <ClCompile Include="src\Debug\DebugRenderSysImpl.cpp" />
+    <ClCompile Include="src\Debug\StatsLogger.cpp" />
     <ClCompile Include="src\IO\TextureImporter.cpp" />
     <ClCompile Include="src\Math\GeometryGenerator.cpp" />
     <ClCompile Include="src\Math\MathHelper.cpp" />

@@ -37,11 +37,17 @@ D3DApp::D3DApp(HINSTANCE hInstance)
 
 D3DApp::~D3DApp()
 {
+	std::wstring primaryName = mRenderingSystem->PrimaryDeviceName;
+	std::wstring secondaryName = mRenderingSystem->SecondaryDeviceName;
+	bool multiGPUMode = mRenderingSystem->MultiGPUMode();
+	StatsLogger::GetInstance()->GenerateReport(primaryName, secondaryName, multiGPUMode);
+
 	if (mRenderingSystem->getd3dDevice() != nullptr) {
 		mRenderingSystem->FlushCommandQueue();
 		mRenderingSystem->FlushCommandQueue2();
 	}
-	//mImGuiLayer->Shutdown();
+
+	StatsLogger::GetInstance()->Shutdown();
 }
 
 HINSTANCE D3DApp::AppInst()const
@@ -366,6 +372,8 @@ void D3DApp::CalculateFrameStats()
 	{
 		float fps = (float)frameCnt; // fps = frameCnt / 1
 		float mspf = 1000.0f / fps;
+
+		StatsLogger::GetInstance()->RecordFrameTime(mspf);
 
         wstring fpsStr = to_wstring(fps);
         wstring mspfStr = to_wstring(mspf);

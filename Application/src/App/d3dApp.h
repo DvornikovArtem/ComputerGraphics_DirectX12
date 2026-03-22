@@ -14,6 +14,7 @@
 #include <Engine/Render/RenderingSystem.h>
 #include <Engine/Render/FX/ParticleSystem.h>
 #include <Engine/UI/ImGui_Layer.h>
+#include <Engine/Debug/StatsLogger.h>
 
 // Link necessary d3d12 libraries.
 #pragma comment(lib,"d3dcompiler.lib")

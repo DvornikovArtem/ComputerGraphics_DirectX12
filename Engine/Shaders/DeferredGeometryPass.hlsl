@@ -61,7 +61,7 @@ DS_VS_OUTPUT_PS_INPUT VS(VS_INPUT vin)
     
     float4 prevPosW = mul(float4(vin.Pos, 1.0f), cbObject.PrevWorld);
     vout.PrevPosCS = mul(prevPosW, cbMainPass.PrevViewProj);
-    vout.PrevPosCS.xy += cbMainPass.CameraJitter * vout.PrevPosCS.w;
+    vout.PrevPosCS.xy += cbMainPass.PrevCameraJitter * vout.PrevPosCS.w;
     
     vout.CurrPosCS = vout.PosCS;
     
