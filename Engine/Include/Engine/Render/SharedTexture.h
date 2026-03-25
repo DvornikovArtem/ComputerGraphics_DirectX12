@@ -46,6 +46,14 @@ public:
         ID3D12GraphicsCommandList* commandList,
         ID3D12Resource* destResource,
         D3D12_RESOURCE_STATES destState = D3D12_RESOURCE_STATE_COMMON);
+    D3D12_RESOURCE_STATES SharedTexture::CopyFromSecondaryDevice(
+        ID3D12GraphicsCommandList* commandList,
+        ID3D12Resource* sourceResource,
+        D3D12_RESOURCE_STATES destState = D3D12_RESOURCE_STATE_COMMON);
+    D3D12_RESOURCE_STATES SharedTexture::CopyToPrimaryDevice(
+        ID3D12GraphicsCommandList* commandList,
+        ID3D12Resource* destResource,
+        D3D12_RESOURCE_STATES destState = D3D12_RESOURCE_STATE_COMMON);
 
 private:
     Microsoft::WRL::ComPtr<ID3D12Device> mPrimaryDevice;

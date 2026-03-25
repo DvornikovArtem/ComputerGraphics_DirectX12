@@ -24,13 +24,32 @@ void StatsLogger::RecordPrimaryGPUMspf(float mspf)
     mPrimaryGPUMspfs.push_back(mspf);
 }
 
-void StatsLogger::GenerateReport(const std::wstring& deviceName1, const std::wstring& deviceName2, bool multiGPUMode, bool swappedDevices)
+void StatsLogger::GenerateReport(const std::wstring& deviceName1, const std::wstring& deviceName2, bool multiGPUMode, bool swappedDevices, bool CopyTest, int CopyTestType)
 {
     std::lock_guard<std::mutex> lock(mMutex);
 
     std::string FileName = "Report_SingleGPU.txt";
     if (multiGPUMode) FileName = "Report_DualGPU.txt";
     if (swappedDevices) FileName = "Report_DualGPU_SwappedDevices.txt";
+
+    if (CopyTest)
+    {
+        FileName = "Report_CopyTest_";
+        switch (CopyTestType)
+        {
+        case 0:
+            FileName += "ZeroLoad";
+            break;
+        case 1:
+            FileName += "CopyFromLocal";
+            break;
+        case 2:
+            FileName += "CopyFromShared";
+            break;
+        }
+        if (swappedDevices) FileName += "_Swapped";
+    }
+
 
     std::ofstream reportFile(FileName);
 
@@ -48,7 +67,7 @@ void StatsLogger::GenerateReport(const std::wstring& deviceName1, const std::wst
     reportFile << mFrameTimes.size() << "\n";
     for (float mspf : mFrameTimes) reportFile << std::fixed << std::setprecision(6) << mspf << "\n";
 
-    if (multiGPUMode)
+    if (multiGPUMode && !CopyTest)
     {
         reportFile << mPrimaryGPUMspfs.size() << "\n";
         for (float mspf : mPrimaryGPUMspfs) reportFile << std::fixed << std::setprecision(6) << mspf << "\n";

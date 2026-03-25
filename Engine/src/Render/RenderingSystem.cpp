@@ -235,7 +235,7 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 	ThrowIfFailed(md3dDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&mFence)));
 
 	mRtvDescriptorSize = md3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-	if (!mUseSingleGPU) mRtvDescriptorSize2 = md3dDevice2->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+	mRtvDescriptorSize2 = md3dDevice2->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 	mDsvDescriptorSize = md3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
 	mCbvSrvUavDescriptorSize = md3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
@@ -286,7 +286,7 @@ void RenderingSystem::Initialize(HWND mhMainWnd, HINSTANCE mhAppInst, GameTimer*
 void RenderingSystem::FinishInitialize()
 {
 	CreateRtvAndDsvDescriptorHeaps();
-	if (!mUseSingleGPU) InitializeSharedResources();
+	InitializeSharedResources();
 	//CreateOrResizeSceneColor(mClientWidth, mClientHeight);
 
 	mGBuffer->Channel0SRVHeapIndex = static_cast<int>(TexDescsLength + MPRTextures.size() + MPRTerrainTextures.size() + 1);
@@ -346,6 +346,7 @@ void RenderingSystem::FinishInitialize()
 		BuildBLASForGeometries();
 		BuildTLAS();
 	}
+	if (mCopyTest) CreateCopyTestResources();
 
 	/*mGbufferImguiSlots.resize(mGBuffer->NumBuffers);
 	for (int i = 0; i < mGBuffer->NumBuffers; ++i) {
@@ -366,6 +367,182 @@ void RenderingSystem::FinishInitialize()
 	for (ParticleSystem* particleSystem : mAllParticleSystems)
 	{
 		particleSystem->SetResources(mGBuffer->DepthStencils.Resource, mGBuffer->Normal.Resource);
+	}
+}
+
+void RenderingSystem::CopyTest()
+{
+	if (mCurrentFence2 > 0 && mFence2->GetCompletedValue() < mCurrentFence2)
+	{
+		HANDLE eventHandle = CreateEventEx(nullptr, false, false, EVENT_ALL_ACCESS);
+		ThrowIfFailed(mFence2->SetEventOnCompletion(mCurrentFence2, eventHandle));
+		WaitForSingleObject(eventHandle, INFINITE);
+		CloseHandle(eventHandle);
+	}
+
+	auto cmdListAlloc2 = mCurrFrameResource->CmdListAlloc2;
+	auto cmdList2 = mCommandList2;
+
+	int N = 10;
+
+	ThrowIfFailed(cmdListAlloc2->Reset());
+	ThrowIfFailed(cmdList2->Reset(cmdListAlloc2.Get(), nullptr));
+
+	if (mCopyTestType == CopyTestLoadType::CopyFromLocal)
+	{
+		for (int i = 0; i < N; i++)
+		{
+			cmdList2->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+				mCopySource.Get(),
+				D3D12_RESOURCE_STATE_COMMON,
+				D3D12_RESOURCE_STATE_COPY_SOURCE));
+			cmdList2->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+				mCopyDestLocal.Get(),
+				D3D12_RESOURCE_STATE_COMMON,
+				D3D12_RESOURCE_STATE_COPY_DEST));
+
+			cmdList2->CopyResource(mCopyDestLocal.Get(), mCopySource.Get());
+
+			cmdList2->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+				mCopySource.Get(),
+				D3D12_RESOURCE_STATE_COPY_SOURCE,
+				D3D12_RESOURCE_STATE_COPY_DEST));
+			cmdList2->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+				mCopyDestLocal.Get(),
+				D3D12_RESOURCE_STATE_COPY_DEST,
+				D3D12_RESOURCE_STATE_COPY_SOURCE));
+
+			cmdList2->CopyResource(mCopySource.Get(), mCopyDestLocal.Get());
+
+			cmdList2->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+				mCopySource.Get(),
+				D3D12_RESOURCE_STATE_COPY_DEST,
+				D3D12_RESOURCE_STATE_COMMON));
+			cmdList2->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+				mCopyDestLocal.Get(),
+				D3D12_RESOURCE_STATE_COPY_SOURCE,
+				D3D12_RESOURCE_STATE_COMMON));
+		}
+	}
+	if (mCopyTestType == CopyTestLoadType::CopyFromShared)
+	{
+		for (int i = 0; i < N; i++)
+		{
+			mCopyDestShared.CopyFromSecondaryDevice(mCommandList2.Get(), mCopySource.Get());
+			mCopyDestShared.CopyToSecondaryDevice(mCommandList2.Get(), mCopySource.Get());
+		}
+	}
+
+	ThrowIfFailed(cmdList2->Close());
+
+	ID3D12CommandList* cmdsLists2[] = { cmdList2.Get() };
+	mCommandQueue2->ExecuteCommandLists(_countof(cmdsLists2), cmdsLists2);
+
+	ThrowIfFailed(mSwapChain->Present(mVSync ? 1u : 0u, mVSync ? 0 : DXGI_PRESENT_ALLOW_TEARING));
+
+	mCurrBackBuffer = (mCurrBackBuffer + 1) % SwapChainBufferCount;
+
+	mCurrFrameResource->Fence2 = ++mCurrentFence2;
+	mCommandQueue2->Signal(mFence2.Get(), mCurrentFence2);
+
+	mCurrFrameResourceIndex = (mCurrFrameResourceIndex + 1) % gNumFrameResources;
+	mCurrFrameResource = mFrameResources[mCurrFrameResourceIndex].get();
+}
+
+void RenderingSystem::CreateCopyTestResources()
+{
+	UINT ResourceWidth = 2048;
+	UINT ResourceHeight = 2048;
+	DXGI_FORMAT ResourceFormat = DXGI_FORMAT_R32G32B32A32_FLOAT;
+	UINT64 textureSize = static_cast<UINT64>(ResourceWidth) * ResourceHeight * 16;
+
+	D3D12_RESOURCE_DESC texDesc = {};
+	texDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+	texDesc.Width = ResourceWidth;
+	texDesc.Height = ResourceHeight;
+	texDesc.DepthOrArraySize = 1;
+	texDesc.MipLevels = 1;
+	texDesc.Format = ResourceFormat;
+	texDesc.SampleDesc.Count = 1;
+	texDesc.SampleDesc.Quality = 0;
+	texDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+	texDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+
+	CD3DX12_HEAP_PROPERTIES defaultHeap(D3D12_HEAP_TYPE_DEFAULT);
+	CD3DX12_HEAP_PROPERTIES uploadHeap(D3D12_HEAP_TYPE_UPLOAD);
+
+	ThrowIfFailed(md3dDevice2->CreateCommittedResource(
+		&defaultHeap,
+		D3D12_HEAP_FLAG_NONE,
+		&texDesc,
+		D3D12_RESOURCE_STATE_COMMON,
+		nullptr,
+		IID_PPV_ARGS(&mCopySource)));
+
+	UINT64 uploadBufferSize = GetRequiredIntermediateSize(mCopySource.Get(), 0, 1);
+	ComPtr<ID3D12Resource> uploadBuffer;
+
+	ThrowIfFailed(md3dDevice2->CreateCommittedResource(
+		&uploadHeap,
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Buffer(uploadBufferSize),
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(&uploadBuffer)));
+
+	std::vector<uint8_t> testData(textureSize);
+	for (UINT64 i = 0; i < textureSize; ++i)
+	{
+		testData[i] = static_cast<uint8_t>(i % 256);
+	}
+
+	D3D12_SUBRESOURCE_DATA subresourceData = {};
+	subresourceData.pData = testData.data();
+	subresourceData.RowPitch = ResourceWidth * 16;
+	subresourceData.SlicePitch = textureSize;
+
+	ThrowIfFailed(mCommandList2->Reset(mDirectCmdListAlloc2.Get(), nullptr));
+
+	UpdateSubresources(mCommandList2.Get(),
+		mCopySource.Get(),
+		uploadBuffer.Get(),
+		0, 0, 1, &subresourceData);
+
+	ThrowIfFailed(mCommandList2->Close());
+
+	ID3D12CommandList* cmdLists[] = { mCommandList2.Get() };
+	mCommandQueue2->ExecuteCommandLists(1, cmdLists);
+	FlushCommandQueue2();
+
+	switch (mCopyTestType)
+	{
+	case CopyTestLoadType::ZeroLoad:
+	{
+		break;
+	}
+	case CopyTestLoadType::CopyFromLocal:
+
+	{
+		ThrowIfFailed(md3dDevice2->CreateCommittedResource(
+			&defaultHeap,
+			D3D12_HEAP_FLAG_NONE,
+			&texDesc,
+			D3D12_RESOURCE_STATE_COMMON,
+			nullptr,
+			IID_PPV_ARGS(&mCopyDestLocal)));
+		break;
+	}
+	case CopyTestLoadType::CopyFromShared:
+	{
+		mCopyDestShared.Initialize(
+			md3dDevice.Get(),
+			md3dDevice2.Get(),
+			ResourceWidth,
+			ResourceHeight,
+			ResourceFormat,
+			L"CrossAdapterCopySource");
+		break;
+	}
 	}
 }
 
@@ -709,6 +886,12 @@ void RenderingSystem::CreateOrResizeSceneColor(int width, int height)
 
 void RenderingSystem::Render()
 {
+	if (mCopyTest)
+	{
+		CopyTest();
+		return;
+	}
+
 	PreRender();
 
 	auto cmdListAlloc = mCurrFrameResource->CmdListAlloc;

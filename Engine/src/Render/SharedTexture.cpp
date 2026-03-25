@@ -274,3 +274,69 @@ D3D12_RESOURCE_STATES SharedTexture::CopyToSecondaryDevice(
 
     return destState;
 }
+
+D3D12_RESOURCE_STATES SharedTexture::CopyFromSecondaryDevice(ID3D12GraphicsCommandList* commandList, ID3D12Resource* sourceResource, D3D12_RESOURCE_STATES destState)
+{
+    CD3DX12_RESOURCE_BARRIER preCopyBarriers[] = {
+        CD3DX12_RESOURCE_BARRIER::Transition(
+            sourceResource,
+            destState,
+            D3D12_RESOURCE_STATE_COPY_SOURCE),
+        CD3DX12_RESOURCE_BARRIER::Transition(
+            mSharedTextureSecondary.Get(),
+            D3D12_RESOURCE_STATE_COMMON,
+            D3D12_RESOURCE_STATE_COPY_DEST)
+    };
+
+    commandList->ResourceBarrier(_countof(preCopyBarriers), preCopyBarriers);
+
+    commandList->CopyResource(mSharedTextureSecondary.Get(), sourceResource);
+
+    CD3DX12_RESOURCE_BARRIER postCopyBarriers[] = {
+        CD3DX12_RESOURCE_BARRIER::Transition(
+            mSharedTextureSecondary.Get(),
+            D3D12_RESOURCE_STATE_COPY_DEST,
+            D3D12_RESOURCE_STATE_COMMON),
+        CD3DX12_RESOURCE_BARRIER::Transition(
+            sourceResource,
+            D3D12_RESOURCE_STATE_COPY_SOURCE,
+            destState)
+    };
+
+    commandList->ResourceBarrier(_countof(postCopyBarriers), postCopyBarriers);
+
+    return destState;
+}
+
+D3D12_RESOURCE_STATES SharedTexture::CopyToPrimaryDevice(ID3D12GraphicsCommandList* commandList, ID3D12Resource* destResource, D3D12_RESOURCE_STATES destState)
+{
+    CD3DX12_RESOURCE_BARRIER preCopyBarriers[] = {
+        CD3DX12_RESOURCE_BARRIER::Transition(
+            destResource,
+            destState,
+            D3D12_RESOURCE_STATE_COPY_DEST),
+        CD3DX12_RESOURCE_BARRIER::Transition(
+            mSharedTextureSecondary.Get(),
+            D3D12_RESOURCE_STATE_COMMON,
+            D3D12_RESOURCE_STATE_COPY_SOURCE)
+    };
+
+    commandList->ResourceBarrier(_countof(preCopyBarriers), preCopyBarriers);
+
+    commandList->CopyResource(destResource, mSharedTextureSecondary.Get());
+
+    CD3DX12_RESOURCE_BARRIER postCopyBarriers[] = {
+        CD3DX12_RESOURCE_BARRIER::Transition(
+            mSharedTextureSecondary.Get(),
+            D3D12_RESOURCE_STATE_COPY_SOURCE,
+            D3D12_RESOURCE_STATE_COMMON),
+        CD3DX12_RESOURCE_BARRIER::Transition(
+            destResource,
+            D3D12_RESOURCE_STATE_COPY_DEST,
+            destState)
+    };
+
+    commandList->ResourceBarrier(_countof(postCopyBarriers), postCopyBarriers);
+
+    return destState;
+}

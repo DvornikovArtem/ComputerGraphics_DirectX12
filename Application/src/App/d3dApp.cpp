@@ -40,8 +40,10 @@ D3DApp::~D3DApp()
 	std::wstring primaryName = mRenderingSystem->PrimaryDeviceName;
 	std::wstring secondaryName = mRenderingSystem->SecondaryDeviceName;
 	bool multiGPUMode = mRenderingSystem->MultiGPUMode();
-	bool swappedDevices = mRenderingSystem->GetSwappedDevices();
-	StatsLogger::GetInstance()->GenerateReport(primaryName, secondaryName, multiGPUMode, swappedDevices);
+	bool swappedDevices = mRenderingSystem->GetRenderSwappedDevices();
+	bool CopyTest = mRenderingSystem->GetCopyTest();
+	int CopyTestMode = mRenderingSystem->GetCopyTestType();
+	StatsLogger::GetInstance()->GenerateReport(primaryName, secondaryName, multiGPUMode, swappedDevices, CopyTest, CopyTestMode);
 
 	if (mRenderingSystem->getd3dDevice() != nullptr) {
 		mRenderingSystem->FlushCommandQueue();
@@ -377,7 +379,7 @@ void D3DApp::CalculateFrameStats()
 
 		auto Logger = StatsLogger::GetInstance();
 		Logger->RecordTotalMspf(mspf);
-		if (Logger->GetNumLogs() >= 200) PostQuitMessage(0);
+		if (Logger->GetNumLogs() >= (mRenderingSystem->GetCopyTest() ? 20 : 200)) PostQuitMessage(0);
 
         wstring fpsStr = to_wstring(fps);
         wstring mspfStr = to_wstring(mspf);

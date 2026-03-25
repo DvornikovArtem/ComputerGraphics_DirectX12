@@ -21,7 +21,7 @@ public:
 
     void RecordTotalMspf(float mspf);
     void RecordPrimaryGPUMspf(float mspf);
-    void GenerateReport(const std::wstring& deviceName1, const std::wstring& deviceName2, bool multiGPUMode, bool swappedDevices);
+    void GenerateReport(const std::wstring& deviceName1, const std::wstring& deviceName2, bool multiGPUMode, bool swappedDevices, bool CopyTest, int CopyTestType);
     void Shutdown();
     int GetNumLogs();
 

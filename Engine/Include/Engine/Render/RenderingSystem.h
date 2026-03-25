@@ -471,15 +471,27 @@ protected:
 
 public:
     float GetPrimaryGPUMspf() const { return mPrimaryGPUMspf; }
-    bool GetSwappedDevices() const { return mSwapDevices; }
+    bool GetRenderSwappedDevices() const { return mSwapDevices; }
+    bool GetCopyTest() const { return mCopyTest; }
+    int GetCopyTestType() const { return (int)mCopyTestType; }
 
 private:
     float mPrimaryGPUMspf = 0.0f;
     UINT64 mLastPrimaryFenceValue = 0;
     LARGE_INTEGER mLastPrimaryTime = { 0 };
 
-    const bool mUseSingleGPU = true;
-    const bool mSwapDevices = false;
+    void CopyTest();
+    void CreateCopyTestResources();
+    ComPtr<ID3D12Resource> mCopySource;
+    SharedTexture mCopyDestShared;
+    ComPtr<ID3D12Resource> mCopyDestLocal;
+
+    enum class CopyTestLoadType { ZeroLoad, CopyFromLocal, CopyFromShared };
+
+    const bool mUseSingleGPU = false;
+    const bool mSwapDevices = true;
+    const bool mCopyTest = true;
+    const CopyTestLoadType mCopyTestType = CopyTestLoadType::CopyFromShared;
 // =================================================================================================
 };
 
