@@ -324,7 +324,7 @@ void RenderingSystem::FinishInitialize()
 	}
 	if (mTAAEnabled)
 	{
-		srvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+		srvDesc.Format = mBackBufferFormat;
 		md3dDevice->CreateShaderResourceView(mPrevFrameTex.Get(), &srvDesc,
 			CD3DX12_CPU_DESCRIPTOR_HANDLE(mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), mPrevFrameSRVHeapIndex, mCbvSrvDescriptorSize));
 		md3dDevice->CreateShaderResourceView(mTAAResolvedAccBuffer.Get(), &srvDesc,
@@ -334,7 +334,7 @@ void RenderingSystem::FinishInitialize()
 		rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
 		rtvDesc.Texture2D.MipSlice = 0;
 		rtvDesc.Texture2D.PlaneSlice = 0;
-		rtvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+		rtvDesc.Format = mBackBufferFormat;
 		md3dDevice->CreateRenderTargetView(mTAAResolvedAccBuffer.Get(), &rtvDesc, 
 			CD3DX12_CPU_DESCRIPTOR_HANDLE(mRtvHeap->GetCPUDescriptorHandleForHeapStart(), mResolvedAccBufferRTVHeapIndex, mRtvDescriptorSize));
 	}
@@ -714,14 +714,14 @@ void RenderingSystem::OnResize() {
 	if (mTAAEnabled)
 	{
 		D3D12_CLEAR_VALUE clearValue = {};
-		clearValue.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+		clearValue.Format = mBackBufferFormat;
 		clearValue.DepthStencil.Depth = 1.0f;
 		clearValue.DepthStencil.Stencil = 0;
 
 		md3dDevice->CreateCommittedResource(
 			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
 			D3D12_HEAP_FLAG_NONE,
-			&CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R16G16B16A16_FLOAT, mFSREnabled ? mRecommendedRenderResolutionX : mClientWidth, mFSREnabled ? mRecommendedRenderResolutionY : mClientHeight, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
+			&CD3DX12_RESOURCE_DESC::Tex2D(mBackBufferFormat, mFSREnabled ? mRecommendedRenderResolutionX : mClientWidth, mFSREnabled ? mRecommendedRenderResolutionY : mClientHeight, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
 			D3D12_RESOURCE_STATE_COMMON,
 			&clearValue,
 			IID_PPV_ARGS(&mPrevFrameTex));
@@ -729,7 +729,7 @@ void RenderingSystem::OnResize() {
 		md3dDevice->CreateCommittedResource(
 			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
 			D3D12_HEAP_FLAG_NONE,
-			&CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R16G16B16A16_FLOAT, mFSREnabled ? mRecommendedRenderResolutionX : mClientWidth, mFSREnabled ? mRecommendedRenderResolutionY : mClientHeight, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
+			&CD3DX12_RESOURCE_DESC::Tex2D(mBackBufferFormat, mFSREnabled ? mRecommendedRenderResolutionX : mClientWidth, mFSREnabled ? mRecommendedRenderResolutionY : mClientHeight, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
 			D3D12_RESOURCE_STATE_COMMON,
 			&clearValue,
 			IID_PPV_ARGS(&mTAAResolvedAccBuffer));
@@ -740,7 +740,7 @@ void RenderingSystem::OnResize() {
 			rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
 			rtvDesc.Texture2D.MipSlice = 0;
 			rtvDesc.Texture2D.PlaneSlice = 0;
-			rtvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+			rtvDesc.Format = mBackBufferFormat;
 			md3dDevice->CreateRenderTargetView(mTAAResolvedAccBuffer.Get(), &rtvDesc, 
 				CD3DX12_CPU_DESCRIPTOR_HANDLE(mRtvHeap->GetCPUDescriptorHandleForHeapStart(), mResolvedAccBufferRTVHeapIndex, mRtvDescriptorSize));
 		}
@@ -770,7 +770,7 @@ void RenderingSystem::OnResize() {
 		}
 		if (mTAAEnabled)
 		{
-			srvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+			srvDesc.Format = mBackBufferFormat;
 			md3dDevice->CreateShaderResourceView(mPrevFrameTex.Get(), &srvDesc,
 				CD3DX12_CPU_DESCRIPTOR_HANDLE(mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), mPrevFrameSRVHeapIndex, mCbvSrvDescriptorSize));
 			md3dDevice->CreateShaderResourceView(mTAAResolvedAccBuffer.Get(), &srvDesc,
@@ -2069,7 +2069,7 @@ void RenderingSystem::BuildSceneGrid()
 	psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 
 	psoDesc.NumRenderTargets = 1;
-	psoDesc.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	psoDesc.RTVFormats[0] = mBackBufferFormat;
 	psoDesc.DSVFormat = mDepthStencilFormat;
 	psoDesc.SampleDesc.Count = 1;
 	psoDesc.SampleDesc.Quality = 0;
@@ -2877,7 +2877,7 @@ void RenderingSystem::InitializeSharedResources()
 		md3dDevice2.Get(),
 		mClientWidth,
 		mClientHeight,
-		DXGI_FORMAT_R16G16B16A16_FLOAT,
+		mBackBufferFormat,
 		L"CrossAdapterAccumulationBuffer");
 
 	mSharedVelocityBuffer.Initialize(
@@ -2894,12 +2894,12 @@ void RenderingSystem::InitializeSharedResources()
 	mSrvHeapDevice2.Reset();
 
 	D3D12_CLEAR_VALUE clearValue = {};
-	clearValue.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	clearValue.Format = mBackBufferFormat;
 
 	md3dDevice2->CreateCommittedResource(
 		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
 		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R16G16B16A16_FLOAT, mClientWidth, mClientHeight, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
+		&CD3DX12_RESOURCE_DESC::Tex2D(mBackBufferFormat, mClientWidth, mClientHeight, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
 		D3D12_RESOURCE_STATE_COMMON,
 		&clearValue,
 		IID_PPV_ARGS(&mDevice2AccBuffer));
@@ -2907,7 +2907,7 @@ void RenderingSystem::InitializeSharedResources()
 	md3dDevice2->CreateCommittedResource(
 		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
 		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R16G16B16A16_FLOAT, mClientWidth, mClientHeight, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
+		&CD3DX12_RESOURCE_DESC::Tex2D(mBackBufferFormat, mClientWidth, mClientHeight, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
 		D3D12_RESOURCE_STATE_COMMON,
 		&clearValue,
 		IID_PPV_ARGS(&mDevice2PrevFrame));
@@ -2926,7 +2926,7 @@ void RenderingSystem::InitializeSharedResources()
 	md3dDevice2->CreateCommittedResource(
 		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
 		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R16G16B16A16_FLOAT, mClientWidth, mClientHeight, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
+		&CD3DX12_RESOURCE_DESC::Tex2D(mBackBufferFormat, mClientWidth, mClientHeight, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
 		D3D12_RESOURCE_STATE_COMMON,
 		&clearValue,
 		IID_PPV_ARGS(&mDevice2ResolvedAccBuffer));
@@ -2957,7 +2957,7 @@ void RenderingSystem::InitializeSharedResources()
 	srvDesc.Texture2D.PlaneSlice = 0;
 	srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
 
-	srvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	srvDesc.Format = mBackBufferFormat;
 	md3dDevice2->CreateShaderResourceView(mDevice2AccBuffer.Get(), &srvDesc, hDescriptor);
 	hDescriptor.Offset(1, mCbvSrvDescriptorSize2);
 
@@ -2965,11 +2965,11 @@ void RenderingSystem::InitializeSharedResources()
 	md3dDevice2->CreateShaderResourceView(mDevice2VelocityBuffer.Get(), &srvDesc, hDescriptor);
 	hDescriptor.Offset(1, mCbvSrvDescriptorSize2);
 
-	srvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	srvDesc.Format = mBackBufferFormat;
 	md3dDevice2->CreateShaderResourceView(mDevice2PrevFrame.Get(), &srvDesc, hDescriptor);
 	hDescriptor.Offset(1, mCbvSrvDescriptorSize2);
 
-	srvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	srvDesc.Format = mBackBufferFormat;
 	md3dDevice2->CreateShaderResourceView(mDevice2ResolvedAccBuffer.Get(), &srvDesc, hDescriptor);
 
 	//RTV Heap on Device 2
@@ -2989,7 +2989,7 @@ void RenderingSystem::InitializeSharedResources()
 	rtvDesc.Texture2D.PlaneSlice = 0;
 
 	mDevice2ResolvedAccBufferRTVIndex = 0;
-	rtvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	rtvDesc.Format = mBackBufferFormat;
 	md3dDevice2->CreateRenderTargetView(mDevice2ResolvedAccBuffer.Get(), &rtvDesc, rtvHandle);
 }
 
@@ -4066,7 +4066,7 @@ void RenderingSystem::BuildGlobalPSOs()
 	deferredPsoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 	deferredPsoDesc.NumRenderTargets = 1;
 	//deferredPsoDesc.RTVFormats[0] = mBackBufferFormat;
-	deferredPsoDesc.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	deferredPsoDesc.RTVFormats[0] = mBackBufferFormat;
 	deferredPsoDesc.SampleDesc.Count = 1;
 	deferredPsoDesc.DSVFormat = mDepthStencilFormat;
 
@@ -4113,7 +4113,7 @@ void RenderingSystem::BuildGlobalPSOs()
 	skyPsoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 	skyPsoDesc.NumRenderTargets = 1;
 	//skyPsoDesc.RTVFormats[0] = mBackBufferFormat;
-	skyPsoDesc.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	skyPsoDesc.RTVFormats[0] = mBackBufferFormat;
 	skyPsoDesc.SampleDesc.Count = 1;
 	skyPsoDesc.SampleDesc.Quality = 0;
 	skyPsoDesc.DSVFormat = mDepthStencilFormat;
@@ -4175,7 +4175,7 @@ void RenderingSystem::BuildGlobalPSOs()
 	ThrowIfFailed(md3dDevice2->CreateGraphicsPipelineState(&PPPsoDesc, IID_PPV_ARGS(&GlobalPSOs2["PostProcessing"])));
 
 	PPPsoDesc.pRootSignature = RootSignatures["TAAResolve"].Get();
-	PPPsoDesc.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	PPPsoDesc.RTVFormats[0] = mBackBufferFormat;
 	PPPsoDesc.VS =
 	{
 		reinterpret_cast<BYTE*>(mShaders["TAAResolveVS"]->GetBufferPointer()),

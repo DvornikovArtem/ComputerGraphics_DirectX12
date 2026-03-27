@@ -40,7 +40,7 @@ public:
     GBufferChannel DepthStencils = GBufferChannel(DXGI_FORMAT_R32G32B32A32_FLOAT);
     GBufferChannel Normal = GBufferChannel(DXGI_FORMAT_R16G16B16A16_SNORM);
     GBufferChannel MatFresnelRoughness = GBufferChannel(DXGI_FORMAT_R8G8B8A8_UNORM);
-    GBufferChannel Accumulation = GBufferChannel(DXGI_FORMAT_R16G16B16A16_FLOAT);
+    GBufferChannel Accumulation = GBufferChannel(DXGI_FORMAT_R8G8B8A8_UNORM);
     GBufferChannel VelocityBuffer = GBufferChannel(DXGI_FORMAT_R16G16_FLOAT);
     GBufferChannel ObjectOutlines = GBufferChannel(DXGI_FORMAT_R8G8B8A8_UNORM);
 

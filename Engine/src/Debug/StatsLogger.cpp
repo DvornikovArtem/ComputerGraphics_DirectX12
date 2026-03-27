@@ -48,6 +48,7 @@ void StatsLogger::GenerateReport(const std::wstring& deviceName1, const std::wst
             break;
         }
         if (swappedDevices) FileName += "_Swapped";
+        FileName += ".txt";
     }
 
 

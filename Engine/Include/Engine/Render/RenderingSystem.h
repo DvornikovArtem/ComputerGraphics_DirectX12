@@ -488,9 +488,9 @@ private:
 
     enum class CopyTestLoadType { ZeroLoad, CopyFromLocal, CopyFromShared };
 
-    const bool mUseSingleGPU = false;
-    const bool mSwapDevices = true;
-    const bool mCopyTest = true;
+    const bool mUseSingleGPU = true;
+    const bool mSwapDevices = false;
+    const bool mCopyTest = false;
     const CopyTestLoadType mCopyTestType = CopyTestLoadType::CopyFromShared;
 // =================================================================================================
 };
